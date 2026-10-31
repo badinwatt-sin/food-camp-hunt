@@ -6,6 +6,7 @@ import {
 import { goalStatus } from '@/lib/goal';
 import { hashCode, normalizeCode, normalizeId } from '@/lib/codes';
 import { removeAvatarFile, removePublicFile } from '@/lib/avatars';
+import { BULK_CONFIRM, BULK_PLANS, type BulkTarget } from '@/lib/bulk';
 import { checkOrigin, handler, HttpError, ok, rateLimit, readJson } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
@@ -471,6 +472,50 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       }
       await audit(role, 'participant.save', { id: body.id ?? null, idChanged: !!loginId, leader: wantLeader });
       return ok();
+    }
+    case 'bulk.delete': {
+      // Danger zone for rehearsals: wipe a whole group of data in one go. Admin only, and the caller must send the confirm word.
+      if (str(body.confirm) !== BULK_CONFIRM) {
+        return NextResponse.json({ error: 'BAD_INPUT', message: `ต้องพิมพ์คำว่า “${BULK_CONFIRM}” เพื่อยืนยัน` }, { status: 400 });
+      }
+      const target = str(body.target) as BulkTarget;
+      const plan = BULK_PLANS[target];
+      if (!plan) throw new HttpError(400, 'BAD_INPUT');
+
+      // Remember uploaded files first so they can be removed from storage afterwards (best effort).
+      const files: { bucket: string; url: string }[] = [];
+      if (['missions', 'teams', 'playdata'].includes(target)) {
+        const { data } = await sb.from('photo_submissions').select('image_url');
+        for (const r of data ?? []) files.push({ bucket: 'mission-photos', url: (r as any).image_url });
+      }
+      if (target === 'missions') {
+        const { data } = await sb.from('photo_missions').select('ref_image_url');
+        for (const r of data ?? []) if ((r as any).ref_image_url) files.push({ bucket: 'question-images', url: (r as any).ref_image_url });
+      }
+      if (target === 'teams') {
+        const { data } = await sb.from('participants').select('avatar_url').not('avatar_url', 'is', null);
+        for (const r of data ?? []) files.push({ bucket: 'avatars', url: (r as any).avatar_url });
+      }
+
+      const counts: Record<string, number> = {};
+      for (const step of plan.steps) {
+        const del = sb.from(step.table).delete({ count: 'exact' });
+        const { error, count } = await (step.eq ? del.eq(step.eq[0], step.eq[1]) : del.not('id', 'is', null));
+        if (error) throw error;
+        counts[step.table] = count ?? 0;
+      }
+      if (plan.resetPlayers) {
+        const { error } = await sb.from('participants')
+          .update({ status: 'not_started', correct_count: 0, tokens_earned: 0, confirmed_at: null, completed_at: null }).not('id', 'is', null);
+        if (error) throw error;
+      }
+      if (plan.switchesOff) {
+        const { error } = await sb.from('game_settings').update({ is_open: false, hunt_open: false, puzzle_open: false, market_open: false }).eq('id', 1);
+        if (error) throw error;
+      }
+      for (const f of files) await removePublicFile(f.bucket, f.url);
+      await audit(role, 'bulk.delete', { target, counts });
+      return ok({ target, counts });
     }
     case 'leader.set': {
       // Exactly one leader per team: demote the current one first, then promote the chosen player.

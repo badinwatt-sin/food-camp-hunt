@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { Hero } from '@/components/Icons';
+import { BULK_CONFIRM } from '@/lib/bulk';
 
 type Role = 'admin' | 'staff';
 
@@ -78,6 +79,7 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>('overview');
   const [msg, setMsg] = useState('');
   const closeMsg = useCallback(() => setMsg(''), []);
+  const [rk, setRk] = useState(0); // bump to reload the open tab after a bulk delete
   const [pendingPhotos, setPendingPhotos] = useState(0);
   useEffect(() => {
     const poll = () => call<{ pendingPhotos: number }>('badges').then((b) => setPendingPhotos(b.pendingPhotos)).catch(() => {});
@@ -108,17 +110,104 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
           ))}
         </nav>
         <div className="admin">
-        {tab === 'overview' && <Overview role={role} setMsg={setMsg} />}
-        {tab === 'market' && <Market role={role} setMsg={setMsg} />}
-        {tab === 'people' && <People setMsg={setMsg} />}
-        {tab === 'questions' && <Questions setMsg={setMsg} />}
-        {tab === 'hunt' && <Hunt setMsg={setMsg} />}
-        {tab === 'puzzles' && <Missions role={role} setMsg={setMsg} />}
+        {tab === 'overview' && <Overview key={rk} role={role} setMsg={setMsg} />}
+        {tab === 'market' && <Market key={rk} role={role} setMsg={setMsg} />}
+        {tab === 'people' && <People key={rk} setMsg={setMsg} />}
+        {tab === 'questions' && <Questions key={rk} setMsg={setMsg} />}
+        {tab === 'hunt' && <Hunt key={rk} setMsg={setMsg} />}
+        {tab === 'puzzles' && <Missions key={rk} role={role} setMsg={setMsg} />}
         {tab === 'history' && <History />}
         {tab === 'export' && <Export />}
+        {role === 'admin' && BULK_FOR_TAB[tab] && <BulkDelete target={BULK_FOR_TAB[tab]!} setMsg={setMsg} onDone={() => setRk((n) => n + 1)} />}
         </div>
       </div>
       <Toast msg={msg} onClose={closeMsg} />
+    </>
+  );
+}
+
+// ------------------------------------------------------------------ danger zone (clear test data)
+const BULK_FOR_TAB: Partial<Record<Tab, 'playdata' | 'items' | 'teams' | 'questions' | 'spots' | 'missions'>> = {
+  overview: 'playdata', market: 'items', people: 'teams', questions: 'questions', hunt: 'spots', puzzles: 'missions',
+};
+const BULK_INFO: Record<string, { button: string; what: string; keeps: string }> = {
+  playdata: {
+    button: '🧹 รีเซ็ตผลการเล่นทั้งหมด (เริ่มรอบทดสอบใหม่)',
+    what: 'ล้างคำตอบควิซ คะแนน โทเคนทุกประเภท ประวัติแลกของ/ล่าสมบัติ/ภาพภารกิจ และประวัติใช้งาน แล้วรีเซ็ตผู้เล่นให้เริ่มใหม่ ปิดสวิตช์ทั้งหมด',
+    keeps: 'ทีม ผู้เล่น+ID หัวหน้าทีม สควอด คำถาม สินค้า ภารกิจ จุดล่าสมบัติ ยังอยู่ครบ · สต็อกสินค้าที่ถูกแลกไปแล้วจะไม่ถูกคืน (แก้ที่แท็บตลาดสินค้า)',
+  },
+  items: {
+    button: '🗑️ ลบสินค้าทั้งหมด',
+    what: 'ลบสินค้าในตลาดทุกชิ้น พร้อมประวัติการแลกและการจ่ายของ โทเคนที่ทีมเคยใช้แลกจะถูกคืนให้ทีม',
+    keeps: 'ทีม ผู้เล่น และกิจกรรมอื่น ๆ ไม่ถูกแตะ',
+  },
+  teams: {
+    button: '🗑️ ลบทีมทั้งหมด (รวมผู้เล่น)',
+    what: 'ลบทุกทีม พร้อมผู้เล่นทั้งหมด ID สควอด หัวหน้าทีม โทเคน ประวัติทุกอย่าง และรูปโปรไฟล์/ภาพภารกิจที่อัปโหลดไว้ เริ่มใหม่ทั้งหมด',
+    keeps: 'คำถาม สินค้า ภารกิจ และจุดล่าสมบัติยังอยู่ (ลบแยกที่แท็บของตัวเอง)',
+  },
+  questions: {
+    button: '🗑️ ลบคำถามควิซทั้งหมด',
+    what: 'ลบคำถามควิซทุกข้อ และคำตอบที่ผู้เล่นเคยส่ง',
+    keeps: 'โทเคนที่ทีมเคยได้จากควิซยังอยู่ (ใช้ปุ่มรีเซ็ตผลการเล่นที่หน้าภาพรวมเพื่อล้างโทเคน)',
+  },
+  spots: {
+    button: '🗑️ ลบจุดล่าสมบัติทั้งหมด',
+    what: 'ลบจุดล่าสมบัติทุกจุด พร้อมประวัติการสแกนของทุกทีม',
+    keeps: 'โทเคนที่ทีมเคยได้จากล่าสมบัติยังอยู่ (ใช้ปุ่มรีเซ็ตผลการเล่นที่หน้าภาพรวมเพื่อล้างโทเคน)',
+  },
+  missions: {
+    button: '🗑️ ลบภารกิจถ่ายภาพทั้งหมด',
+    what: 'ลบภารกิจถ่ายภาพทุกข้อ พร้อมภาพที่ทีมส่งมาและภาพตัวอย่าง',
+    keeps: 'โทเคนที่ทีมเคยได้จากภารกิจยังอยู่ (ใช้ปุ่มรีเซ็ตผลการเล่นที่หน้าภาพรวมเพื่อล้างโทเคน)',
+  },
+};
+
+/** Collapsed "danger zone" at the bottom of a tab: wipe a whole group of data at once (for rehearsals). Needs the confirm word. */
+function BulkDelete({ target, setMsg, onDone }: { target: string; setMsg: (m: string) => void; onDone: () => void }) {
+  const info = BULK_INFO[target];
+  const [open, setOpen] = useState(false);
+  const [word, setWord] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => { setOpen(false); setWord(''); setErr(''); }, [target]);
+  if (!info) return null;
+  async function run() {
+    setBusy(true); setErr('');
+    try {
+      const r = await call<{ counts: Record<string, number> }>('bulk.delete', { target, confirm: word });
+      const total = Object.values(r.counts).reduce((n, v) => n + v, 0);
+      setOpen(false); setWord('');
+      setMsg(`ล้างข้อมูลเรียบร้อย (${total} รายการ)`);
+      onDone();
+    } catch (e) { setErr((e as Error).message); }
+    finally { setBusy(false); }
+  }
+  return (
+    <>
+      <div className="card danger-zone" style={{ marginTop: 18 }}>
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <div><strong>⚠️ โซนอันตราย: ล้างข้อมูลทดสอบ</strong><div className="muted" style={{ fontSize: 14 }}>ลบทีเดียวทั้งกลุ่ม ใช้ตอนซ้อมหรือทดสอบก่อนเริ่มงานจริง · กู้คืนไม่ได้</div></div>
+          <button className="btn small danger" onClick={() => { setOpen(true); setWord(''); setErr(''); }}>{info.button}</button>
+        </div>
+      </div>
+      {open && (
+        <div className="dlg-back" role="dialog" aria-label="ยืนยันการลบ" onClick={busy ? undefined : () => setOpen(false)}>
+          <div className="dlg" onClick={(e) => e.stopPropagation()}>
+            <h2 style={{ marginTop: 0, color: 'var(--bad)' }}>{info.button}</h2>
+            <p style={{ margin: '0 0 8px' }}>{info.what}</p>
+            <p className="muted" style={{ margin: '0 0 12px' }}>{info.keeps}</p>
+            <div className="error" style={{ marginBottom: 12 }}>การลบนี้ <strong>กู้คืนไม่ได้</strong> และไม่ควรทำในระหว่างงานจริง</div>
+            <label className="lbl">พิมพ์คำว่า <strong>{BULK_CONFIRM}</strong> เพื่อยืนยัน</label>
+            <input className="field" value={word} placeholder={BULK_CONFIRM} onChange={(e) => setWord(e.target.value)} autoFocus />
+            {err && <div className="error" style={{ marginTop: 10 }}>{err}</div>}
+            <div className="row" style={{ marginTop: 14 }}>
+              <button className="btn small danger" disabled={busy || word.trim() !== BULK_CONFIRM} onClick={run}>{busy ? 'กำลังลบ…' : 'ลบทั้งหมดเดี๋ยวนี้'}</button>
+              <button className="btn small ghost" disabled={busy} onClick={() => setOpen(false)}>ยกเลิก</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

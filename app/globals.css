@@ -241,3 +241,5 @@ label.lbl { display: block; font-size: 14px; color: #5d6a80; margin: 10px 0 4px;
 .members .m-av { flex: none; width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; font-weight: 700; background: var(--green); color: var(--navy); }
 .members .m-av.leader { background: #fbe7b8; border: 2px solid #e8b95a; }
 .me-tag { font-size: 12.5px; background: var(--fire); color: #fff; padding: 1px 8px; border-radius: 99px; margin-left: 6px; }
+
+.danger-zone { border: 2px dashed #d98b86; background: #fff8f6; }
