@@ -308,18 +308,75 @@ function Market({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
   );
 }
 
+
+// ---------------------------------------------------------- player import helpers
+type ImportRow = { id: string; full_name: string; nick_name: string; team: string; squad: string };
+
+/** Parses pasted Excel cells (tab separated) or a CSV file (comma separated, quotes supported). */
+function parseDelimited(text: string): string[][] {
+  const t = text.replace(/^﻿/, '');
+  const first = t.split(/\r?\n/).find((l) => l.trim()) ?? '';
+  const delim = first.includes('\t') ? '\t' : ',';
+  const rows: string[][] = [];
+  let row: string[] = [], cur = '', q = false;
+  for (let i = 0; i < t.length; i++) {
+    const c = t[i];
+    if (q) { if (c === '"') { if (t[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += c; }
+    else if (c === '"') q = true;
+    else if (c === delim) { row.push(cur); cur = ''; }
+    else if (c === '\n' || c === '\r') { if (c === '\r' && t[i + 1] === '\n') i++; row.push(cur); cur = ''; if (row.some((x) => x.trim())) rows.push(row); row = []; }
+    else cur += c;
+  }
+  row.push(cur); if (row.some((x) => x.trim())) rows.push(row);
+  return rows;
+}
+
+/** Table -> import rows. Uses the header row (ID, Full name, Nick name, Team, Squad) if present, else that column order. */
+function toImportRows(table: unknown[][]): ImportRow[] {
+  const clean = table.map((r) => r.map((c) => (c === null || c === undefined ? '' : String(c).trim())));
+  const norm = (x: string) => x.toLowerCase().replace(/[^a-z0-9ก-๙]/g, '');
+  const head = (clean[0] ?? []).map(norm);
+  const idx = (names: string[]) => head.findIndex((h) => names.includes(h));
+  const hasHeader = idx(['id', 'รหัส']) >= 0 || idx(['team', 'ทีม']) >= 0;
+  let col = { id: 0, full: 1, nick: 2, team: 3, squad: 4 };
+  let data = clean;
+  if (hasHeader) {
+    col = { id: idx(['id', 'รหัส']), full: idx(['fullname', 'name', 'ชื่อ', 'ชื่อนามสกุล']), nick: idx(['nickname', 'nick', 'ชื่อเล่น']), team: idx(['team', 'ทีม']), squad: idx(['squad', 'สควอด']) };
+    data = clean.slice(1);
+  }
+  const at = (r: string[], i: number) => (i >= 0 ? r[i] ?? '' : '');
+  return data.filter((r) => r.some(Boolean)).map((r) => ({
+    id: at(r, col.id), full_name: at(r, col.full), nick_name: at(r, col.nick), team: at(r, col.team), squad: at(r, col.squad),
+  }));
+}
+
+/** Problems visible before sending (the server checks again). */
+function importProblems(rows: ImportRow[]): string[] {
+  const out: string[] = [];
+  const seen = new Map<string, number>();
+  rows.forEach((r, k) => {
+    const key = r.id.toUpperCase().replace(/[^\p{L}\p{N}]/gu, '');
+    if (!key || !r.full_name || !r.team) out.push(`แถว ${k + 1}: ต้องมี ID, Full name และ Team (${r.full_name || r.id || 'ว่าง'})`);
+    else if (seen.has(key)) out.push(`แถว ${k + 1}: ID “${r.id}” ซ้ำกับแถว ${seen.get(key)}`);
+    else seen.set(key, k + 1);
+  });
+  return out;
+}
+
 // -------------------------------------------------------------------- people
 function People({ setMsg }: { setMsg: (m: string) => void }) {
   const [teams, setTeams] = useState<any[]>([]);
   const [people, setPeople] = useState<any[]>([]);
   const [teamName, setTeamName] = useState('');
   const [editTeam, setEditTeam] = useState<any | null>(null);
-  const [form, setForm] = useState({ id: '', name: '', team_id: '', squad_id: '' });
+  const blankForm = { id: '', login_id: '', name: '', nick_name: '', team_id: '', squad_id: '' };
+  const [form, setForm] = useState(blankForm);
   const [squads, setSquads] = useState<any[]>([]);
   const [sizes, setSizes] = useState<Record<string, string>>({});
   const [editSquad, setEditSquad] = useState<{ id: string; name: string } | null>(null);
   const [bulk, setBulk] = useState('');
-  const [codes, setCodes] = useState<{ name: string; team: string; code: string }[] | null>(null);
+  const [imp, setImp] = useState<{ source: string; rows: ImportRow[] } | null>(null);
+  const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -333,36 +390,36 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
     try { const r = await fn(); await load(); if (ok) setMsg(ok); return r; } catch (e) { setMsg((e as Error).message); }
   };
 
-  function downloadCodes() {
-    if (!codes) return;
-    const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
-    const csv = '﻿' + ['Name,Team,Code', ...codes.map((c) => [esc(c.name), esc(c.team), c.code].join(','))].join('\r\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    a.download = 'foodcamp-access-codes.csv';
-    a.click();
+  async function readFile(file: File) {
+    try {
+      let table: unknown[][];
+      if (/\.xlsx$/i.test(file.name)) {
+        const { readSheet } = await import('read-excel-file/browser');
+        table = (await readSheet(file)) as unknown[][];
+      } else if (/\.xls$/i.test(file.name)) {
+        setMsg('ไฟล์ .xls (รุ่นเก่า) ไม่รองรับ กรุณาบันทึกเป็น .xlsx หรือ .csv ใน Excel');
+        return;
+      } else {
+        table = parseDelimited(await file.text());
+      }
+      const rows = toImportRows(table);
+      setImp({ source: file.name, rows });
+      setMsg(rows.length ? `อ่านไฟล์ ${file.name} ได้ ${rows.length} แถว กรุณาตรวจตัวอย่างด้านล่างก่อนกดนำเข้า` : 'ไม่พบข้อมูลในไฟล์');
+    } catch (e) { setMsg('อ่านไฟล์ไม่ได้: ' + (e as Error).message); }
+  }
+  async function doImport() {
+    if (!imp) return;
+    setBusy(true);
+    try {
+      const r = await call('participants.import', { rows: imp.rows });
+      setImp(null); setBulk(''); await load();
+      setMsg(`นำเข้าสำเร็จ: เพิ่มใหม่ ${r.inserted} คน · อัปเดต ${r.updated} คน` + (r.teamsCreated ? ` · สร้างทีมใหม่ ${r.teamsCreated} ทีม` : '') + (r.skipped?.length ? `\n${r.skipped.join('\n')}` : ''));
+    } catch (e) { setMsg((e as Error).message); }
+    finally { setBusy(false); }
   }
 
   return (
     <>
-      {codes && (
-        <div className="card">
-          <h2>รหัสที่เพิ่งสร้าง ({codes.length})</h2>
-          <div className="error" style={{ background: '#fff3d6', color: '#6a4b00' }}>
-            รหัสจะแสดงครั้งเดียวเท่านั้น (ระบบเก็บเฉพาะค่าแฮช) — ดาวน์โหลดและเก็บไว้ในที่ปลอดภัย แจกให้เจ้าของรหัสโดยตรง
-          </div>
-          <div className="row noprint" style={{ margin: '10px 0' }}>
-            <button className="btn small" onClick={downloadCodes}>ดาวน์โหลด CSV</button>
-            <button className="btn small ghost" onClick={() => window.print()}>พิมพ์</button>
-            <button className="btn small ghost" onClick={() => setCodes(null)}>ปิด (ลบจากหน้าจอ)</button>
-          </div>
-          <div className="table-wrap"><table>
-            <thead><tr><th>ชื่อ</th><th>ทีม</th><th>รหัส</th></tr></thead>
-            <tbody>{codes.map((c, i) => <tr key={i}><td>{c.name}</td><td>{c.team}</td><td className="codebox">{c.code}</td></tr>)}</tbody>
-          </table></div>
-        </div>
-      )}
-
       <div className="card">
         <h2>ทีม</h2>
         <ul className="list">
@@ -434,46 +491,82 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
       </div>
 
       <div className="card">
-        <h2>เพิ่ม / นำเข้าผู้เล่น</h2>
+        <h2>นำเข้าผู้เล่นจาก Excel</h2>
+        <p className="muted">
+          ไฟล์ต้องมีคอลัมน์ <strong>ID, Full name, Nick name, Team</strong> (เพิ่ม <strong>Squad</strong> ได้ ไม่บังคับ) · <strong>ID</strong> คือรหัสที่ผู้เล่นใช้เข้าเกม คุณเป็นคนกำหนดเอง ·
+          ทีมที่ยังไม่มีในระบบจะถูกสร้างให้ · นำเข้าซ้ำได้: ID เดิมจะอัปเดตชื่อ/ทีม ไม่สร้างซ้ำ ·
+          ใน Excel ควรตั้งคอลัมน์ ID เป็นชนิด <strong>ข้อความ (Text)</strong> ไม่งั้นเลขนำหน้า 0 อาจหาย
+        </p>
         <div className="row">
-          <input className="field grow" placeholder="ชื่อผู้เล่น" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <input type="file" accept=".xlsx,.csv,.txt" onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f); e.target.value = ''; }} />
+        </div>
+        <label className="lbl">หรือคัดลอกเซลล์จาก Excel (รวมแถวหัวตาราง) มาวางที่นี่</label>
+        <textarea className="field" rows={4} value={bulk} onChange={(e) => setBulk(e.target.value)} placeholder={'ID\tFull name\tNick name\tTeam\nA1001\tสมชาย ใจดี\tชาย\tทีมสนเขียว'} />
+        <div className="row" style={{ marginTop: 8 }}>
+          <button className="btn small" disabled={!bulk.trim()} onClick={() => { const rows = toImportRows(parseDelimited(bulk)); setImp({ source: 'ข้อความที่วาง', rows }); }}>ตรวจสอบข้อมูลที่วาง</button>
+          <button className="btn small ghost" onClick={() => confirm('ลบผู้เล่นทั้งหมดที่ยังไม่เริ่มเล่น (รวมข้อมูลตัวอย่าง)?') && run(async () => { const r = await call('participants.deleteUnstarted', {}); setMsg(`ลบแล้ว ${r.deleted} คน`); })}>ลบผู้เล่นที่ยังไม่เริ่มเล่นทั้งหมด (ล้างข้อมูลตัวอย่าง)</button>
+        </div>
+
+        {imp && (() => {
+          const problems = importProblems(imp.rows);
+          const teamsInFile = Array.from(new Set(imp.rows.map((r) => r.team).filter(Boolean)));
+          return (
+            <div style={{ marginTop: 14 }}>
+              <h2 style={{ fontSize: 17 }}>ตัวอย่างจาก {imp.source}: {imp.rows.length} คน · {teamsInFile.length} ทีม</h2>
+              {problems.length > 0 && <div className="error" style={{ marginBottom: 10 }}>{problems.slice(0, 10).join('\n')}{problems.length > 10 ? `\n… และอีก ${problems.length - 10} รายการ` : ''}</div>}
+              <div className="table-wrap"><table>
+                <thead><tr><th>#</th><th>ID</th><th>Full name</th><th>Nick name</th><th>Team</th><th>Squad</th></tr></thead>
+                <tbody>{imp.rows.slice(0, 8).map((r, k) => <tr key={k}><td className="num">{k + 1}</td><td className="codebox">{r.id}</td><td>{r.full_name}</td><td>{r.nick_name}</td><td>{r.team}</td><td>{r.squad || '—'}</td></tr>)}</tbody>
+              </table></div>
+              {imp.rows.length > 8 && <div className="muted">แสดง 8 แถวแรก จากทั้งหมด {imp.rows.length}</div>}
+              <div className="row" style={{ marginTop: 10 }}>
+                <button className="btn small" disabled={busy || problems.length > 0 || imp.rows.length === 0} onClick={doImport}>{busy ? 'กำลังนำเข้า…' : `นำเข้า ${imp.rows.length} คน`}</button>
+                <button className="btn small ghost" onClick={() => setImp(null)}>ยกเลิก</button>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
+      <div className="card">
+        <h2>{form.id ? 'แก้ไขผู้เล่น' : 'เพิ่มผู้เล่นทีละคน'}</h2>
+        <div className="row">
+          <input className="field grow" placeholder={form.id ? 'ID ใหม่ (เว้นว่าง = ใช้ ID เดิม)' : 'ID สำหรับเข้าเกม'} value={form.login_id} onChange={(e) => setForm({ ...form, login_id: e.target.value })} />
+          <input className="field grow" placeholder="Full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <input className="field grow" placeholder="Nick name" value={form.nick_name} onChange={(e) => setForm({ ...form, nick_name: e.target.value })} />
+        </div>
+        <div className="row" style={{ marginTop: 8 }}>
           <select className="field grow" value={form.team_id} onChange={(e) => setForm({ ...form, team_id: e.target.value, squad_id: '' })}>
             <option value="">เลือกทีม</option>{teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}</option>)}
           </select>
           <select className="field grow" value={form.squad_id} disabled={!form.team_id} onChange={(e) => setForm({ ...form, squad_id: e.target.value })}>
             <option value="">ไม่มีสควอด</option>{squads.filter((q) => q.team_id === form.team_id).map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}
           </select>
-          <button className="btn small" disabled={!form.name.trim() || !form.team_id}
-            onClick={() => run(async () => { await call('participant.save', form); setForm({ id: '', name: '', team_id: form.team_id, squad_id: form.squad_id }); }, form.id ? 'บันทึกแล้ว' : 'เพิ่มผู้เล่นแล้ว')}>
+          <button className="btn small" disabled={!form.name.trim() || !form.team_id || (!form.id && !form.login_id.trim())}
+            onClick={() => run(async () => { await call('participant.save', form); setForm({ ...blankForm, team_id: form.team_id, squad_id: form.squad_id }); }, form.id ? 'บันทึกแล้ว' : 'เพิ่มผู้เล่นแล้ว')}>
             {form.id ? 'บันทึกการแก้ไข' : '+ เพิ่ม'}
           </button>
-        </div>
-        <label className="lbl">นำเข้าหลายคน: 1 บรรทัดต่อ 1 คน รูปแบบ  ชื่อ, ชื่อทีม, ชื่อสควอด(ไม่บังคับ)  (วางจาก Excel ได้ · สควอดที่ยังไม่มีจะถูกสร้างให้)</label>
-        <textarea className="field" rows={4} value={bulk} onChange={(e) => setBulk(e.target.value)} placeholder={'สมชาย ใจดี, ทีมสนเขียว (ตัวอย่าง), สควอด 1'} />
-        <div className="row" style={{ marginTop: 8 }}>
-          <button className="btn small" disabled={!bulk.trim()} onClick={() => run(async () => { const r = await call('participants.import', { text: bulk }); setBulk(''); setMsg(`นำเข้า ${r.imported} คน`); })}>นำเข้า</button>
-          <button className="btn small ghost" onClick={() => confirm('ลบผู้เล่นทั้งหมดที่ยังไม่เริ่มเล่น (รวมข้อมูลตัวอย่าง)?') && run(async () => { const r = await call('participants.deleteUnstarted', {}); setMsg(`ลบแล้ว ${r.deleted} คน`); })}>ลบผู้เล่นที่ยังไม่เริ่มเล่นทั้งหมด (ล้างข้อมูลตัวอย่าง)</button>
+          {form.id && <button className="btn small ghost" onClick={() => setForm(blankForm)}>ยกเลิก</button>}
         </div>
       </div>
 
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0 }}>ผู้เล่น ({people.length})</h2>
-          <button className="btn small green" onClick={async () => { const r = await run(() => call('codes.generate', {})); if (r) { setCodes(r.codes); if (!r.codes.length) setMsg('ทุกคนมีรหัสแล้ว'); } }}>สร้างรหัสให้คนที่ยังไม่มี</button>
         </div>
         <div className="table-wrap"><table>
-          <thead><tr><th>ชื่อ</th><th>ทีม</th><th>สควอด</th><th>สถานะ</th><th>คะแนน</th><th>รหัส</th><th /></tr></thead>
+          <thead><tr><th>Full name</th><th>Nick name</th><th>ทีม</th><th>สควอด</th><th>สถานะ</th><th>คะแนน</th><th>ID</th><th /></tr></thead>
           <tbody>
             {people.map((p) => (
               <tr key={p.id}>
-                <td>{p.name}</td><td>{p.team_name}</td><td>{p.squad_name || '—'}</td>
+                <td>{p.name}</td><td>{p.nick_name || '—'}</td><td>{p.team_name}</td><td>{p.squad_name || '—'}</td>
                 <td>{{ not_started: 'ยังไม่เริ่ม', in_progress: 'กำลังเล่น', completed: 'จบแล้ว' }[p.status as 'completed']}</td>
                 <td className="num">{p.status === 'completed' ? `${p.correct_count} (${p.tokens_earned})` : ''}</td>
-                <td>{p.has_code ? '✔ มีรหัส' : '—'}</td>
+                <td>{p.has_code ? '✔ มี ID' : '— ไม่มี ID'}</td>
                 <td className="row">
-                  <button className="btn small ghost" onClick={() => setForm({ id: p.id, name: p.name, team_id: p.team_id, squad_id: p.squad_id ?? '' })}>แก้ไข</button>
-                  <button className="btn small ghost" onClick={() => confirm(`สร้างรหัสใหม่ให้ ${p.name}? รหัสเดิมจะใช้ไม่ได้`) && run(async () => { const r = await call('codes.generate', { ids: [p.id] }); setCodes(r.codes); })}>{p.has_code ? 'สร้างรหัสใหม่' : 'สร้างรหัส'}</button>
-                  {p.has_code && <button className="btn small ghost" onClick={() => confirm(`ยกเลิกรหัสของ ${p.name}?`) && run(() => call('code.revoke', { id: p.id }), 'ยกเลิกรหัสแล้ว')}>ยกเลิกรหัส</button>}
+                  <button className="btn small ghost" onClick={() => setForm({ id: p.id, login_id: '', name: p.name, nick_name: p.nick_name ?? '', team_id: p.team_id, squad_id: p.squad_id ?? '' })}>แก้ไข</button>
+                  <button className="btn small ghost" onClick={() => { const v = prompt(`ID ใหม่ของ ${p.name} (ID เดิมจะใช้ไม่ได้ทันที)`); if (v?.trim()) run(() => call('participant.save', { id: p.id, login_id: v, name: p.name, nick_name: p.nick_name ?? '', team_id: p.team_id, squad_id: p.squad_id ?? '' }), 'เปลี่ยน ID แล้ว'); }}>เปลี่ยน ID</button>
+                  {p.has_code && <button className="btn small ghost" onClick={() => confirm(`ยกเลิก ID ของ ${p.name}? จะเข้าเกมไม่ได้จนกว่าจะตั้ง ID ใหม่`) && run(() => call('code.revoke', { id: p.id }), 'ยกเลิก ID แล้ว')}>ยกเลิก ID</button>}
                   {p.status === 'not_started' && <button className="btn small ghost" onClick={() => confirm(`ลบ ${p.name}?`) && run(() => call('participant.delete', { id: p.id }), 'ลบแล้ว')}>ลบ</button>}
                 </td>
               </tr>

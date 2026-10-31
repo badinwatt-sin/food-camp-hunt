@@ -32,7 +32,7 @@ Other teams can find the same spot too. Tokens go into the same team wallet and 
   squad has to meet and combine them. Anyone can submit the squad's answer; attempts are shared by the squad (default 2) and enforced by the database; the correct answer is never sent to phones.
   Tokens go to the team wallet once per squad. Puzzles have **their own open/close switch** in **Admin → ภาพรวม** (separate from the quiz and the hunt; default closed).
   Tip: write at least as many clues as there are people in a squad (4–5) so everyone has something to share.
-- **Existing database?** run, in order, `supabase/hunt.sql`, `supabase/squads.sql`, `supabase/coop.sql` (all safe to re-run).
+- **Existing database?** run, in order, `supabase/hunt.sql`, `supabase/squads.sql`, `supabase/coop.sql`, `supabase/ids.sql` (all safe to re-run).
 - Hunt and puzzle history can be exported (**ส่งออก CSV → ล่าสมบัติ / ภารกิจทีม**).
 
 > **Status — please read.** The code was written and reviewed carefully, but in the environment where it
@@ -47,8 +47,8 @@ Other teams can find the same spot too. Tokens go into the same team wallet and 
 
 | Part | What it is |
 |---|---|
-| Players (`/`) | Enter code → confirm name/team → 5 questions → score + team balance → team wallet |
-| Organiser (`/admin`) | Overview & open/close game · Market & confirm redemptions · Teams/players/codes · Questions · History · CSV export |
+| Players (`/`) | Enter your **ID** → confirm name/team → 5 questions → score + team balance → team wallet |
+| Organiser (`/admin`) | Overview & open/close game · Market & confirm redemptions · Teams/players/IDs (Excel import) · Questions · History · CSV export |
 | Database (Supabase / Postgres) | Tables, safety rules and "all-or-nothing" functions in `supabase/schema.sql` |
 | Sample data | `supabase/seed.sql` — 4 sample teams, 8 fictional players, 5 sample questions, 9 market items |
 
@@ -58,12 +58,13 @@ security on, no public policies), so the public Supabase key can read or change 
 
 ## 2. Default choices (change if you disagree)
 
-- **Access codes** are 8 characters (e.g. `K7QM-4XPD`), random, no look-alike letters (no 0/O/1/I/L).
-  The database stores only a keyed hash, so **a code is shown once** when you generate it. Download/print it then.
+- **Player IDs** are chosen by the organiser and imported from Excel (columns `ID, Full name, Nick name, Team`, optional `Squad`).
+  A player types their ID to log in (case, spaces and dashes are ignored: `ab-0012` = `AB 0012`). The database stores only a keyed hash of each ID,
+  so the organiser keeps the Excel sheet as the record of who has which ID; the admin screen only shows "has an ID". Nick names are what teammates see in the game.
 - **Roles:** `ADMIN_PASSWORD` can do everything. An optional `STAFF_PASSWORD` can only view the overview/market and
   **confirm redemptions**; it cannot adjust tokens, edit data or export. Manual token adjustments are admin-only and need a reason.
 - The quiz uses **all active questions, in order** (default 5). Max tokens = questions × tokens-per-correct (default 10 → 50).
-- A participant may finish once. Re-entering the same code resumes at the next unanswered question.
+- A participant may finish once. Re-entering the same ID resumes at the next unanswered question.
   If the game is **closed**, nobody can start or answer new questions; people who finished can still see their wallet.
 - Participant names appear only to that participant and in the admin screens. Players see only their own team's balance/history.
 - Questions answered cannot be changed by players. **Don't edit questions after opening the game.**
@@ -88,7 +89,7 @@ Copy `.env.example` to `.env.local` and fill it in:
 | `SUPABASE_URL` | Project URL |
 | `SUPABASE_SERVICE_ROLE_KEY` | the service_role key |
 | `SESSION_SECRET` | any long random text (32+ chars) |
-| `CODE_PEPPER` | another long random text. **Don't change it after codes are issued** — all codes would stop working |
+| `CODE_PEPPER` | another long random text. **Don't change it after IDs are imported** — all IDs would stop working (re-import the sheet to fix) |
 | `ADMIN_PASSWORD` | a strong password for the organiser |
 | `STAFF_PASSWORD` | optional, for a helper who only confirms redemptions |
 
@@ -105,11 +106,12 @@ Open http://localhost:3000 (players) and http://localhost:3000/admin.
 ### Step D — Put real people in (securely)
 1. `/admin` → **ทีมและผู้เล่น**. Rename the 4 sample teams (แก้ชื่อ).
 2. Click **ลบผู้เล่นที่ยังไม่เริ่มเล่นทั้งหมด** to clear the sample players.
-3. Add people one by one, or paste many lines in the form `name, team name` (from Excel: two columns copy straight in).
-4. Click **สร้างรหัสให้คนที่ยังไม่มี**. A table appears **once** — download the CSV / print it and hand each person their own code privately
-   (e.g. a printed card or a direct message). Don't post the list in a group chat.
-5. Keep that CSV in a restricted place and delete it after the event. Only collect/enter data you're allowed to use, and
-   don't use employee IDs as codes. A lost code → generate a new one for that person (the old one stops working immediately). **ยกเลิกรหัส** revokes a code.
+3. In **นำเข้าผู้เล่นจาก Excel** choose your `.xlsx` / `.csv` file (or copy the cells including the header row and paste them). Columns: **ID, Full name, Nick name, Team** (+ optional **Squad**).
+   Check the preview, then press **นำเข้า**. Missing teams/squads are created. Importing the same sheet again is safe: a known ID updates that person instead of adding a duplicate
+   (a player who already started is not moved to another team). In Excel set the ID column to **Text** so leading zeros survive.
+4. Hand out the IDs the way you already planned (they come from your sheet). **Pick IDs that are not easy to guess** (e.g. not 1, 2, 3…): anyone who knows someone's ID can log in as them.
+   Wrong IDs are limited per network address (best effort), and an ID can be changed (**เปลี่ยน ID**) or revoked (**ยกเลิก ID**) at any time.
+5. Only collect/enter data you're allowed to use; delete the sheet and the participants after the event.
 
 ### Step E — Questions and market
 - **คำถาม:** edit the 5 samples. Paste an image link (`https://…`) or upload PNG/JPG/WebP ≤ 2 MB. Use only photos you own or are licensed to use.
@@ -126,7 +128,7 @@ Open http://localhost:3000 (players) and http://localhost:3000/admin.
    **ยืนยันการแลก**. Tokens and stock change together or not at all. If your Wi-Fi drops and you're unsure it saved, just press the button again:
    the same click is recognised and **never charged twice** (change team/item/quantity and it becomes a new request).
 5. Corrections: use **ปรับโทเคนด้วยมือ** (admin only, reason required). Everything is listed in **ประวัติ** and the audit log.
-6. **ส่งออก CSV** for team summary, per-player results, redemptions and adjustments (participant CSV has no access codes).
+6. **ส่งออก CSV** for team summary, per-player results, redemptions and adjustments (participant CSV has no IDs).
 
 ## 5. How safety works
 
@@ -153,12 +155,12 @@ Expect every line `PASS` and `0 failed`. A `FAIL` means: do not use that databas
 
 | Check | How | Expected |
 |---|---|---|
-| Player flow | Admin: generate a code for a sample player, open game. On phone enter code, confirm, answer all 5 | Each answer shows right/wrong + reveals correct one; final screen shows score (×10) and team balance |
-| Wrong code | Enter a made-up code | "รหัสไม่ถูกต้อง", no details leaked |
+| Player flow | Admin: import a sample sheet with an ID for a test player, open game. On phone enter the ID, confirm, answer all 5 | Each answer shows right/wrong + reveals correct one; final screen shows score (×10) and team balance |
+| Wrong ID | Enter a made-up ID | "ไม่พบ ID นี้", no details leaked |
 | Reconnection | Answer 2 questions, close the browser tab, reopen, enter same code | Resumes at question 3; tokens unchanged |
 | Reconnect mid-feedback | Answer, turn on airplane mode, press next, turn it back on and retry | Message shown; works after retry; no double answer |
 | Duplicate scoring | Finish the quiz, refresh several times, log out/in, open on a second phone | Team balance rose once only |
-| Revoked code | Admin revokes code while player is logged in | Next action returns to login screen |
+| Revoked ID | Admin revokes the ID while player is logged in | Next action returns to login screen |
 | Closed game | Close game, try starting with a new code | "เกมยังไม่เปิด" |
 | Concurrent redemption | On two devices logged in as admin, press confirm on the last item at the same moment | One succeeds; the other says out of stock/insufficient; Overview balance and stock are consistent |
 | Admin permissions | Log in with `STAFF_PASSWORD`; try opening `/api/admin/participants`, adjusting tokens, exporting | Staff sees only overview/market/redemption; others return "ไม่มีสิทธิ์" (403). Without login: 401 |
@@ -183,7 +185,7 @@ Any host that runs Next.js 15 on Node 20+ works (set the same env vars).
 
 - **Accounts:** GitHub, Supabase, Vercel (or alternative host). Check the **current** free-tier limits and terms on each provider's pricing page — including whether Vercel's free tier permits your use (its non-commercial terms may require a paid plan for company events) and Supabase free projects pausing after inactivity (open the project a few days before the event; consider a paid plan for the event week).
 - **Load:** ~100 phones is small, but a "everyone starts at once" burst is the likely peak. Test with several phones at once; check Supabase connection/egress limits.
-- **Rate limiting** is held in server memory per instance; on serverless hosting it is best-effort and resets. The 8-character random code (~10¹¹ combinations) is the main defence. For stronger protection add Vercel Firewall / Cloudflare rate limits.
+- **Rate limiting** is held in server memory per instance; on serverless hosting it is best-effort and resets. Only wrong IDs count towards the limit (so a whole venue on one Wi-Fi can log in together); the main defence is using IDs that are hard to guess. For stronger protection add Vercel Firewall / Cloudflare rate limits.
 - **Fonts** load from Google Fonts; if blocked, the page falls back to the phone's Thai system font.
 - **Images** from external links may be blocked, slow or removed — uploading to the built-in storage is more reliable. Storage bucket `question-images` is public-read by design (question pictures only).
 - **Privacy:** the database holds participant names and results. Get approval from the appropriate owner (HR/PDPA), limit admin access, don't publish lists, and delete data after the event.

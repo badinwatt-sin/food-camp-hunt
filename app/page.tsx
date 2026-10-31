@@ -6,7 +6,7 @@ import { Coin, Hero, Pot } from '@/components/Icons';
 type Question = { id: string; position: number; prompt: string; image_url: string | null; options: string[] };
 type Goal = { goalPct: number; completed: number; participants: number; met: boolean; need: number };
 type Me = {
-  participant: { name: string; status: 'not_started' | 'in_progress' | 'completed' };
+  participant: { name: string; fullName: string; status: 'not_started' | 'in_progress' | 'completed' };
   team: { name: string; balance: number };
   squad: string | null;
   goal: Goal;
@@ -125,13 +125,13 @@ export default function Page() {
 
   // A 401 while logged in means the code was revoked/replaced: go back to the login screen.
   const fail = (e: unknown) => {
-    if (e instanceof ApiError && e.status === 401 && me) { setMe(null); setFeedback(null); setSelected(null); setErr('รหัสนี้ถูกยกเลิกหรือเปลี่ยนแล้ว กรุณาเข้าสู่ระบบใหม่'); }
+    if (e instanceof ApiError && e.status === 401 && me) { setMe(null); setFeedback(null); setSelected(null); setErr('ID นี้ถูกยกเลิกหรือเปลี่ยนแล้ว กรุณาเข้าสู่ระบบใหม่'); }
     else setErr((e as Error).message);
   };
 
   async function login() {
     setBusy(true); setErr('');
-    try { await api('/api/login', { code }, 1); await load(); }
+    try { await api('/api/login', { id: code }, 1); await load(); }
     catch (e) { fail(e); }
     finally { setBusy(false); }
   }
@@ -180,19 +180,19 @@ export default function Page() {
       <Shell>
         <div className="card stack">
           <h2>เข้าสู่เกม</h2>
-          <p className="muted" style={{ margin: 0 }}>กรอกรหัสเข้าเกม 8 ตัวอักษรจากบัตรของคุณ</p>
+          <p className="muted" style={{ margin: 0 }}>กรอก ID ของคุณ (ที่ทีมงานแจ้งไว้) เพื่อเข้าเกม</p>
           <input
-            className="input" inputMode="text" autoCapitalize="characters" autoComplete="off" autoCorrect="off"
-            placeholder="XXXX-XXXX" value={code} maxLength={9}
+            className="input" inputMode="text" autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false}
+            placeholder="ID ของคุณ" value={code} maxLength={40}
             onChange={(e) => setCode(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && code.length >= 8 && login()}
+            onKeyDown={(e) => e.key === 'Enter' && code.trim() && login()}
           />
           {err && <div className="error">{err}</div>}
-          <button className="btn" disabled={busy || code.replace(/[^a-zA-Z0-9]/g, '').length < 8} onClick={login}>
+          <button className="btn" disabled={busy || !code.trim()} onClick={login}>
             {busy ? 'กำลังตรวจสอบ…' : 'เข้าสู่เกม'}
           </button>
         </div>
-        <p className="muted center">ไม่มีรหัส? สอบถามทีมงานผู้จัด</p>
+        <p className="muted center">ไม่มี ID หรือเข้าไม่ได้? สอบถามทีมงานผู้จัด</p>
       </Shell>
     );
   }
@@ -235,6 +235,7 @@ export default function Page() {
           <Pot size={56} />
           <h2>ใช่คุณหรือไม่?</h2>
           <div style={{ fontSize: 26, fontWeight: 700 }}>{participant.name}</div>
+          {participant.fullName && participant.fullName !== participant.name && <div className="muted">{participant.fullName}</div>}
           <div><span className="pill">ทีม {team.name}</span>{me.squad && <> <span className="pill" style={{ background: '#f2c46d' }}>{me.squad}</span></>}</div>
           <GoalCard goal={me.goal} />
           {!me.game.open && <div className="banner">เกมยังไม่เปิด รอทีมงานประกาศสักครู่นะ</div>}

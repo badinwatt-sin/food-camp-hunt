@@ -26,6 +26,7 @@ const MESSAGES: Record<string, [number, string]> = {
   HUNT_CLOSED: [403, 'กิจกรรมล่าสมบัติยังไม่เปิด หรือปิดแล้ว'],
   GOAL_NOT_MET: [409, 'ทีมยังไม่ถึงเป้าหมายการเล่นควิซ สินค้านี้ยังล็อกอยู่'],
   NO_ATTEMPTS: [409, 'สควอดนี้ใช้สิทธิ์ตอบครบแล้ว'],
+  DUPLICATE_ID: [409, 'ID นี้ถูกใช้แล้ว'],
   UNAUTHORIZED: [401, 'กรุณาเข้าสู่ระบบ'],
   FORBIDDEN: [403, 'ไม่มีสิทธิ์ทำรายการนี้'],
   RATE_LIMITED: [429, 'ลองผิดหลายครั้งเกินไป กรุณารอสักครู่'],
@@ -76,6 +77,22 @@ export function rateLimit(req: Request, bucket: string, max: number, windowMs: n
   }
   cur.n += 1;
   if (cur.n > max) throw new HttpError(429, 'RATE_LIMITED');
+}
+
+// Failure-only limiter (also in memory, per server instance): successful requests never count.
+const fails = new Map<string, { n: number; reset: number }>();
+const ipOf = (req: Request) => (req.headers.get('x-forwarded-for') ?? 'unknown').split(',')[0].trim();
+export function tooManyFailures(req: Request, bucket: string, max: number, windowMs: number) {
+  const cur = fails.get(`${bucket}:${ipOf(req)}`);
+  if (cur && cur.reset > Date.now() && cur.n >= max) throw new HttpError(429, 'RATE_LIMITED');
+  void windowMs;
+}
+export function recordFailure(req: Request, bucket: string, windowMs: number) {
+  const key = `${bucket}:${ipOf(req)}`;
+  const now = Date.now();
+  const cur = fails.get(key);
+  if (!cur || cur.reset < now) fails.set(key, { n: 1, reset: now + windowMs });
+  else cur.n += 1;
 }
 
 export async function readJson<T = any>(req: Request): Promise<T> {

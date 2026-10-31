@@ -65,7 +65,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .field:focus { outline: 3px solid var(--green); }
 
 .error { background: #fbe4e2; color: #8a2d28; padding: 10px 14px; border-radius: 12px; font-size: 15px; white-space: pre-line; }
-.banner { background: var(--amber); color: var(--navy); padding: 10px 14px; border-radius: 12px; font-size: 15px; margin-bottom: 12px; }
+.banner { white-space: pre-line; background: var(--amber); color: var(--navy); padding: 10px 14px; border-radius: 12px; font-size: 15px; margin-bottom: 12px; }
 
 .progress { height: 10px; background: var(--cream-deep); border-radius: 99px; overflow: hidden; margin: 8px 0 14px; }
 .progress > i { display: block; height: 100%; background: var(--green-deep); border-radius: 99px; transition: width .3s; }

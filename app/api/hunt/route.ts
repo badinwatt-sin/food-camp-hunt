@@ -17,7 +17,7 @@ export const GET = handler(async () => {
   const [{ data: settings }, { data: spots }, { data: claims }, { data: squads }, balance, goal, members, { data: scans }] = await Promise.all([
     sb.from('game_settings').select('hunt_open').eq('id', 1).single(),
     sb.from('hunt_spots').select('id, position, title, hint, tokens, min_players, window_sec').eq('active', true).order('position').order('id'),
-    sb.from('hunt_claims').select('spot_id, squad_id, participants(name)').eq('team_id', p.team_id),
+    sb.from('hunt_claims').select('spot_id, squad_id, participants(name, nick_name)').eq('team_id', p.team_id),
     sb.from('squads').select('id, name').eq('team_id', p.team_id).order('name'),
     sb.rpc('team_balance', { p_team: p.team_id }),
     teamGoal(p.team_id),
@@ -34,7 +34,7 @@ export const GET = handler(async () => {
       && Date.now() - new Date(x.scanned_at).getTime() < s.window_sec * 1000);
     const coop = s.min_players > 1 && need > 1;
     return {
-      id: s.id, title: s.title, tokens: s.tokens, hint: c ? '' : s.hint, found: !!c, foundBy: c?.participants?.name ?? null,
+      id: s.id, title: s.title, tokens: s.tokens, hint: c ? '' : s.hint, found: !!c, foundBy: c?.participants?.nick_name || c?.participants?.name || null,
       coop: coop ? { need, windowSec: s.window_sec, have: c ? 0 : live.length, iScanned: live.some((x: any) => x.participant_id === p.id) } : null,
     };
   });

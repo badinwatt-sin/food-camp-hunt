@@ -2,24 +2,23 @@ import 'server-only';
 import crypto from 'crypto';
 import { env } from './env';
 
-// No 0/O/1/I/L to avoid look-alike characters when typing from a printed card.
-const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-
-export function generateCode(): string {
-  let s = '';
-  for (let i = 0; i < 8; i++) s += ALPHABET[crypto.randomInt(ALPHABET.length)];
-  return s;
-}
-
-export function formatCode(code: string): string {
-  return `${code.slice(0, 4)}-${code.slice(4)}`;
-}
-
+/**
+ * Hunt spot codes (A-Z / 0-9 only, upper-case). Used for QR/spot codes, not for player login.
+ */
 export function normalizeCode(input: string): string {
   return String(input ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
-/** Keyed hash: a leaked database alone cannot be used to recover codes. */
-export function hashCode(code: string): string {
-  return crypto.createHmac('sha256', env('CODE_PEPPER')).update(normalizeCode(code)).digest('hex');
+/**
+ * Player login ID, set by the organiser (e.g. from an Excel sheet). Matching is forgiving:
+ * case-insensitive, and spaces / dashes / punctuation are ignored, so "ab-0012", "AB 0012" and "ab0012" are the same ID.
+ * Letters and digits of any language are kept. Returns '' when nothing usable is left.
+ */
+export function normalizeId(input: unknown): string {
+  return String(input ?? '').normalize('NFKC').toUpperCase().replace(/[^\p{L}\p{N}]/gu, '').slice(0, 40);
+}
+
+/** Keyed hash: a leaked database alone does not reveal the IDs. */
+export function hashCode(id: string): string {
+  return crypto.createHmac('sha256', env('CODE_PEPPER')).update(normalizeId(id)).digest('hex');
 }

@@ -9,7 +9,7 @@ export async function requirePlayer() {
   if (!s) throw new HttpError(401, 'UNAUTHORIZED');
   const { data, error } = await db()
     .from('participants')
-    .select('id, name, team_id, status, session_version, code_hash, correct_count, tokens_earned, squad_id, teams(name), squads(name)')
+    .select('id, name, nick_name, team_id, status, session_version, code_hash, correct_count, tokens_earned, squad_id, teams(name), squads(name)')
     .eq('id', s.pid)
     .maybeSingle();
   if (error) throw error;

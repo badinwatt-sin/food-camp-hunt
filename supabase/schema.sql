@@ -27,7 +27,8 @@ create table if not exists public.participants (
   id              uuid primary key default gen_random_uuid(),
   team_id         uuid not null references public.teams(id) on delete restrict,
   name            text not null check (length(trim(name)) between 1 and 100),
-  -- Only a keyed hash of the access code is stored. NULL = no active code.
+  nick_name       text check (nick_name is null or length(trim(nick_name)) between 1 and 60),
+  -- The player's login ID is set by the organiser; only a keyed hash of it is stored. NULL = no active ID.
   code_hash       text unique,
   session_version int not null default 1,
   status          text not null default 'not_started'

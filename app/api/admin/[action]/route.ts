@@ -4,7 +4,7 @@ import {
   checkAdminPassword, clearAdminSession, getAdminRole, setAdminSession, type AdminRole,
 } from '@/lib/auth';
 import { goalStatus } from '@/lib/goal';
-import { formatCode, generateCode, hashCode, normalizeCode } from '@/lib/codes';
+import { hashCode, normalizeCode, normalizeId } from '@/lib/codes';
 import { checkOrigin, handler, HttpError, ok, rateLimit, readJson } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
@@ -69,12 +69,12 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     await requireRole('admin');
     const { data, error } = await sb
       .from('participants')
-      .select('id, name, team_id, squad_id, status, code_hash, correct_count, tokens_earned, completed_at, teams(name), squads(name)')
+      .select('id, name, nick_name, team_id, squad_id, status, code_hash, correct_count, tokens_earned, completed_at, teams(name), squads(name)')
       .order('name');
     if (error) throw error;
     return ok({
       participants: (data ?? []).map((p: any) => ({
-        id: p.id, name: p.name, team_id: p.team_id, team_name: p.teams?.name ?? '',
+        id: p.id, name: p.name, nick_name: p.nick_name ?? '', team_id: p.team_id, team_name: p.teams?.name ?? '',
         squad_id: p.squad_id ?? null, squad_name: p.squads?.name ?? '',
         status: p.status, has_code: !!p.code_hash, correct_count: p.correct_count,
         tokens_earned: p.tokens_earned, completed_at: p.completed_at,
@@ -203,9 +203,9 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
       rows = [['Team', 'Participants', 'Completed', 'In progress', 'Tokens spent', 'Balance'],
         ...(data ?? []).map((t: any) => [t.name, t.participants, t.completed, t.in_progress, t.spent, t.balance])];
     } else if (type === 'participants') {
-      const { data } = await sb.from('participants').select('name, status, correct_count, tokens_earned, completed_at, teams(name), squads(name)').order('name');
-      rows = [['Name', 'Team', 'Squad', 'Status', 'Correct', 'Tokens earned', 'Completed at'],
-        ...(data ?? []).map((p: any) => [p.name, p.teams?.name, p.squads?.name ?? '', p.status, p.correct_count, p.tokens_earned, p.completed_at])];
+      const { data } = await sb.from('participants').select('name, nick_name, status, correct_count, tokens_earned, completed_at, teams(name), squads(name)').order('name');
+      rows = [['Full name', 'Nick name', 'Team', 'Squad', 'Status', 'Correct', 'Tokens earned', 'Completed at'],
+        ...(data ?? []).map((p: any) => [p.name, p.nick_name ?? '', p.teams?.name, p.squads?.name ?? '', p.status, p.correct_count, p.tokens_earned, p.completed_at])];
     } else if (type === 'redemptions') {
       const { data } = await sb.from('redemptions').select('item_name, unit_price, quantity, total_cost, confirmed_by, created_at, teams(name)').order('created_at');
       rows = [['Time', 'Team', 'Item', 'Unit price', 'Quantity', 'Total cost', 'Confirmed by'],
@@ -345,6 +345,7 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
 
     case 'participant.save': {
       const name = need(str(body.name, 100));
+      const nick_name = str(body.nick_name, 60) || null;
       const team_id = need(str(body.team_id));
       let squad_id: string | null = str(body.squad_id) || null;
       if (squad_id) {
@@ -353,13 +354,24 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
           return NextResponse.json({ error: 'BAD_INPUT', message: 'สควอดนี้ไม่ได้อยู่ในทีมที่เลือก' }, { status: 400 });
         }
       }
-      // Moving someone to another team clears the old squad automatically (squad_id is re-validated above).
-      const q = body.id
-        ? sb.from('participants').update({ name, team_id, squad_id }).eq('id', body.id)
-        : sb.from('participants').insert({ name, team_id, squad_id });
+      const row: Record<string, unknown> = { name, nick_name, team_id, squad_id };
+      // The player's login ID: required for a new player; optional when editing (blank = keep the current ID).
+      const loginId = normalizeId(body.login_id);
+      if (!body.id && !loginId) {
+        return NextResponse.json({ error: 'BAD_INPUT', message: 'กรุณาใส่ ID สำหรับเข้าเกมของผู้เล่น' }, { status: 400 });
+      }
+      if (loginId) row.code_hash = hashCode(loginId);
+      if (body.id && loginId) {
+        const { data: cur } = await sb.from('participants').select('session_version').eq('id', body.id).single();
+        row.session_version = (cur?.session_version ?? 1) + 1; // anyone logged in with the old ID is signed out
+      }
+      const q = body.id ? sb.from('participants').update(row).eq('id', body.id) : sb.from('participants').insert(row);
       const { error } = await q;
-      if (error) throw error;
-      await audit(role, 'participant.save', { id: body.id ?? null });
+      if (error) {
+        if (String(error.message).includes('duplicate')) throw new HttpError(409, 'DUPLICATE_ID');
+        throw error;
+      }
+      await audit(role, 'participant.save', { id: body.id ?? null, idChanged: !!loginId });
       return ok();
     }
     case 'participant.delete': {
@@ -380,41 +392,92 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
     }
 
     case 'participants.import': {
-      // One person per line:  name, team name   (comma or tab separated)
-      const { data: teams } = await sb.from('teams').select('id, name');
-      const byName = new Map((teams ?? []).map((t: any) => [t.name.trim().toLowerCase(), t.id]));
+      // Rows come from an Excel sheet: ID, Full name, Nick name, Team (+ optional Squad).
+      // Matching is by ID: a known ID updates that person, a new ID adds one. Missing teams/squads are created.
+      const input: any[] = Array.isArray(body.rows) ? body.rows : [];
+      if (input.length === 0 || input.length > 600) throw new HttpError(400, 'BAD_INPUT');
+      const problems: string[] = [];
+      type Row = { n: number; id: string; name: string; nick: string | null; team: string; squad: string };
+      const rows: Row[] = [];
+      const seen = new Map<string, number>();
+      input.forEach((r, k) => {
+        const n = k + 1;
+        const id = normalizeId(r?.id);
+        const name = str(r?.full_name, 100);
+        const team = str(r?.team, 60);
+        if (!id || !name || !team) { problems.push(`แถว ${n}: ต้องมี ID, Full name และ Team ครบ (${str(r?.full_name, 20)})`); return; }
+        if (seen.has(id)) { problems.push(`แถว ${n}: ID ซ้ำกับแถว ${seen.get(id)} (${name})`); return; }
+        seen.set(id, n);
+        rows.push({ n, id, name, nick: str(r?.nick_name, 60) || null, team, squad: str(r?.squad, 60) });
+      });
+      if (problems.length) {
+        return NextResponse.json({ error: 'BAD_INPUT', message: 'นำเข้าไม่ได้ กรุณาแก้ไฟล์ก่อน:\n' + problems.slice(0, 12).join('\n') }, { status: 400 });
+      }
+
+      // teams (create the missing ones)
+      const { data: teamRows } = await sb.from('teams').select('id, name');
+      const teamIds = new Map((teamRows ?? []).map((t: any) => [t.name.trim().toLowerCase(), t.id as string]));
+      let teamsCreated = 0;
+      for (const r of rows) {
+        const k = r.team.toLowerCase();
+        if (!teamIds.has(k)) {
+          const { data: made, error: te } = await sb.from('teams').insert({ name: r.team }).select('id').single();
+          if (te) throw te;
+          teamIds.set(k, made.id); teamsCreated++;
+        }
+      }
+      // squads (optional column)
       const { data: sqs } = await sb.from('squads').select('id, team_id, name');
       const squadKey = (team_id: string, name: string) => `${team_id}|${name.trim().toLowerCase()}`;
       const squadIds = new Map((sqs ?? []).map((q: any) => [squadKey(q.team_id, q.name), q.id as string]));
-      const rows: { name: string; team_id: string; squad_id?: string | null; _squad?: string }[] = [];
-      const problems: string[] = [];
-      String(body.text ?? '').split(/\r?\n/).forEach((line, i) => {
-        if (!line.trim()) return;
-        const parts = line.split(/\t|,/).map((s) => s.trim());
-        const name = parts[0];
-        const team = (parts[1] ?? '').toLowerCase();
-        if (!name || !byName.has(team)) problems.push(`บรรทัด ${i + 1}: ${line.slice(0, 40)}`);
-        else rows.push({ name: name.slice(0, 100), team_id: byName.get(team)!, _squad: (parts[2] ?? '').slice(0, 60) });
-      });
-      if (problems.length) {
-        return NextResponse.json({ error: 'BAD_INPUT', message: 'ไม่พบชื่อทีมในบรรทัดเหล่านี้:\n' + problems.slice(0, 10).join('\n') }, { status: 400 });
-      }
-      if (rows.length > 300) throw new HttpError(400, 'BAD_INPUT');
-      // Third column = squad name; squads that don't exist yet are created for that team.
-      for (const r of rows) {
-        if (!r._squad) continue;
-        const k = squadKey(r.team_id, r._squad);
+      const squadOf = async (r: Row) => {
+        if (!r.squad) return undefined;
+        const team_id = teamIds.get(r.team.toLowerCase())!;
+        const k = squadKey(team_id, r.squad);
         if (!squadIds.has(k)) {
-          const { data: made, error: se } = await sb.from('squads').insert({ team_id: r.team_id, name: r._squad }).select('id').single();
+          const { data: made, error: se } = await sb.from('squads').insert({ team_id, name: r.squad }).select('id').single();
           if (se) throw se;
           squadIds.set(k, made.id);
         }
-        r.squad_id = squadIds.get(k)!;
+        return squadIds.get(k)!;
+      };
+
+      // existing people with these IDs
+      const hashes = rows.map((r) => hashCode(r.id));
+      const existing = new Map<string, any>();
+      for (let k = 0; k < hashes.length; k += 100) {
+        const { data } = await sb.from('participants').select('id, team_id, status, code_hash').in('code_hash', hashes.slice(k, k + 100));
+        for (const e of data ?? []) existing.set(e.code_hash, e);
       }
-      const { error } = await sb.from('participants').insert(rows.map(({ _squad, ...r }) => r));
-      if (error) throw error;
-      await audit(role, 'participants.import', { count: rows.length });
-      return ok({ imported: rows.length });
+
+      let inserted = 0, updated = 0;
+      const toInsert: Record<string, unknown>[] = [];
+      const skipped: string[] = [];
+      for (const r of rows) {
+        const h = hashCode(r.id);
+        const team_id = teamIds.get(r.team.toLowerCase())!;
+        const squad_id = await squadOf(r);
+        const e = existing.get(h);
+        if (!e) {
+          toInsert.push({ name: r.name, nick_name: r.nick, team_id, squad_id: squad_id ?? null, code_hash: h });
+          continue;
+        }
+        const patch: Record<string, unknown> = { name: r.name, nick_name: r.nick };
+        if (e.team_id !== team_id) {
+          if (e.status === 'not_started') { patch.team_id = team_id; patch.squad_id = squad_id ?? null; }
+          else skipped.push(`แถว ${r.n}: ${r.name} เริ่มเล่นแล้ว ไม่ย้ายทีม`);
+        } else if (squad_id !== undefined) patch.squad_id = squad_id;
+        const { error } = await sb.from('participants').update(patch).eq('id', e.id);
+        if (error) throw error;
+        updated++;
+      }
+      for (let k = 0; k < toInsert.length; k += 100) {
+        const { error } = await sb.from('participants').insert(toInsert.slice(k, k + 100));
+        if (error) throw error;
+        inserted += Math.min(100, toInsert.length - k);
+      }
+      await audit(role, 'participants.import', { inserted, updated, teamsCreated, skipped: skipped.length });
+      return ok({ inserted, updated, teamsCreated, skipped });
     }
 
     case 'squad.save': {
@@ -467,28 +530,6 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       return ok({ squads: k, people: ids.length });
     }
 
-    case 'codes.generate': {
-      // ids given → (re)generate for those people; otherwise everyone without a code who hasn't finished.
-      let q = sb.from('participants').select('id, name, teams(name)');
-      if (Array.isArray(body.ids) && body.ids.length) q = q.in('id', body.ids);
-      else q = q.is('code_hash', null).neq('status', 'completed');
-      const { data: people, error } = await q;
-      if (error) throw error;
-      const out: { name: string; team: string; code: string }[] = [];
-      for (const p of (people ?? []) as any[]) {
-        for (let attempt = 0; attempt < 5; attempt++) {
-          const code = generateCode();
-          const { data: cur } = await sb.from('participants').select('session_version').eq('id', p.id).single();
-          const { error: e } = await sb.from('participants')
-            .update({ code_hash: hashCode(code), session_version: (cur?.session_version ?? 1) + 1 })
-            .eq('id', p.id);
-          if (!e) { out.push({ name: p.name, team: p.teams?.name ?? '', code: formatCode(code) }); break; }
-          if (!String(e.message).includes('duplicate')) throw e;
-        }
-      }
-      await audit(role, 'codes.generate', { count: out.length });
-      return ok({ codes: out });
-    }
     case 'code.revoke': {
       const { data: cur } = await sb.from('participants').select('session_version').eq('id', body.id).single();
       const { error } = await sb.from('participants')

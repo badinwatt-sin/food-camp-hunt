@@ -27,7 +27,7 @@ export const GET = handler(async () => {
   const next = qs.find((q: any) => !answeredIds.has(q.id)) ?? null;
 
   return ok({
-    participant: { name: p.name, status: p.status },
+    participant: { name: p.nick_name || p.name, fullName: p.name, status: p.status },
     team: { name: p.teams?.name ?? '', balance: balance.data ?? 0 },
     squad: p.squads?.name ?? null,
     goal,
