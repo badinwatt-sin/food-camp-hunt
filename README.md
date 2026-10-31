@@ -49,7 +49,8 @@ Other teams can find the same spot too. Tokens go into the same team wallet and 
   Staff or admin open **ตรวจภาพที่ทีมส่งมา** (a badge on the menu shows how many are waiting) and press **✅ ยืนยัน** (the team wallet is credited once) or **❌ ปฏิเสธ** with a reason (no tokens; the leader can upload a new photo).
   Everyone on the team gets a pop-up when the decision arrives (“🎉 ภารกิจผ่านแล้ว +20” or “ภาพยังไม่ผ่าน: เหตุผล”), within ~15 s. Only admin can take back an earlier confirmation (tokens are returned). The leader may swap a photo while it is still pending.
   Photos live in the public `mission-photos` bucket (random file names) — tell teams to take appropriate pictures and delete them after the event. Uses the on/off switch **ภารกิจทีม** (default closed). Run `supabase/photos.sql` on an existing database (it also upgrades the first version of this feature).
-- **Existing database?** run, in order, `supabase/hunt.sql`, `supabase/squads.sql`, `supabase/coop.sql`, `supabase/ids.sql`, `supabase/items.sql`, `supabase/leader.sql`, `supabase/avatars.sql`, `supabase/photos.sql`, `supabase/checkin.sql` (all safe to re-run).
+- **Market categories:** items are either **🥬 วัตถุดิบ (Ingredient)** or **🎀 ของตกแต่ง (Decoration)**; players and admins get category tabs (with counts) above the item list, and admin picks the category from a dropdown. Run `supabase/market-cats.sql` once on an existing database to fold old categories (sauce/topping) into ingredient.
+- **Existing database?** run, in order, `supabase/hunt.sql`, `supabase/squads.sql`, `supabase/coop.sql`, `supabase/ids.sql`, `supabase/items.sql`, `supabase/leader.sql`, `supabase/avatars.sql`, `supabase/photos.sql`, `supabase/checkin.sql`, `supabase/market-cats.sql` (all safe to re-run).
 - Hunt and puzzle history can be exported (**ส่งออก CSV → ล่าสมบัติ / ภารกิจทีม**).
 
 > **Status — please read.** The code was written and reviewed carefully, but in the environment where it

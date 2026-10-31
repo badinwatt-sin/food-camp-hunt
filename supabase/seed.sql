@@ -31,9 +31,9 @@ insert into public.questions (position, prompt, image_url, options, correct_inde
     array['ขมิ้น','ข่า','กระชาย','ตะไคร้'], 0);
 
 insert into public.market_items (name, category, price, stock) values
- ('ซอสพิเศษประจำทีม', 'sauce', 20, 10),
- ('ชีสเพิ่ม', 'topping', 30, 8),
- ('ไข่ดาวเพิ่ม', 'topping', 20, 12),
+ ('ซอสพิเศษประจำทีม', 'ingredient', 20, 10),
+ ('ชีสเพิ่ม', 'ingredient', 30, 8),
+ ('ไข่ดาวเพิ่ม', 'ingredient', 20, 12),
  ('ผักสดเพิ่มชุดใหญ่', 'ingredient', 15, 15),
  ('เห็ดเพิ่ม', 'ingredient', 20, 10),
  ('ผลไม้ตกแต่งจาน', 'decoration', 25, 10),

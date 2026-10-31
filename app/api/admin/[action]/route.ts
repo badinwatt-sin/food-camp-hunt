@@ -879,7 +879,7 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
 
     case 'item.save': {
       const row = {
-        name: need(str(body.name, 100)), category: str(body.category, 30) || 'ingredient',
+        name: need(str(body.name, 100)), category: body.category === 'decoration' ? 'decoration' : 'ingredient',
         price: int(body.price), stock: int(body.stock), active: body.active !== false,
         requires_goal: body.requires_goal === true,
         image_url: str(body.image_url, 500) || null,

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import { Hero } from '@/components/Icons';
 import { BULK_CONFIRM } from '@/lib/bulk';
+import { MARKET_CATS, marketCat } from '@/lib/market-cats';
 
 type Role = 'admin' | 'staff';
 
@@ -506,6 +507,7 @@ function Market({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
   const [edit, setEdit] = useState<any | null>(null);
   const [busy, setBusy] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [cat, setCat] = useState<'all' | 'ingredient' | 'decoration'>('all');
 
   const load = useCallback(async () => {
     try {
@@ -583,14 +585,20 @@ function Market({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
           <h2 style={{ margin: 0 }}>รายการสินค้า</h2>
           {role === 'admin' && <button className="btn small green" onClick={() => setEdit({ name: '', category: 'ingredient', price: 10, stock: 10, active: true, requires_goal: false, image_url: '' })}>+ เพิ่มสินค้า</button>}
         </div>
+        <div className="tabs" style={{ marginTop: 10 }}>
+          <button className={cat === 'all' ? 'on' : ''} onClick={() => setCat('all')}>ทั้งหมด ({items.length})</button>
+          {MARKET_CATS.map((c) => (
+            <button key={c.key} className={cat === c.key ? 'on' : ''} onClick={() => setCat(c.key)}>{c.icon} {c.label} / {c.en} ({items.filter((i) => marketCat(i.category) === c.key).length})</button>
+          ))}
+        </div>
         <div className="table-wrap">
           <table>
             <thead><tr><th>รูป</th><th>ชื่อ</th><th>หมวด</th><th>ราคา</th><th>คงเหลือ</th><th>ล็อกด้วยเป้าหมาย</th><th>สถานะ</th>{role === 'admin' && <th />}</tr></thead>
             <tbody>
-              {items.map((i) => (
+              {items.filter((i) => cat === 'all' || marketCat(i.category) === cat).map((i) => (
                 <tr key={i.id}>
                   <td>{i.image_url ? <img src={i.image_url} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8, display: 'block' }} /> : <span className="muted">—</span>}</td>
-                  <td>{i.name}</td><td>{i.category}</td><td className="num">{i.price}</td><td className="num">{i.stock}</td>
+                  <td>{i.name}</td><td>{MARKET_CATS.find((c) => c.key === marketCat(i.category))!.icon} {MARKET_CATS.find((c) => c.key === marketCat(i.category))!.label}</td><td className="num">{i.price}</td><td className="num">{i.stock}</td>
                   <td>{i.requires_goal ? '🎯 ต้องถึงเป้า' : '—'}</td>
                   <td>{i.active ? 'เปิดขาย' : 'ปิด'}</td>
                   {role === 'admin' && <td className="row">
@@ -609,7 +617,7 @@ function Market({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
           <h2>{edit.id ? 'แก้ไขสินค้า' : 'เพิ่มสินค้า'}</h2>
           <div className="row">
             <div className="grow"><label className="lbl">ชื่อ</label><input className="field" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></div>
-            <div className="grow"><label className="lbl">หมวด (ingredient / sauce / topping / decoration)</label><input className="field" value={edit.category} onChange={(e) => setEdit({ ...edit, category: e.target.value })} /></div>
+            <div className="grow"><label className="lbl">หมวด</label><select className="field" value={marketCat(edit.category)} onChange={(e) => setEdit({ ...edit, category: e.target.value })}>{MARKET_CATS.map((c) => <option key={c.key} value={c.key}>{c.icon} {c.label} ({c.en})</option>)}</select></div>
             <div><label className="lbl">ราคา (โทเคน)</label><input className="field" style={{ width: 110 }} type="number" min={1} value={edit.price} onChange={(e) => setEdit({ ...edit, price: Number(e.target.value) })} /></div>
             <div><label className="lbl">จำนวนคงเหลือ</label><input className="field" style={{ width: 110 }} type="number" min={0} value={edit.stock} onChange={(e) => setEdit({ ...edit, stock: Number(e.target.value) })} /></div>
           </div>

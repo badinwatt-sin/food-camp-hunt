@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { Coin, Hero, IconMission, IconShop, IconTeam, Pot } from '@/components/Icons';
 import { AVATAR_EMOJIS } from '@/lib/avatar-list';
 import jsQR from 'jsqr';
+import { MARKET_CATS, marketCat } from '@/lib/market-cats';
 
 type Question = { id: string; position: number; prompt: string; image_url: string | null; options: string[] };
 type Goal = { goalPct: number; completed: number; participants: number; met: boolean; need: number };
@@ -1189,8 +1190,10 @@ function HuntView({ pending, clearPending, onBalance, onAuthLost }: {
 /** Market list: picture, price in tokens, stock status; the team leader also gets a "redeem" button. */
 function MarketList({ me, onRedeem }: { me: Me; onRedeem?: (m: Me['market'][number]) => void }) {
   const [zoom, setZoom] = useState<string | null>(null);
+  const [cat, setCat] = useState<'all' | 'ingredient' | 'decoration'>('all');
   if (me.market.length === 0) return <p className="muted center" style={{ margin: 0 }}>ยังไม่มีสินค้า</p>;
-  const items = [...me.market].sort((a, b) => Number(a.stock === 0) - Number(b.stock === 0) || a.price - b.price);
+  const count = (k: string) => me.market.filter((m) => k === 'all' || marketCat(m.category) === k).length;
+  const items = me.market.filter((m) => cat === 'all' || marketCat(m.category) === cat).sort((a, b) => Number(a.stock === 0) - Number(b.stock === 0) || a.price - b.price);
   const owned = new Map(me.inventory.map((i) => [i.item, i.qty]));
   return (
     <>
@@ -1200,6 +1203,13 @@ function MarketList({ me, onRedeem }: { me: Me; onRedeem?: (m: Me['market'][numb
           <img src={zoom} alt="" style={{ maxWidth: '100%', maxHeight: '85dvh', borderRadius: 16 }} />
         </div>
       )}
+      <div className="tabs cats" role="tablist" aria-label="หมวดสินค้า">
+        <button role="tab" aria-selected={cat === 'all'} className={cat === 'all' ? 'on' : ''} onClick={() => setCat('all')}>ทั้งหมด ({count('all')})</button>
+        {MARKET_CATS.map((c) => (
+          <button key={c.key} role="tab" aria-selected={cat === c.key} className={cat === c.key ? 'on' : ''} onClick={() => setCat(c.key)}>{c.icon} {c.label} ({count(c.key)})</button>
+        ))}
+      </div>
+      {items.length === 0 && <p className="muted center" style={{ margin: '8px 0' }}>ยังไม่มีสินค้าในหมวดนี้</p>}
       <ul className="list">
         {items.map((m) => {
           const out = m.stock <= 0;

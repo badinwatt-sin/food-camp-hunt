@@ -243,3 +243,5 @@ label.lbl { display: block; font-size: 14px; color: #5d6a80; margin: 10px 0 4px;
 .me-tag { font-size: 12.5px; background: var(--fire); color: #fff; padding: 1px 8px; border-radius: 99px; margin-left: 6px; }
 
 .danger-zone { border: 2px dashed #d98b86; background: #fff8f6; }
+
+.tabs.cats button { font-size: 14px; padding: 0 4px; line-height: 1.2; }
