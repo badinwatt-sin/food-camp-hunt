@@ -7,8 +7,8 @@ import { checkOrigin, handler, HttpError, ok, rateLimit } from '@/lib/http';
 /** Upload a profile photo (the app sends a small square JPEG). Max 1.5 MB, real image bytes only. */
 export const POST = handler(async (req: Request) => {
   checkOrigin(req);
-  rateLimit(req, 'avatar', 20, 10 * 60 * 1000);
   const p = await requirePlayer();
+  rateLimit(req, 'avatar', 20, 10 * 60 * 1000, p.id);
   const form = await req.formData().catch(() => null);
   const file = form?.get('file');
   if (!(file instanceof File)) throw new HttpError(400, 'BAD_INPUT');

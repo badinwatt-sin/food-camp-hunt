@@ -10,8 +10,8 @@ import { checkOrigin, handler, HttpError, ok, rateLimit } from '@/lib/http';
  */
 export const POST = handler(async (req: Request) => {
   checkOrigin(req);
-  rateLimit(req, 'photo', 30, 10 * 60 * 1000);
   const p = await requirePlayer();
+  rateLimit(req, 'photo', 30, 10 * 60 * 1000, p.id);
   if (!p.is_leader) throw new HttpError(403, 'NOT_LEADER');
   const sb = db();
   const { data: settings } = await sb.from('game_settings').select('puzzle_open').eq('id', 1).single();

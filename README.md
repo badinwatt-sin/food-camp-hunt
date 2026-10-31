@@ -169,6 +169,13 @@ Expect every line `PASS` and `0 failed`. A `FAIL` means: do not use that databas
 | Mobile layout | Phone portrait + landscape, small screen (iPhone SE size), large text setting | No horizontal scroll; buttons ≥ 56px tall; text readable |
 | CSV | Export all four files, open in Excel/Sheets | Thai text readable; numbers match Overview |
 
+## 6b. Rehearsal load test (about 100 players)
+
+`node scripts/loadtest.mjs --url https://your-app.vercel.app --ids ids.txt --users 100 --seconds 60 --ramp 5` simulates 100 phones logging in within 5 s and then using the app
+(ids.txt = one TEST player ID per line; run it against a test project, not right before the event). It prints requests/s, errors by status and latency percentiles.
+Signed-in limits (redeem, hunt scans, profile, photo uploads) are counted **per player**, not per network address, so a venue where everybody shares one Wi-Fi IP is not throttled;
+only wrong login IDs are limited per address (250 per 10 minutes).
+
 ## 7. Deployment (simple path: Vercel + Supabase)
 
 1. Put this folder in a **private** GitHub repository (the `.gitignore` already excludes `.env*`). Double-check no real keys were committed.

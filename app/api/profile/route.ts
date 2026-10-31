@@ -7,8 +7,8 @@ import { checkOrigin, handler, HttpError, ok, rateLimit, readJson } from '@/lib/
 /** Pick a cute emoji as the profile picture (clears any uploaded photo), or remove the photo. */
 export const POST = handler(async (req: Request) => {
   checkOrigin(req);
-  rateLimit(req, 'profile', 60, 10 * 60 * 1000);
   const p = await requirePlayer();
+  rateLimit(req, 'profile', 60, 10 * 60 * 1000, p.id);
   const body = await readJson<{ emoji?: string | null; removePhoto?: boolean }>(req);
   const patch: Record<string, unknown> = {};
   if (typeof body.emoji === 'string') {

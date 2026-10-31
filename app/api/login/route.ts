@@ -7,7 +7,7 @@ import { checkOrigin, handler, readJson, tooManyFailures, recordFailure } from '
 export const POST = handler(async (req: Request) => {
   checkOrigin(req);
   // Only WRONG IDs count: a whole venue sharing one Wi-Fi address can still log in at the same moment.
-  tooManyFailures(req, 'login', 40, 10 * 60 * 1000);
+  tooManyFailures(req, 'login', 250, 10 * 60 * 1000);
   const body = await readJson<{ id?: string; code?: string }>(req);
   const id = normalizeId(body.id ?? body.code ?? '');
   const bad = () => {

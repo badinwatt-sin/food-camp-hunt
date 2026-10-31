@@ -9,8 +9,8 @@ import { checkOrigin, handler, HttpError, ok, rateLimit, readJson } from '@/lib/
  */
 export const POST = handler(async (req: Request) => {
   checkOrigin(req);
-  rateLimit(req, 'redeem', 60, 10 * 60 * 1000);
   const p = await requirePlayer();
+  rateLimit(req, 'redeem', 60, 10 * 60 * 1000, p.id);
   if (!p.is_leader) throw new HttpError(403, 'NOT_LEADER');
   const sb = db();
   const { data: settings } = await sb.from('game_settings').select('market_open').eq('id', 1).single();

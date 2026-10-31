@@ -68,9 +68,10 @@ export function checkOrigin(req: Request) {
 
 // Best-effort in-memory rate limit (per server instance). See README "limits".
 const hits = new Map<string, { n: number; reset: number }>();
-export function rateLimit(req: Request, bucket: string, max: number, windowMs: number) {
+/** `who` = a player id for signed-in routes. Keying by person (not network address) matters: a whole venue on one Wi-Fi shares a single IP. */
+export function rateLimit(req: Request, bucket: string, max: number, windowMs: number, who?: string) {
   const ip = (req.headers.get('x-forwarded-for') ?? 'unknown').split(',')[0].trim();
-  const key = `${bucket}:${ip}`;
+  const key = `${bucket}:${who ?? ip}`;
   const now = Date.now();
   const cur = hits.get(key);
   if (!cur || cur.reset < now) {

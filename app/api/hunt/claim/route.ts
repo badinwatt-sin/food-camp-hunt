@@ -6,8 +6,8 @@ import { checkOrigin, handler, HttpError, ok, rateLimit, readJson } from '@/lib/
 /** Idempotent: a team earns each spot once, however many times or by whom it is scanned. */
 export const POST = handler(async (req: Request) => {
   checkOrigin(req);
-  rateLimit(req, 'claim', 40, 10 * 60 * 1000);
   const p = await requirePlayer();
+  rateLimit(req, 'claim', 40, 10 * 60 * 1000, p.id);
   const body = await readJson<{ code?: string }>(req);
   const code = normalizeCode(body.code ?? '');
   if (code.length < 4 || code.length > 40) throw new HttpError(404, 'SPOT_NOT_FOUND');

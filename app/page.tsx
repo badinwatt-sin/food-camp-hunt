@@ -725,7 +725,7 @@ function PhotoMissionsView({ onBalance, onAuthLost }: { onBalance: () => void; o
   const load = useCallback(async () => {
     try { setD(await api<PhotoData>('/api/photos')); } catch (e) { cb.current.onAuthLost(e); setErr((e as Error).message); }
   }, []);
-  useEffect(() => { load(); const t = setInterval(load, 10000); return () => clearInterval(t); }, [load]); // the leader may upload from another phone
+  useEffect(() => { load(); const t = setInterval(() => { if (document.visibilityState === 'visible') load(); }, 12000); return () => clearInterval(t); }, [load]); // the leader may upload from another phone
 
   if (!d) return <div className="card center">{err ? <div className="error">{err}</div> : <div className="spinner" />}</div>;
   const successCount = d.missions.filter((m) => m.submission?.status === 'approved').length;
@@ -890,7 +890,7 @@ function HuntView({ pending, clearPending, onBalance, onAuthLost }: {
   const wasFound = useRef(0);
   useEffect(() => {
     if (!waiting) return;
-    const t = setInterval(loadHunt, 4000);
+    const t = setInterval(() => { if (document.visibilityState === 'visible') loadHunt(); }, 6000);
     return () => clearInterval(t);
   }, [waiting, loadHunt]);
   useEffect(() => {
@@ -1072,7 +1072,7 @@ function MarketView({ me, onRefresh }: { me: Me; onRefresh: () => unknown }) {
   const refresh = useRef(onRefresh);
   refresh.current = onRefresh;
   useEffect(() => {
-    const t = setInterval(() => { refresh.current(); }, 15000);
+    const t = setInterval(() => { if (document.visibilityState === 'visible') refresh.current(); }, 30000);
     return () => clearInterval(t);
   }, []);
 
