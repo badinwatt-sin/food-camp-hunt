@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
+import { Hero } from '@/components/Icons';
 
 type Role = 'admin' | 'staff';
 
@@ -40,13 +41,14 @@ function Login({ onDone }: { onDone: (r: Role) => void }) {
   }
   return (
     <div className="app">
-      <header className="hero"><h1>Food Camp — ผู้จัด</h1><p>เข้าสู่ระบบผู้จัดงาน</p></header>
+      <Hero title="Food Camp Hunt" subtitle="เข้าสู่ระบบผู้จัดงาน (Admin / Staff)" />
       <main className="main">
         <div className="card stack">
+          <h2>🔑 เข้าสู่ระบบผู้จัด</h2>
           <input className="field" type="password" placeholder="รหัสผ่านผู้จัด" value={pw}
             onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && go()} autoComplete="current-password" />
           {err && <div className="error">{err}</div>}
-          <button className="btn" disabled={busy || !pw} onClick={go}>เข้าสู่ระบบ</button>
+          <button className="btn" disabled={busy || !pw} onClick={go}>{busy ? 'กำลังตรวจสอบ…' : 'เข้าสู่ระบบ'}</button>
         </div>
       </main>
     </div>
@@ -55,114 +57,121 @@ function Login({ onDone }: { onDone: (r: Role) => void }) {
 
 type Tab = 'overview' | 'market' | 'people' | 'questions' | 'hunt' | 'puzzles' | 'history' | 'export';
 
-function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
-  const [tab, setTab] = useState<Tab>('overview');
-  const [msg, setMsg] = useState('');
-  const tabs: [Tab, string, boolean][] = [
-    ['overview', 'ภาพรวม', true], ['market', 'ตลาด / แลกของ', true],
-    ['people', 'ทีมและผู้เล่น', role === 'admin'], ['questions', 'คำถาม', role === 'admin'], ['hunt', 'ล่าสมบัติ', role === 'admin'], ['puzzles', 'ภารกิจทีม', role === 'admin'],
-    ['history', 'ประวัติ', role === 'admin'], ['export', 'ส่งออก CSV', role === 'admin'],
-  ];
+/** Bottom toast: always visible wherever you are on the page (the old banner sat at the top, out of sight). */
+function Toast({ msg, onClose }: { msg: string; onClose: () => void }) {
+  useEffect(() => {
+    if (!msg) return;
+    const t = setTimeout(onClose, 9000);
+    return () => clearTimeout(t);
+  }, [msg, onClose]);
+  if (!msg) return null;
+  const bad = /ไม่|ผิด|error|เกิดข้อผิดพลาด|ลบไม่ได้|ล้มเหลว/i.test(msg) && !/สำเร็จ|แล้ว$/.test(msg.split('\n')[0]);
   return (
-    <div className="admin">
-      <div className="bar">
-        <h1>Food Camp — แดชบอร์ดผู้จัด <span className="pill">{role === 'admin' ? 'Admin' : 'Staff'}</span></h1>
-        <span className="row">
-          <a className="btn small ghost" style={{ textDecoration: 'none' }} href="/admin/live" target="_blank" rel="noreferrer">📺 หน้าจอใหญ่ (Live)</a>
-          <button className="btn small ghost" onClick={onLogout}>ออกจากระบบ</button>
-        </span>
-      </div>
-      <div className="tabs">
-        {tabs.filter((t) => t[2]).map(([k, label]) => (
-          <button key={k} className={tab === k ? 'on' : ''} onClick={() => { setTab(k); setMsg(''); }}>{label}</button>
-        ))}
-      </div>
-      {msg && <div className="banner">{msg}</div>}
-      {tab === 'overview' && <Overview role={role} setMsg={setMsg} />}
-      {tab === 'market' && <Market role={role} setMsg={setMsg} />}
-      {tab === 'people' && <People setMsg={setMsg} />}
-      {tab === 'questions' && <Questions setMsg={setMsg} />}
-      {tab === 'hunt' && <Hunt setMsg={setMsg} />}
-      {tab === 'puzzles' && <Puzzles setMsg={setMsg} />}
-      {tab === 'history' && <History />}
-      {tab === 'export' && <Export />}
+    <div className={`toast${bad ? ' err' : ''}`} role="status" aria-live="polite">
+      <span>{bad ? '⚠️ ' : '✅ '}{msg}</span>
+      <button onClick={onClose} aria-label="ปิด">×</button>
     </div>
   );
 }
 
+function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
+  const [tab, setTab] = useState<Tab>('overview');
+  const [msg, setMsg] = useState('');
+  const closeMsg = useCallback(() => setMsg(''), []);
+  const tabs: [Tab, string, string, boolean][] = [
+    ['overview', '📊', 'ภาพรวม', true], ['market', '🛒', 'ตลาด / แลกของ', true],
+    ['people', '👥', 'ทีมและผู้เล่น', role === 'admin'], ['questions', '🍜', 'คำถามควิซ', role === 'admin'],
+    ['hunt', '🧭', 'ล่าสมบัติ', role === 'admin'], ['puzzles', '🧩', 'ภารกิจทีม', role === 'admin'],
+    ['history', '📜', 'ประวัติ', role === 'admin'], ['export', '⬇️', 'ส่งออก CSV', role === 'admin'],
+  ];
+  return (
+    <>
+      <Hero compact title="Food Camp Hunt" subtitle={`แดชบอร์ดผู้จัด · ${role === 'admin' ? 'Admin' : 'Staff'}`}
+        actions={<>
+          <a className="btn small" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }} href="/admin/live" target="_blank" rel="noreferrer">📺 จอใหญ่ (Live)</a>
+          <button className="btn small" onClick={onLogout}>ออกจากระบบ</button>
+        </>} />
+      <div className="admin">
+        <nav className="admin-tabs" aria-label="เมนูผู้จัด">
+          {tabs.filter((t) => t[3]).map(([k, icon, label]) => (
+            <button key={k} className={tab === k ? 'on' : ''} onClick={() => { setTab(k); setMsg(''); window.scrollTo({ top: 0 }); }}><span aria-hidden>{icon}</span>{label}</button>
+          ))}
+        </nav>
+        {tab === 'overview' && <Overview role={role} setMsg={setMsg} />}
+        {tab === 'market' && <Market role={role} setMsg={setMsg} />}
+        {tab === 'people' && <People setMsg={setMsg} />}
+        {tab === 'questions' && <Questions setMsg={setMsg} />}
+        {tab === 'hunt' && <Hunt setMsg={setMsg} />}
+        {tab === 'puzzles' && <Puzzles setMsg={setMsg} />}
+        {tab === 'history' && <History />}
+        {tab === 'export' && <Export />}
+      </div>
+      <Toast msg={msg} onClose={closeMsg} />
+    </>
+  );
+}
+
 // ------------------------------------------------------------------ overview
+const FLAGS: { key: 'is_open' | 'hunt_open' | 'puzzle_open' | 'market_open'; icon: string; title: string; desc: string; on: string; off: string }[] = [
+  { key: 'is_open', icon: '🍜', title: 'ควิซทายอาหาร', desc: 'ผู้เล่นเริ่มและตอบคำถามได้', on: 'เปิดควิซแล้ว', off: 'ปิดควิซแล้ว' },
+  { key: 'hunt_open', icon: '🧭', title: 'ล่าสมบัติ', desc: 'สแกน QR / กรอกรหัสตามจุด', on: 'เปิดล่าสมบัติแล้ว', off: 'ปิดล่าสมบัติแล้ว' },
+  { key: 'puzzle_open', icon: '🧩', title: 'ภารกิจทีม', desc: 'รวมเบาะแสในสควอดเพื่อตอบ', on: 'เปิดภารกิจทีมแล้ว', off: 'ปิดภารกิจทีมแล้ว' },
+  { key: 'market_open', icon: '🛒', title: 'ตลาด: หัวหน้าทีมแลกเอง', desc: 'หัวหน้าทีมกดแลกจากมือถือ (ทีมงานแลกแทนได้เสมอ)', on: 'เปิดให้หัวหน้าทีมแลกของแล้ว', off: 'ปิดการแลกของโดยหัวหน้าทีมแล้ว' },
+];
+
 function Overview({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
   const [d, setD] = useState<any>(null);
   const [goal, setGoal] = useState('');
-  const [adj, setAdj] = useState<{ team_id: string; amount: string; reason: string; key: string } | null>(null);
+  const [adj, setAdj] = useState<{ team_id: string } | null>(null);
   const load = useCallback(() => call('overview').then(setD).catch((e) => setMsg(e.message)), [setMsg]);
   useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, [load]);
   useEffect(() => { if (d && goal === '') setGoal(String(d.settings.team_goal_pct ?? 0)); }, [d, goal]);
   if (!d) return <div className="spinner" />;
   const totalP = d.teams.reduce((s: number, t: any) => s + t.participants, 0);
   const totalC = d.teams.reduce((s: number, t: any) => s + t.completed, 0);
+  const totalBal = d.teams.reduce((s: number, t: any) => s + t.balance, 0);
+  const totalSpent = d.teams.reduce((s: number, t: any) => s + t.spent, 0);
 
-  async function toggle() {
-    try { await call('game.set', { is_open: !d.settings.is_open }); await load(); setMsg(d.settings.is_open ? 'ปิดเกมแล้ว' : 'เปิดเกมแล้ว'); }
-    catch (e) { setMsg((e as Error).message); }
-  }
-  async function togglePuzzle() {
-    try { await call('game.set', { puzzle_open: !d.settings.puzzle_open }); await load(); setMsg(d.settings.puzzle_open ? 'ปิดภารกิจทีมแล้ว' : 'เปิดภารกิจทีมแล้ว'); }
-    catch (e) { setMsg((e as Error).message); }
-  }
-  async function toggleMarket() {
-    try { await call('game.set', { market_open: !d.settings.market_open }); await load(); setMsg(d.settings.market_open ? 'ปิดการแลกของโดยหัวหน้าทีมแล้ว' : 'เปิดให้หัวหน้าทีมแลกของแล้ว'); }
+  async function setFlag(f: (typeof FLAGS)[number]) {
+    const next = !d.settings[f.key];
+    try { await call('game.set', { [f.key]: next }); await load(); setMsg(next ? f.on : f.off); }
     catch (e) { setMsg((e as Error).message); }
   }
   async function saveGoal() {
     try { await call('game.set', { team_goal_pct: Number(goal) }); await load(); setMsg(Number(goal) ? `ตั้งเป้าหมายทีม ${goal}% แล้ว` : 'ปิดเป้าหมายทีมแล้ว'); }
     catch (e) { setMsg((e as Error).message); }
   }
-  async function toggleHunt() {
-    try { await call('game.set', { hunt_open: !d.settings.hunt_open }); await load(); setMsg(d.settings.hunt_open ? 'ปิดล่าสมบัติแล้ว' : 'เปิดล่าสมบัติแล้ว'); }
-    catch (e) { setMsg((e as Error).message); }
-  }
-  async function saveAdj() {
-    if (!adj) return;
-    try {
-      await call('adjust', { team_id: adj.team_id, amount: Number(adj.amount), reason: adj.reason, key: adj.key });
-      setAdj(null); await load(); setMsg('บันทึกการปรับโทเคนแล้ว');
-    } catch (e) { setMsg((e as Error).message); }
-  }
+  const adjTeam = adj ? d.teams.find((t: any) => t.team_id === adj.team_id) : null;
 
   return (
     <>
-      <div className="card row" style={{ justifyContent: 'space-between' }}>
-        <div>
-          <h2 style={{ margin: 0 }}>สถานะเกม: {d.settings.is_open ? '🟢 เปิดอยู่' : '🔴 ปิดอยู่'}</h2>
-          <div className="muted">เล่นจบแล้ว {totalC} / {totalP} คน · {d.settings.tokens_per_correct} โทเคนต่อข้อที่ถูก</div>
-        </div>
-        {role === 'admin' && <button className={`btn small ${d.settings.is_open ? 'danger' : ''}`} onClick={toggle}>{d.settings.is_open ? 'ปิดเกม' : 'เปิดเกม'}</button>}
+      <div className="stats">
+        <div className="stat"><b>{totalC}/{totalP}</b><span>เล่นควิซจบแล้ว</span></div>
+        <div className="stat"><b>🪙 {totalBal}</b><span>โทเคนคงเหลือรวมทุกทีม</span></div>
+        <div className="stat"><b>{totalSpent}</b><span>โทเคนที่ใช้ไปแล้ว</span></div>
+        <div className="stat"><b>📦 {d.pendingPickup ?? 0}</b><span>ชิ้นที่รอจ่ายของ</span></div>
       </div>
-      <div className="card row" style={{ justifyContent: 'space-between' }}>
-        <div>
-          <h2 style={{ margin: 0 }}>ล่าสมบัติ: {d.settings.hunt_open ? '🟢 เปิดอยู่' : '🔴 ปิดอยู่'}</h2>
-          <div className="muted">สแกน QR / กรอกรหัสตามจุดต่าง ๆ เพื่อสะสมโทเคน (เปิด-ปิดแยกจากควิซและภารกิจทีม)</div>
-        </div>
-        {role === 'admin' && <button className={`btn small ${d.settings.hunt_open ? 'danger' : ''}`} onClick={toggleHunt}>{d.settings.hunt_open ? 'ปิดล่าสมบัติ' : 'เปิดล่าสมบัติ'}</button>}
+
+      <div className="switches">
+        {FLAGS.map((f) => {
+          const on = !!d.settings[f.key];
+          return (
+            <div key={f.key} className={`switch-card${on ? ' on' : ''}`}>
+              <div className="s-top">
+                <div className="s-ic" aria-hidden>{f.icon}</div>
+                <div className="s-title">{f.title}</div>
+                <span className="s-state">{on ? '🟢 เปิดอยู่' : '🔴 ปิดอยู่'}</span>
+              </div>
+              <div className="muted" style={{ fontSize: 14 }}>{f.desc}</div>
+              {role === 'admin' && <button className={`btn small ${on ? 'danger' : ''}`} onClick={() => setFlag(f)}>{on ? 'ปิด' : 'เปิด'}</button>}
+            </div>
+          );
+        })}
       </div>
-      <div className="card row" style={{ justifyContent: 'space-between' }}>
-        <div>
-          <h2 style={{ margin: 0 }}>🧩 ภารกิจทีม: {d.settings.puzzle_open ? '🟢 เปิดอยู่' : '🔴 ปิดอยู่'}</h2>
-          <div className="muted">สมาชิกแต่ละคนถือเบาะแสคนละส่วน ต้องคุยกันเพื่อตอบ (เปิด-ปิดแยกจากล่าสมบัติ)</div>
-        </div>
-        {role === 'admin' && <button className={`btn small ${d.settings.puzzle_open ? 'danger' : ''}`} onClick={togglePuzzle}>{d.settings.puzzle_open ? 'ปิดภารกิจทีม' : 'เปิดภารกิจทีม'}</button>}
-      </div>
-      <div className="card row" style={{ justifyContent: 'space-between' }}>
-        <div>
-          <h2 style={{ margin: 0 }}>🛒 ตลาด: หัวหน้าทีมแลกเอง {d.settings.market_open ? '🟢 เปิดอยู่' : '🔴 ปิดอยู่'}</h2>
-          <div className="muted">เปิดเมื่อพร้อมให้หัวหน้าทีมกดแลกสินค้าจากมือถือ (ทีมงานยังแลกแทนทีมได้เสมอที่แท็บตลาด)</div>
-        </div>
-        {role === 'admin' && <button className={`btn small ${d.settings.market_open ? 'danger' : ''}`} onClick={toggleMarket}>{d.settings.market_open ? 'ปิดตลาด' : 'เปิดตลาด'}</button>}
-      </div>
+
       <div className="card">
         <h2 style={{ margin: 0 }}>🎯 เป้าหมายร่วมของทีม: {d.settings.team_goal_pct ? `${d.settings.team_goal_pct}% ของสมาชิกต้องเล่นควิซจบ` : 'ปิดอยู่'}</h2>
-        <div className="muted">เมื่อทีมถึงเป้า จะปลดล็อกสินค้าที่ติดป้าย “ต้องถึงเป้าหมาย” ในตลาด (ตั้งป้ายที่แท็บตลาด)</div>
+        <div className="muted">เมื่อทีมถึงเป้า จะปลดล็อกสินค้าที่ติดป้าย “สินค้าพิเศษ” ในตลาด (ตั้งป้ายที่แท็บตลาด) · {d.settings.tokens_per_correct} โทเคนต่อข้อควิซที่ถูก</div>
         {role === 'admin' && (
           <div className="row" style={{ marginTop: 8 }}>
             <input className="field" style={{ width: 110 }} type="number" min={0} max={100} value={goal} onChange={(e) => setGoal(e.target.value)} />
@@ -171,41 +180,86 @@ function Overview({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
           </div>
         )}
       </div>
+
       <div className="grid">
-        {d.teams.map((t: any) => (
-          <div className="card" key={t.team_id}>
-            <h2>{t.name}</h2>
-            <div className="num" style={{ fontSize: 34, fontWeight: 700 }}>🪙 {t.balance}</div>
-            <div className="muted">จบแล้ว {t.completed}/{t.participants} · กำลังเล่น {t.in_progress}</div>
-            <div className="progress" style={{ position: 'relative' }}>
-              <i style={{ width: `${t.participants ? (t.completed / t.participants) * 100 : 0}%` }} />
-              {d.settings.team_goal_pct > 0 && <b title="เป้าหมาย" style={{ position: 'absolute', left: `${d.settings.team_goal_pct}%`, top: -3, height: 16, width: 3, background: 'var(--navy)' }} />}
+        {d.teams.map((t: any) => {
+          const met = t.participants && t.completed * 100 >= d.settings.team_goal_pct * t.participants;
+          return (
+            <div className="card team-card" key={t.team_id}>
+              <h2>{t.name}</h2>
+              <div className="num" style={{ fontSize: 34, fontWeight: 700 }}>🪙 {t.balance}</div>
+              <span className={`leader${t.leader ? '' : ' none'}`}>{t.leader ? `⭐ หัวหน้า: ${t.leader}` : '⚠️ ยังไม่มีหัวหน้าทีม'}</span>
+              <div className="muted" style={{ marginTop: 8 }}>เล่นควิซจบ {t.completed}/{t.participants} · กำลังเล่น {t.in_progress}</div>
+              <div className="progress" style={{ position: 'relative' }}>
+                <i style={{ width: `${t.participants ? (t.completed / t.participants) * 100 : 0}%` }} />
+                {d.settings.team_goal_pct > 0 && <b title="เป้าหมาย" style={{ position: 'absolute', left: `${d.settings.team_goal_pct}%`, top: -3, height: 16, width: 3, background: 'var(--navy)' }} />}
+              </div>
+              {d.settings.team_goal_pct > 0 && <div className="muted">{met ? '🔓 ถึงเป้าแล้ว' : `🔒 ยังไม่ถึงเป้า ${d.settings.team_goal_pct}%`}</div>}
+              <div className="muted">ใช้ไปแล้ว {t.spent}</div>
+              {role === 'admin' && <button className="btn small ghost" style={{ marginTop: 8 }} onClick={() => setAdj({ team_id: t.team_id })}>± ปรับโทเคนด้วยมือ</button>}
             </div>
-            {d.settings.team_goal_pct > 0 && (
-              <div className="muted">{t.participants && t.completed * 100 >= d.settings.team_goal_pct * t.participants ? '🔓 ถึงเป้าแล้ว' : `🔒 ยังไม่ถึงเป้า ${d.settings.team_goal_pct}%`}</div>
-            )}
-            <div className="muted">ใช้ไปแล้ว {t.spent}</div>
-            {role === 'admin' && (
-              <button className="btn small ghost" style={{ marginTop: 8 }}
-                onClick={() => setAdj({ team_id: t.team_id, amount: '', reason: '', key: uuid() })}>ปรับโทเคนด้วยมือ</button>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
-      {adj && (
-        <div className="card">
-          <h2>ปรับโทเคน: {d.teams.find((t: any) => t.team_id === adj.team_id)?.name}</h2>
-          <label className="lbl">จำนวน (ใส่ − เพื่อลด เช่น -10)</label>
-          <input className="field" type="number" value={adj.amount} onChange={(e) => setAdj({ ...adj, amount: e.target.value })} />
-          <label className="lbl">เหตุผล (จำเป็น)</label>
-          <input className="field" value={adj.reason} onChange={(e) => setAdj({ ...adj, reason: e.target.value })} />
-          <div className="row" style={{ marginTop: 12 }}>
-            <button className="btn small" disabled={!adj.amount || adj.reason.trim().length < 3} onClick={saveAdj}>บันทึก</button>
-            <button className="btn small ghost" onClick={() => setAdj(null)}>ยกเลิก</button>
-          </div>
-        </div>
+
+      {adj && adjTeam && (
+        <AdjustDialog team={adjTeam} onClose={() => setAdj(null)}
+          onDone={async (text) => { setAdj(null); await load(); setMsg(text); }} />
       )}
     </>
+  );
+}
+
+/** Manual token adjustment: a pop-up you can't miss, with +/- buttons (phones' number pads have no minus), a preview and inline errors. */
+function AdjustDialog({ team, onClose, onDone }: { team: any; onClose: () => void; onDone: (msg: string) => void | Promise<void> }) {
+  const [sign, setSign] = useState<1 | -1>(1);
+  const [amount, setAmount] = useState('');
+  const [reason, setReason] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const keyRef = useRef(uuid()); // same key on a retry of the same request -> never applied twice
+  const n = Math.floor(Number(amount) || 0);
+  const delta = sign * n;
+  const after = team.balance + delta;
+  const problem = n <= 0 ? 'ใส่จำนวนโทเคน' : reason.trim().length < 3 ? 'ใส่เหตุผลอย่างน้อย 3 ตัวอักษร' : after < 0 ? `หักไม่ได้: ทีมมี ${team.balance} โทเคน` : '';
+  async function save() {
+    setBusy(true); setErr('');
+    try {
+      await call('adjust', { team_id: team.team_id, amount: delta, reason: reason.trim(), key: keyRef.current });
+      await onDone(`ปรับโทเคนทีม ${team.name} ${delta > 0 ? '+' : ''}${delta} แล้ว (เหลือ ${after})`);
+    } catch (e) { setErr((e as Error).message); setBusy(false); }
+  }
+  const reasons = ['ชดเชยระบบขัดข้อง', 'โบนัสกิจกรรมพิเศษ', 'แก้ไขข้อผิดพลาด', 'หักตามกติกา'];
+  return (
+    <div className="dlg-back" role="dialog" aria-label="ปรับโทเคน" onClick={busy ? undefined : onClose}>
+      <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <h2 style={{ margin: 0 }}>± ปรับโทเคน: {team.name}</h2>
+          <button className="btn small ghost" disabled={busy} onClick={onClose}>ปิด</button>
+        </div>
+        <div className="center" style={{ margin: '10px 0' }}>
+          <div className="muted">โทเคนปัจจุบัน</div>
+          <div className="num" style={{ fontSize: 36, fontWeight: 700 }}>🪙 {team.balance}</div>
+        </div>
+        <div className="seg">
+          <button className={`plus${sign === 1 ? ' on' : ''}`} onClick={() => setSign(1)}>＋ เพิ่ม</button>
+          <button className={`minus${sign === -1 ? ' on' : ''}`} onClick={() => setSign(-1)}>－ หัก</button>
+        </div>
+        <label className="lbl">จำนวนโทเคน</label>
+        <input className="field" inputMode="numeric" pattern="[0-9]*" placeholder="เช่น 10" value={amount}
+          onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, '').slice(0, 6))} />
+        <div className="chips">{[5, 10, 20, 50].map((v) => <button key={v} onClick={() => setAmount(String(v))}>{v}</button>)}</div>
+        <label className="lbl">เหตุผล (จำเป็น · บันทึกในประวัติ)</label>
+        <input className="field" placeholder="เช่น ชดเชยระบบขัดข้อง" value={reason} onChange={(e) => setReason(e.target.value)} />
+        <div className="chips">{reasons.map((r) => <button key={r} onClick={() => setReason(r)}>{r}</button>)}</div>
+        <div className="center" style={{ margin: '14px 0 6px', fontSize: 18 }}>
+          ยอดหลังปรับ: <strong style={{ color: after < 0 ? 'var(--bad)' : 'var(--forest)' }}>{n > 0 ? after : '—'}</strong>
+          {n > 0 && <span className="muted"> ({delta > 0 ? '+' : ''}{delta})</span>}
+        </div>
+        {(err || (problem && (amount || reason))) && <div className="error" style={{ marginBottom: 10 }}>{err || problem}</div>}
+        <button className="btn" disabled={busy || !!problem} onClick={save}>{busy ? 'กำลังบันทึก…' : 'บันทึกการปรับโทเคน'}</button>
+      </div>
+    </div>
   );
 }
 
@@ -655,10 +709,11 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
           <h2 style={{ margin: 0 }}>ผู้เล่น ({people.length})</h2>
         </div>
         <div className="table-wrap"><table>
-          <thead><tr><th>Full name</th><th>Nick name</th><th>ทีม</th><th>สควอด</th><th>หัวหน้า</th><th>สถานะ</th><th>คะแนน</th><th>ID</th><th /></tr></thead>
+          <thead><tr><th /><th>Full name</th><th>Nick name</th><th>ทีม</th><th>สควอด</th><th>หัวหน้า</th><th>สถานะ</th><th>คะแนน</th><th>ID</th><th /></tr></thead>
           <tbody>
             {people.map((p) => (
               <tr key={p.id}>
+                <td><span className="m-av sm" aria-hidden>{p.avatar_url ? <img src={p.avatar_url} alt="" /> : (p.avatar_emoji || Array.from(p.nick_name || p.name)[0])}</span></td>
                 <td>{p.name}</td><td>{p.nick_name || '—'}</td><td>{p.team_name}</td><td>{p.squad_name || '—'}</td><td>{p.is_leader ? '⭐ หัวหน้าทีม' : ''}</td>
                 <td>{{ not_started: 'ยังไม่เริ่ม', in_progress: 'กำลังเล่น', completed: 'จบแล้ว' }[p.status as 'completed']}</td>
                 <td className="num">{p.status === 'completed' ? `${p.correct_count} (${p.tokens_earned})` : ''}</td>

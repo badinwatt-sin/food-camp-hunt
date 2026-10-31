@@ -53,11 +53,18 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
 
   if (action === 'overview') {
     await requireRole('staff');
-    const [{ data: settings }, { data: teams }] = await Promise.all([
+    const [{ data: settings }, { data: teams }, { data: leaders }, { data: pend }] = await Promise.all([
       sb.from('game_settings').select('*').eq('id', 1).single(),
       sb.from('team_summary').select('*').order('name'),
+      sb.from('participants').select('team_id, name, nick_name').eq('is_leader', true),
+      sb.from('redemptions').select('quantity').is('fulfilled_at', null),
     ]);
-    return ok({ settings, teams: teams ?? [] });
+    const leaderOf = new Map((leaders ?? []).map((l: any) => [l.team_id, l.nick_name || l.name]));
+    return ok({
+      settings,
+      teams: (teams ?? []).map((t: any) => ({ ...t, leader: leaderOf.get(t.team_id) ?? null })),
+      pendingPickup: (pend ?? []).reduce((n: number, r: any) => n + r.quantity, 0),
+    });
   }
 
   if (action === 'teams') {
@@ -70,12 +77,12 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     await requireRole('admin');
     const { data, error } = await sb
       .from('participants')
-      .select('id, name, nick_name, is_leader, avatar_url, team_id, squad_id, status, code_hash, correct_count, tokens_earned, completed_at, teams(name), squads(name)')
+      .select('id, name, nick_name, is_leader, avatar_url, avatar_emoji, team_id, squad_id, status, code_hash, correct_count, tokens_earned, completed_at, teams(name), squads(name)')
       .order('name');
     if (error) throw error;
     return ok({
       participants: (data ?? []).map((p: any) => ({
-        id: p.id, name: p.name, nick_name: p.nick_name ?? '', is_leader: !!p.is_leader, has_avatar: !!p.avatar_url, team_id: p.team_id, team_name: p.teams?.name ?? '',
+        id: p.id, name: p.name, nick_name: p.nick_name ?? '', is_leader: !!p.is_leader, has_avatar: !!p.avatar_url, avatar_url: p.avatar_url ?? null, avatar_emoji: p.avatar_emoji ?? null, team_id: p.team_id, team_name: p.teams?.name ?? '',
         squad_id: p.squad_id ?? null, squad_name: p.squads?.name ?? '',
         status: p.status, has_code: !!p.code_hash, correct_count: p.correct_count,
         tokens_earned: p.tokens_earned, completed_at: p.completed_at,
@@ -333,11 +340,22 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
 
   switch (action) {
     case 'adjust': {
+      // Clear, specific messages (the form shows them right next to the Save button).
+      const amount = Number(body.amount);
+      const reason = str(body.reason, 300);
+      const fail = (message: string, status = 400) => NextResponse.json({ error: 'BAD_INPUT', message }, { status });
+      if (!Number.isInteger(amount) || amount === 0) return fail('กรุณาใส่จำนวนโทเคนเป็นเลขจำนวนเต็ม ไม่เท่ากับ 0');
+      if (Math.abs(amount) > 100000) return fail('จำนวนมากเกินไป (สูงสุด 100,000 ต่อครั้ง)');
+      if (reason.length < 3) return fail('กรุณาใส่เหตุผลอย่างน้อย 3 ตัวอักษร');
+      const key = str(body.key, 100);
+      if (key.length < 8) return fail('คำขอไม่สมบูรณ์ กรุณาปิดหน้าต่างแล้วเปิดใหม่');
       const { data, error } = await sb.rpc('adjust_tokens', {
-        p_team: need(str(body.team_id)), p_amount: int(body.amount),
-        p_reason: str(body.reason, 300), p_key: need(str(body.key, 100)), p_actor: role,
+        p_team: need(str(body.team_id)), p_amount: amount, p_reason: reason, p_key: key, p_actor: role,
       });
-      if (error) throw error;
+      if (error) {
+        if (String(error.message).includes('INSUFFICIENT_TOKENS')) return fail('หักไม่ได้: โทเคนของทีมมีไม่พอสำหรับจำนวนนี้', 409);
+        throw error;
+      }
       return ok(data);
     }
 

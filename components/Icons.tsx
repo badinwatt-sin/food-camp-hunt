@@ -126,9 +126,9 @@ export function CampTent({ size = 80 }: { size?: number }) {
 }
 
 /** Daytime camp header: sky, sun, clouds, green hills, pines, an earth-tone tent, a campfire pot and carrots. */
-export function Hero({ subtitle, onHome }: { subtitle?: string; onHome?: () => void }) {
+export function Hero({ subtitle, onHome, compact, actions, title }: { subtitle?: string; onHome?: () => void; compact?: boolean; actions?: React.ReactNode; title?: string }) {
   return (
-    <header className="hero">
+    <header className={`hero${compact ? ' compact' : ''}`}>
       <svg className="hero-scene" viewBox="0 0 480 170" preserveAspectRatio="xMidYMax slice" aria-hidden>
         <circle cx="420" cy="38" r="30" fill="#fbe39a" opacity=".45" />
         <circle cx="420" cy="38" r="19" fill="#f7d774" />
@@ -149,9 +149,10 @@ export function Hero({ subtitle, onHome }: { subtitle?: string; onHome?: () => v
         )}
         <div className="hero-text">
           <div className="kicker">Agency Camp · Food</div>
-          <h1>Food Camp Hunt</h1>
+          <h1>{title ?? 'Food Camp Hunt'}</h1>
           <p>{subtitle ?? 'ทายอาหาร ล่าสมบัติ สะสมโทเคนให้ทีม'}</p>
         </div>
+        {actions && <div className="hero-actions">{actions}</div>}
       </div>
       <div className="deco" aria-hidden>
         <Carrot size={30} />
