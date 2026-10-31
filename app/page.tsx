@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Coin, Hero, Pot } from '@/components/Icons';
+import { Coin, Hero, IconMission, IconShop, IconTeam, Pot } from '@/components/Icons';
 
 type Question = { id: string; position: number; prompt: string; image_url: string | null; options: string[] };
 type Goal = { goalPct: number; completed: number; participants: number; met: boolean; need: number };
@@ -79,7 +79,8 @@ export default function Page() {
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
-  const [view, setView] = useState<'main' | 'wallet' | 'hunt' | 'market'>('main');
+  const [view, setView] = useState<'home' | 'missions' | 'quiz' | 'hunt' | 'team' | 'market'>('home');
+  const [huntTab, setHuntTab] = useState<'hunt' | 'puzzle'>('hunt');
   const [pendingSpot, setPendingSpot] = useState('');
   const completing = useRef(false);
 
@@ -141,7 +142,7 @@ export default function Page() {
   }
   async function logout() {
     await api('/api/logout', {}, 1).catch(() => {});
-    setMe(null); setCode(''); setFeedback(null); setSelected(null); setView('main'); setPendingSpot('');
+    setMe(null); setCode(''); setFeedback(null); setSelected(null); setView('home'); setPendingSpot('');
     try { sessionStorage.removeItem('fc_spot'); } catch { /* ignore */ }
   }
   async function start() {
@@ -202,170 +203,300 @@ export default function Page() {
   }
 
   const { participant, team } = me;
+  const subtitle = `ทีม ${team.name}${me.isLeader ? ' · ⭐ หัวหน้าทีม' : ''}`;
+  const goHome = () => setView('home');
+  const QuizBack = ({ label = 'กลับไปภารกิจ' }: { label?: string }) => <button className="btn ghost" onClick={() => setView('missions')}>{label}</button>;
 
+  // ---- Treasure hunt + team puzzles
   if (view === 'hunt') {
     return (
-      <Shell subtitle={`ทีม ${team.name}`}>
+      <Shell subtitle={subtitle} onHome={goHome}>
         <Activities
+          initialTab={huntTab}
           pending={pendingSpot}
           clearPending={() => { setPendingSpot(''); try { sessionStorage.removeItem('fc_spot'); } catch { /* ignore */ } }}
           onBalance={() => load()}
           onAuthLost={fail}
         />
-        <button className="btn ghost" onClick={() => setView('main')}>กลับ</button>
+        <QuizBack />
       </Shell>
     );
   }
 
-  // Market: what can be bought, price in tokens, and whether it is in stock (available any time)
+  // ---- Market: items, token price, stock; the team leader redeems here
   if (view === 'market') {
     return (
-      <Shell subtitle={`ทีม ${team.name}`}>
+      <Shell subtitle={subtitle} onHome={goHome}>
         <MarketView me={me} onRefresh={load} />
         {err && <div className="error">{err}</div>}
-        <button className="btn" onClick={() => setView('main')}>กลับ</button>
+        <button className="btn ghost" onClick={goHome}>กลับหน้าหลัก</button>
       </Shell>
     );
   }
 
-  // Wallet view (available any time)
-  if (view === 'wallet') {
+  // ---- Team members and what each one does
+  if (view === 'team') {
     return (
-      <Shell subtitle={`ทีม ${team.name}`}>
-        <Wallet me={me} />
-        {err && <div className="error">{err}</div>}
-        <div className="stack">
-          <button className="btn ghost" onClick={async () => { await load(); }}>รีเฟรชยอดโทเคน</button>
-          <button className="btn" onClick={() => setView('main')}>กลับ</button>
+      <Shell subtitle={subtitle} onHome={goHome}>
+        <TeamView me={me} onAuthLost={fail} />
+        <button className="btn ghost" onClick={goHome}>กลับหน้าหลัก</button>
+      </Shell>
+    );
+  }
+
+  // ---- Missions menu: quiz, treasure hunt, team puzzles
+  if (view === 'missions') {
+    const st = participant.status;
+    const quizLine = st === 'completed'
+      ? `เล่นจบแล้ว ${me.result?.correct ?? 0}/${me.total} ข้อ · ได้ ${me.result?.tokens ?? 0} โทเคน`
+      : st === 'in_progress' ? `ตอบแล้ว ${me.answered}/${me.total} ข้อ` : `${me.total} ข้อ · ข้อละ ${me.game.tokensPerCorrect} โทเคน`;
+    return (
+      <Shell subtitle={subtitle} onHome={goHome}>
+        <div className="card center" style={{ paddingBottom: 14 }}>
+          <h2 style={{ fontSize: 22 }}>🚩 เลือกภารกิจ</h2>
+          <div className="muted">ทำภารกิจเพื่อสะสมโทเคนเข้ากระเป๋าทีม</div>
         </div>
-      </Shell>
-    );
-  }
-
-  // 2. Confirm identity
-  if (participant.status === 'not_started') {
-    return (
-      <Shell>
-        <div className="card center stack">
-          <Pot size={56} />
-          <h2>ใช่คุณหรือไม่?</h2>
-          <div style={{ fontSize: 26, fontWeight: 700 }}>{participant.name}</div>
-          {participant.fullName && participant.fullName !== participant.name && <div className="muted">{participant.fullName}</div>}
-          <div><span className="pill">ทีม {team.name}</span>{me.squad && <> <span className="pill" style={{ background: '#f2c46d' }}>{me.squad}</span></>}</div>
-          <GoalCard goal={me.goal} />
-          {!me.game.open && <div className="banner">เกมยังไม่เปิด รอทีมงานประกาศสักครู่นะ</div>}
-          {err && <div className="error">{err}</div>}
-          <button className="btn" disabled={busy || !me.game.open} onClick={start}>
-            {busy ? 'กำลังเริ่ม…' : 'ใช่ เริ่มเล่นเลย'}
+        <div className="card">
+          <div className="mission">
+            <div className="m-ic" style={{ background: '#fde7b0' }}>🍜</div>
+            <div className="m-body"><h2>ควิซทายอาหาร</h2><div className="muted">{quizLine}</div></div>
+          </div>
+          {!me.game.open && st !== 'completed' && <div className="banner" style={{ marginTop: 10 }}>ควิซยังไม่เปิด หรือปิดแล้ว รอทีมงานประกาศ</div>}
+          <button className="btn" style={{ marginTop: 12 }} disabled={st !== 'completed' && !me.game.open} onClick={() => setView('quiz')}>
+            {st === 'completed' ? 'ดูผลคะแนน' : st === 'in_progress' ? 'เล่นต่อ' : 'เริ่มเล่นควิซ'}
           </button>
-          {!me.game.open && <button className="btn ghost" onClick={() => load()}>ตรวจสอบอีกครั้ง</button>}
-          <button className="btn green" onClick={() => setView('hunt')}>🧭 กิจกรรม: ล่าสมบัติ & ภารกิจทีม</button>
-          <button className="btn green" onClick={() => setView('market')}>🛒 ตลาด: ดูของ ราคา และสต็อก</button>
-          <button className="btn ghost" onClick={logout}>ไม่ใช่ฉัน</button>
         </div>
+        <div className="card">
+          <div className="mission">
+            <div className="m-ic" style={{ background: '#d8ecf5' }}>🧭</div>
+            <div className="m-body"><h2>ล่าสมบัติ</h2><div className="muted">สแกน QR หรือกรอกรหัสตามจุดต่าง ๆ ในแคมป์</div></div>
+          </div>
+          <button className="btn green" style={{ marginTop: 12 }} onClick={() => { setHuntTab('hunt'); setView('hunt'); }}>ไปล่าสมบัติ</button>
+        </div>
+        <div className="card">
+          <div className="mission">
+            <div className="m-ic" style={{ background: '#e8dcf5' }}>🧩</div>
+            <div className="m-body"><h2>ภารกิจทีม</h2><div className="muted">รวมเบาะแสของเพื่อนในสควอดเพื่อไขปริศนา</div></div>
+          </div>
+          <button className="btn green" style={{ marginTop: 12 }} onClick={() => { setHuntTab('puzzle'); setView('hunt'); }}>เปิดภารกิจทีม</button>
+        </div>
+        <GoalCard goal={me.goal} mine />
+        <button className="btn ghost" onClick={goHome}>กลับหน้าหลัก</button>
       </Shell>
     );
   }
 
-  // 3/4. Quiz + feedback
-  if (participant.status === 'in_progress') {
-    const q = me.current;
-    if (!q && !feedback) {
+  // ---- Quiz (start / questions / result)
+  if (view === 'quiz') {
+    if (participant.status === 'not_started') {
       return (
-        <Shell>
-          <div className="card center">
-            {!me.game.open && me.answered < me.total ? (
-              <>
-                <h2>เกมปิดแล้ว</h2>
-                <p className="muted">ติดต่อทีมงานผู้จัดหากต้องการเล่นต่อ</p>
-                <button className="btn ghost" onClick={() => load()}>ตรวจสอบอีกครั้ง</button>
-              </>
-            ) : (<><div className="spinner" /><p className="muted">กำลังสรุปคะแนน…</p></>)}
+        <Shell subtitle={subtitle} onHome={goHome}>
+          <div className="card center stack">
+            <Pot size={64} />
+            <h2>พร้อมเริ่มควิซทายอาหารหรือยัง?</h2>
+            <div className="muted">{me.total} ข้อ · ตอบถูกข้อละ {me.game.tokensPerCorrect} โทเคน เข้ากระเป๋าทีม</div>
+            {!me.game.open && <div className="banner">เกมยังไม่เปิด รอทีมงานประกาศสักครู่นะ</div>}
             {err && <div className="error">{err}</div>}
+            <button className="btn" disabled={busy || !me.game.open} onClick={start}>{busy ? 'กำลังเริ่ม…' : 'เริ่มเล่นเลย'}</button>
+            {!me.game.open && <button className="btn ghost" onClick={() => load()}>ตรวจสอบอีกครั้ง</button>}
+            <QuizBack />
           </div>
         </Shell>
       );
     }
-    // While showing feedback, keep showing the question just answered.
-    const shown = q;
-    const idx = feedback ? feedback.answered : me.answered + 1;
-    const pct = ((feedback ? feedback.answered : me.answered) / me.total) * 100;
-    return (
-      <Shell subtitle={`ทีม ${team.name}`}>
-        <div className="row" style={{ margin: '14px 0 10px' }}>
-          <button className="btn small ghost" style={{ background: '#fff' }} onClick={() => setView('hunt')}>🧭 ล่าสมบัติ & ภารกิจทีม</button>
-          <button className="btn small ghost" style={{ background: '#fff' }} onClick={() => setView('market')}>🛒 ตลาด</button>
-        </div>
-        <div className="card">
-          <div className="row" style={{ justifyContent: 'space-between' }}>
-            <strong>ข้อ {Math.min(idx, me.total)} / {me.total}</strong>
-            <span className="muted">{participant.name}</span>
-          </div>
-          <div className="progress"><i style={{ width: `${pct}%` }} /></div>
 
-          {shown && (
-            <>
-              {shown.image_url && <img className="qimg" src={shown.image_url} alt="" />}
-              <h2 style={{ fontSize: 19 }}>{shown.prompt}</h2>
-              {shown.options.map((o, i) => {
-                let cls = 'opt';
-                if (feedback) {
-                  if (i === feedback.correctIndex) cls += ' right';
-                  else if (i === feedback.selected) cls += ' wrong';
-                } else if (selected === i) cls += ' sel';
-                return (
-                  <button key={i} className={cls} disabled={!!feedback || busy} onClick={() => setSelected(i)}>
-                    <span className="letter">{LETTERS[i]}</span>
-                    <span>{o}</span>
-                  </button>
-                );
-              })}
-            </>
-          )}
+    if (participant.status === 'in_progress') {
+      const q = me.current;
+      if (!q && !feedback) {
+        return (
+          <Shell subtitle={subtitle} onHome={goHome}>
+            <div className="card center">
+              {!me.game.open && me.answered < me.total ? (
+                <>
+                  <h2>เกมปิดแล้ว</h2>
+                  <p className="muted">ติดต่อทีมงานผู้จัดหากต้องการเล่นต่อ</p>
+                  <button className="btn ghost" onClick={() => load()}>ตรวจสอบอีกครั้ง</button>
+                </>
+              ) : (<><div className="spinner" /><p className="muted">กำลังสรุปคะแนน…</p></>)}
+              {err && <div className="error">{err}</div>}
+            </div>
+          </Shell>
+        );
+      }
+      // While showing feedback, keep showing the question just answered.
+      const shown = q;
+      const idx = feedback ? feedback.answered : me.answered + 1;
+      const pct = ((feedback ? feedback.answered : me.answered) / me.total) * 100;
+      return (
+        <Shell subtitle={subtitle} onHome={goHome}>
+          <div className="card">
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <strong>ข้อ {Math.min(idx, me.total)} / {me.total}</strong>
+              <span className="muted">{participant.name}</span>
+            </div>
+            <div className="progress"><i style={{ width: `${pct}%` }} /></div>
 
-          {feedback && (
-            <>
+            {shown && (
+              <>
+                {shown.image_url && <img className="qimg" src={shown.image_url} alt="" />}
+                <h2 style={{ fontSize: 19 }}>{shown.prompt}</h2>
+                {shown.options.map((o, i) => {
+                  let cls = 'opt';
+                  if (feedback) {
+                    if (i === feedback.correctIndex) cls += ' right';
+                    else if (i === feedback.selected) cls += ' wrong';
+                  } else if (selected === i) cls += ' sel';
+                  return (
+                    <button key={i} className={cls} disabled={!!feedback || busy} onClick={() => setSelected(i)}>
+                      <span className="letter">{LETTERS[i]}</span>
+                      <span>{o}</span>
+                    </button>
+                  );
+                })}
+              </>
+            )}
+
+            {feedback && (
               <div className={`verdict ${feedback.isCorrect ? 'ok' : 'bad'}`}>
                 {feedback.isCorrect ? `ถูกต้อง! +${me.game.tokensPerCorrect} โทเคน` : 'ยังไม่ถูกนะ ข้อที่ถูกคือข้อที่ไฮไลต์สีเขียว'}
               </div>
-            </>
-          )}
-          {err && <div className="error" style={{ marginTop: 12 }}>{err}</div>}
-          <div style={{ marginTop: 14 }}>
-            {!feedback ? (
-              <button className="btn" disabled={selected === null || busy} onClick={submit}>
-                {busy ? 'กำลังส่ง…' : 'ส่งคำตอบ'}
-              </button>
-            ) : (
-              <button className="btn green" disabled={busy} onClick={next}>
-                {feedback.answered >= me.total ? 'ดูคะแนนของฉัน' : 'ข้อต่อไป'}
-              </button>
             )}
+            {err && <div className="error" style={{ marginTop: 12 }}>{err}</div>}
+            <div style={{ marginTop: 14 }}>
+              {!feedback ? (
+                <button className="btn" disabled={selected === null || busy} onClick={submit}>
+                  {busy ? 'กำลังส่ง…' : 'ส่งคำตอบ'}
+                </button>
+              ) : (
+                <button className="btn green" disabled={busy} onClick={next}>
+                  {feedback.answered >= me.total ? 'ดูคะแนนของฉัน' : 'ข้อต่อไป'}
+                </button>
+              )}
+            </div>
           </div>
+        </Shell>
+      );
+    }
+
+    // Result (completed)
+    const r = me.result ?? { correct: 0, tokens: 0 };
+    return (
+      <Shell subtitle={subtitle} onHome={goHome}>
+        <div className="card center stack">
+          <h2>เล่นจบแล้ว เก่งมาก {participant.name}! 🎉</h2>
+          <div className="bigscore">{r.correct}/{me.total}</div>
+          <div className="muted">คุณได้ <strong>{r.tokens}</strong> โทเคน เข้ากระเป๋าทีมเรียบร้อย</div>
+          <hr style={{ border: 0, borderTop: '1px dashed #eadfc4', width: '100%' }} />
+          <div className="muted">โทเคนรวมของทีม {team.name}</div>
+          <div className="coin-row"><Coin size={44} /> {team.balance}</div>
+          {err && <div className="error">{err}</div>}
+          <button className="btn green" onClick={() => { setHuntTab('hunt'); setView('hunt'); }}>🧭 ไปล่าสมบัติ & ภารกิจทีม</button>
+          <button className="btn green" onClick={() => setView('market')}>🛒 ตลาดของ</button>
+          <QuizBack />
         </div>
+        <GoalCard goal={me.goal} mine />
       </Shell>
     );
   }
 
-  // 5. Result (completed)
-  const r = me.result ?? { correct: 0, tokens: 0 };
+  // ---- Home: who am I + three big buttons
+  const initial = Array.from(participant.name)[0] ?? '🏕️';
   return (
-    <Shell subtitle={`ทีม ${team.name}`}>
-      <div className="card center stack">
-        <h2>เล่นจบแล้ว เก่งมาก {participant.name}!</h2>
-        <div className="bigscore">{r.correct}/{me.total}</div>
-        <div className="muted">คุณได้ <strong>{r.tokens}</strong> โทเคน เข้ากระเป๋าทีมเรียบร้อย</div>
-        <hr style={{ border: 0, borderTop: '1px dashed #f1e8d0', width: '100%' }} />
-        <div className="muted">โทเคนรวมของทีม {team.name}</div>
-        <div className="coin-row"><Coin size={44} /> {team.balance}</div>
-        {err && <div className="error">{err}</div>}
-        <button className="btn green" onClick={() => setView('hunt')}>🧭 กิจกรรม: ล่าสมบัติ & ภารกิจทีม</button>
-        <button className="btn green" onClick={() => setView('market')}>🛒 ตลาด: ดูของ ราคา และสต็อก</button>
-        <button className="btn" onClick={() => setView('wallet')}>ดูกระเป๋าทีมและของที่แลกได้</button>
-        <button className="btn ghost" onClick={logout}>ออกจากระบบ</button>
+    <Shell subtitle={subtitle}>
+      <div className="card">
+        <div className="profile">
+          <div className="avatar" aria-hidden>{initial}</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.25 }}>สวัสดี {participant.name}</div>
+            {participant.fullName && participant.fullName !== participant.name && <div className="muted" style={{ fontSize: 14 }}>{participant.fullName}</div>}
+            <div className="row" style={{ marginTop: 8, gap: 6 }}>
+              <span className={`role ${me.isLeader ? 'leader' : 'member'}`}>{me.isLeader ? '⭐ หัวหน้าทีม' : '🏕️ สมาชิกทีม'}</span>
+              <span className="pill">ทีม {team.name}</span>
+              {me.squad && <span className="pill" style={{ background: '#f9dca0' }}>{me.squad}</span>}
+            </div>
+          </div>
+        </div>
+        <div className="row" style={{ marginTop: 12, justifyContent: 'space-between' }}>
+          <span className="muted">{me.isLeader ? 'คุณมีสิทธิ์แลกสินค้าให้ทีม' : 'หัวหน้าทีมเป็นผู้แลกสินค้า'}</span>
+          <span className="coin-row" style={{ fontSize: 22, gap: 6 }}><Coin size={26} /> {team.balance}</span>
+        </div>
       </div>
-      <GoalCard goal={me.goal} mine />
+
+      <div className="tiles">
+        <button className="tile fire" onClick={() => setView('missions')}>
+          <span className="t-icon"><IconMission size={76} /></span>
+          <span><div className="t-title">เริ่มภารกิจ</div><div className="t-desc">ควิซ · ล่าสมบัติ · ภารกิจทีม</div></span>
+          <span className="t-go" aria-hidden>›</span>
+        </button>
+        <button className="tile forest" onClick={() => setView('team')}>
+          <span className="t-icon"><IconTeam size={76} /></span>
+          <span><div className="t-title">สมาชิกในทีม</div><div className="t-desc">ใครอยู่ทีมเรา ใครทำหน้าที่อะไร</div></span>
+          <span className="t-go" aria-hidden>›</span>
+        </button>
+        <button className="tile wood" onClick={() => setView('market')}>
+          <span className="t-icon"><IconShop size={76} /></span>
+          <span><div className="t-title">ตลาดของ</div><div className="t-desc">ดูของ ราคา สต็อก และของของทีม</div></span>
+          <span className="t-go" aria-hidden>›</span>
+        </button>
+      </div>
+      <p className="center" style={{ marginTop: 18 }}>
+        <button className="btn small ghost" onClick={logout}>ไม่ใช่คุณ? ออกจากระบบ</button>
+      </p>
     </Shell>
+  );
+}
+
+/** Team page: who is in the team, who leads, which squad each person is in. */
+function TeamView({ me, onAuthLost }: { me: Me; onAuthLost: (e: unknown) => void }) {
+  type Member = { name: string; isLeader: boolean; isMe: boolean; squad: string | null; quizDone: boolean };
+  const [d, setD] = useState<{ team: string; total: number; quizDone: number; squads: string[]; members: Member[] } | null>(null);
+  const [err, setErr] = useState('');
+  const cb = useRef(onAuthLost);
+  cb.current = onAuthLost;
+  useEffect(() => {
+    api('/api/team').then(setD).catch((e) => { cb.current(e); setErr((e as Error).message); });
+  }, []);
+  if (!d) return <div className="card center">{err ? <div className="error">{err}</div> : <div className="spinner" />}</div>;
+
+  const leader = d.members.find((m) => m.isLeader);
+  const groups: { title: string; list: Member[] }[] = [
+    ...d.squads.map((sq) => ({ title: sq, list: d.members.filter((m) => m.squad === sq) })),
+    { title: 'ยังไม่ได้อยู่สควอด', list: d.members.filter((m) => !m.squad) },
+  ].filter((g) => g.list.length > 0);
+  const row = (m: Member, k: number) => (
+    <div className="m-row" key={k}>
+      <div className={`m-av ${m.isLeader ? 'leader' : ''}`} aria-hidden>{Array.from(m.name)[0] ?? '🏕️'}</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <strong>{m.name}</strong>{m.isMe && <span className="me-tag">คุณ</span>}
+        <div className="muted" style={{ fontSize: 14 }}>{m.isLeader ? '⭐ หัวหน้าทีม · แลกสินค้าให้ทีม' : '🏕️ สมาชิก · ทำภารกิจเก็บโทเคน'}</div>
+      </div>
+      <span title={m.quizDone ? 'เล่นควิซจบแล้ว' : 'ยังไม่จบควิซ'} style={{ fontSize: 20 }}>{m.quizDone ? '✅' : '⏳'}</span>
+    </div>
+  );
+  return (
+    <>
+      <div className="card center">
+        <h2 style={{ fontSize: 22 }}>👥 สมาชิกทีม {d.team}</h2>
+        <div className="muted">ทั้งหมด {d.total} คน · เล่นควิซจบแล้ว {d.quizDone}/{d.total}</div>
+        <div className="progress" style={{ margin: '10px 0 0' }}><i style={{ width: `${d.total ? (d.quizDone / d.total) * 100 : 0}%` }} /></div>
+      </div>
+      <div className="card" style={{ border: '3px solid #f4b860', background: '#fff9e8' }}>
+        <div className="muted" style={{ marginBottom: 4 }}>⭐ หัวหน้าทีม</div>
+        {leader ? (
+          <div className="members">{row(leader, -1)}</div>
+        ) : (
+          <div className="muted">ยังไม่ได้กำหนดหัวหน้าทีม · สอบถามทีมงาน</div>
+        )}
+        <div className="muted" style={{ fontSize: 14, marginTop: 6 }}>หัวหน้าทีมเป็นผู้ใช้โทเคนทีมแลกสินค้าที่ตลาด</div>
+      </div>
+      {groups.map((g) => (
+        <div className="card members" key={g.title}>
+          <strong>🏕️ {g.title} <span className="muted" style={{ fontWeight: 400 }}>({g.list.length} คน)</span></strong>
+          <div style={{ marginTop: 4 }}>{g.list.map(row)}</div>
+        </div>
+      ))}
+      {d.squads.length > 0 && <p className="muted center" style={{ margin: '0 0 14px' }}>คนในสควอดเดียวกันช่วยกันรวมเบาะแสภารกิจทีมและกระจายกันหาจุดล่าสมบัติ</p>}
+    </>
   );
 }
 
@@ -388,10 +519,10 @@ function GoalCard({ goal, mine }: { goal: Goal; mine?: boolean }) {
   );
 }
 
-function Shell({ children, subtitle }: { children: React.ReactNode; subtitle?: string }) {
+function Shell({ children, subtitle, onHome }: { children: React.ReactNode; subtitle?: string; onHome?: () => void }) {
   return (
     <div className="app">
-      <Hero subtitle={subtitle} />
+      <Hero subtitle={subtitle} onHome={onHome} />
       <main className="main">{children}</main>
     </div>
   );
@@ -399,8 +530,8 @@ function Shell({ children, subtitle }: { children: React.ReactNode; subtitle?: s
 
 
 /** Activities screen: tabs for the treasure hunt and the team puzzles. A scanned QR code always opens the hunt tab. */
-function Activities(props: { pending: string; clearPending: () => void; onBalance: () => void; onAuthLost: (e: unknown) => void }) {
-  const [tab, setTab] = useState<'hunt' | 'puzzle'>('hunt');
+function Activities(props: { initialTab?: 'hunt' | 'puzzle'; pending: string; clearPending: () => void; onBalance: () => void; onAuthLost: (e: unknown) => void }) {
+  const [tab, setTab] = useState<'hunt' | 'puzzle'>(props.initialTab ?? 'hunt');
   return (
     <>
       <div className="tabs" style={{ marginTop: 14 }}>
@@ -770,42 +901,6 @@ function MarketView({ me, onRefresh }: { me: Me; onRefresh: () => unknown }) {
         </div>
       )}
       <button className="btn ghost" onClick={() => { refresh.current(); }}>รีเฟรชสต็อกตอนนี้</button>
-    </>
-  );
-}
-
-function Wallet({ me }: { me: Me }) {
-  const [tab, setTab] = useState<'history' | 'market'>('history');
-  return (
-    <>
-      <GoalCard goal={me.goal} mine />
-      <div className="card center">
-        <div className="muted">โทเคนของทีม</div>
-        <div className="coin-row"><Coin size={44} /> {me.team.balance}</div>
-        <p className="muted" style={{ marginBottom: 0 }}>
-          ให้ตัวแทนทีมแจ้งทีมงานเพื่อแลกของ ทีมงานจะเป็นผู้บันทึกการแลกเท่านั้น
-        </p>
-      </div>
-      <div className="tabs">
-        <button className={tab === 'history' ? 'on' : ''} onClick={() => setTab('history')}>ประวัติการแลก</button>
-        <button className={tab === 'market' ? 'on' : ''} onClick={() => setTab('market')}>ของที่แลกได้</button>
-      </div>
-      <div className="card">
-        {tab === 'history' ? (
-          me.history.length === 0 ? <p className="muted center" style={{ margin: 0 }}>ยังไม่มีการแลกของ</p> : (
-            <ul className="list">
-              {me.history.map((h, i) => (
-                <li key={i}>
-                  <span>{h.item} ×{h.qty}<br /><span className="muted">{fmtTime(h.at)}</span></span>
-                  <strong>−{h.cost}</strong>
-                </li>
-              ))}
-            </ul>
-          )
-        ) : (
-          <MarketList me={me} />
-        )}
-      </div>
     </>
   );
 }
