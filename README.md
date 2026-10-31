@@ -7,7 +7,7 @@ The organiser runs everything from a password-protected `/admin` page.
 
 ## 0. New: Treasure Hunt mode
 
-Besides the 5-question quiz, teams can **hunt for secret spots around the camp**. Each spot has a code printed as a QR
+Besides the 5-question quiz, teams can take **team photo missions** and **hunt for secret spots around the camp**. Each spot has a code printed as a QR
 card. A player scans it with the phone camera (opens `/?spot=CODE`, asks for login if needed) or types the code under
 **🧭 ล่าสมบัติ**. The **team** earns that spot's tokens **once** (first teammate to find it); other teammates see it as found.
 Other teams can find the same spot too. Tokens go into the same team wallet and are spent at the Market.
@@ -28,22 +28,11 @@ Other teams can find the same spot too. Tokens go into the same team wallet and 
   Before that they show 🔒 to players and the database refuses the redemption. 0 = goal off. Progress is shown to players (wallet / result / hunt screens) and on `/admin/live`.
 - **Co-op hunt spots:** in **Admin → ล่าสมบัติ** set "จุดร่วมมือ: ต้องสแกนกี่คน" (e.g. 3) and a time window (e.g. 180 s) on a spot. The squad only gets the tokens when that many
   *different* members scan it inside the window. Players see "สแกนแล้ว! รอเพื่อนอีก N คน" and a live counter. A squad smaller than the requirement is only asked for as many people as it has.
-- **Team puzzles (🧩 ภารกิจทีม):** **Admin → ภารกิจทีม**: a question + 2–8 clues + 4 options. Each squad member sees only *their share* of the clues (spread evenly, stable per person), so the
-  squad has to meet and combine them. Anyone can submit the squad's answer; attempts are shared by the squad (default 2) and enforced by the database; the correct answer is never sent to phones.
-  Tokens go to the team wallet once per squad. Puzzles have **their own open/close switch** in **Admin → ภาพรวม** (separate from the quiz and the hunt; default closed).
-  Tip: write at least as many clues as there are people in a squad (4–5) so everyone has something to share.
-- **Player app layout (camp theme):** after login the home screen shows who you are (nick name, team, squad, **⭐ หัวหน้าทีม** badge for the leader) and only three big buttons: **เริ่มภารกิจ** (quiz / treasure hunt / team puzzles), **สมาชิกในทีม** (everyone in the team with their role, squad and quiz progress — nick names only) and **ตลาดของ**. Every other page has a 🏠 home button at the top-left of the header. The quiz no longer has a separate "is this you?" step: the identity card on the home screen replaces it (**ไม่ใช่คุณ? ออกจากระบบ**).
-- **Look & feel:** daytime “Agency Camp · Food” theme — forest green, navy blue, white and earth tones (sand, terracotta, wood), sky/hills/tent header with a 🏠 home button.
-- **Admin look & feel:** same daytime camp theme as the player app. **ภาพรวม** now has stat tiles, four on/off switch cards (quiz / hunt / team puzzles / leader market), the team goal, and a card per team (balance, ⭐ leader, quiz progress). Messages appear as a toast at the bottom of the screen (so they are never off-screen). **± ปรับโทเคนด้วยมือ** opens a pop-up with ＋/－ buttons, quick amounts, reason suggestions, a balance preview and inline error messages (it fixes "can't save": the old form sat at the bottom of the page and its errors showed at the top). `/admin/live` uses the daytime theme too.
-- **Profile pictures:** tap the circle on the home card to take/choose a photo (centre-cropped and shrunk to a small square in the browser, stored in the public `avatars` bucket, max 1.5 MB, real image bytes only) or pick one of 36 emoji. Teammates see it on the team page; admins can remove a photo (**ลบรูปโปรไฟล์**). Photos are visible to teammates and staff — tell players to use appropriate pictures. Run `supabase/avatars.sql` on an existing database.
-- **Team leaders redeem for the team:** in **Admin → ทีมและผู้เล่น** mark one player per team as leader (⭐ button, tick-box in the add/edit form, or a `Leader` column in the Excel import: 1/yes/หัวหน้า).
-  When **Admin → ภาพรวม → ตลาด: หัวหน้าทีมแลกเอง** is switched on (default off), the leader sees a **แลกสินค้านี้** button per item (quantity + confirmation) and spends the team's tokens; other players can only browse.
-  Redemptions are all-or-nothing in the database (balance, stock, team goal checked; a retry is never charged twice) and are logged as `leader:<nick name>`. Staff can still redeem on a team's behalf in **ตลาด / แลกของ**.
-- **Team inventory:** players open 🛒 ตลาด → **🎒 ของของทีม** to see everything the team owns (picture, quantity, ⏳ waiting / ✅ handed over); the market list also shows “ทีมเรามีแล้ว ×N”.
-- **Preparing and handing over goods (Admin → ตลาด / แลกของ → 📦 เตรียมของ / เบิกของ):** totals per item (redeemed / handed over / still to prepare, and which teams are waiting) plus a per-team table with **จ่ายแล้ว** buttons (staff or admin). History and the redemptions CSV show the hand-over time.
-- **Players can browse the market any time** (button 🛒 on the confirm, quiz and result screens): picture, price in tokens, and stock status (✅ in stock / ⚠️ low (≤3) / ⛔ sold out, shown dimmed at the bottom); special items show 🔒 until the team goal is met. Stock refreshes every 15 s.
-- **Market pictures:** in **Admin → ตลาด / แลกของ → แก้ไข/เพิ่มสินค้า** choose an image file (PNG/JPG/WebP; a phone photo is fine — it is shrunk in the browser before upload). Players see it as a thumbnail in **ของที่แลกได้** (tap to enlarge). Images are stored in the public `question-images` storage bucket.
-- **Existing database?** run, in order, `supabase/hunt.sql`, `supabase/squads.sql`, `supabase/coop.sql`, `supabase/ids.sql`, `supabase/items.sql`, `supabase/leader.sql`, `supabase/avatars.sql` (all safe to re-run).
+- **Team photo missions (📸 ภารกิจทีม):** **Admin → ภารกิจทีม**: define photo challenges (person / object / food / place / special) with instructions, an optional example picture and tokens.
+  The **whole team** is in the photo with the subject and **only the team leader can upload it** (checked in the app, the API and the database); the mission succeeds on upload and the team wallet is credited once per mission.
+  The gallery in admin shows every photo; **ปฏิเสธภาพนี้** (admin) takes the tokens back, deletes the photo and lets the team upload again. A team without a leader can't submit. Photos live in the public `mission-photos` bucket (random file names) —
+  tell teams to take appropriate pictures and delete them after the event. Uses the same on/off switch as before (**ภารกิจทีม**, default closed). Run `supabase/photos.sql` on an existing database. (The older clue-splitting puzzle tables stay in the database unused.)
+- **Existing database?** run, in order, `supabase/hunt.sql`, `supabase/squads.sql`, `supabase/coop.sql`, `supabase/ids.sql`, `supabase/items.sql`, `supabase/leader.sql`, `supabase/avatars.sql`, `supabase/photos.sql` (all safe to re-run).
 - Hunt and puzzle history can be exported (**ส่งออก CSV → ล่าสมบัติ / ภารกิจทีม**).
 
 > **Status — please read.** The code was written and reviewed carefully, but in the environment where it

@@ -22,3 +22,12 @@ export function sniffImage(b: Uint8Array): 'jpg' | 'png' | 'webp' | null {
   if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50) return 'webp';
   return null;
 }
+
+/** Best-effort delete of a file in a PUBLIC bucket given its public URL (used for team mission photos). */
+export async function removePublicFile(bucket: string, url: string | null | undefined) {
+  const mark = `/object/public/${bucket}/`;
+  const i = url ? url.indexOf(mark) : -1;
+  if (!url || i < 0) return;
+  const path = decodeURIComponent(url.slice(i + mark.length).split('?')[0]);
+  await db().storage.from(bucket).remove([path]).catch(() => {});
+}

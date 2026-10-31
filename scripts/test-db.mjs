@@ -6,7 +6,7 @@
 // Requires the full schema (schema.sql, or hunt.sql + squads.sql + coop.sql on an older database) and at least one
 // ACTIVE question (the seed provides 5). The test briefly opens the quiz/hunt/puzzle switches and restores them at the end.
 //
-//   1 quiz  2 market  3 anon (quiz)  4 hunt  5 squads  6 co-op spots  7 team goal  8 team puzzles  10 leaders/hand-over  9 anon (new features)
+//   1 quiz  2 market  3 anon (quiz)  4 hunt  5 squads  6 co-op spots  7 team goal  8 team photo missions  10 leaders/hand-over  9 anon (new features)
 import { createClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
 
@@ -23,7 +23,7 @@ const check = (name, cond, extra = '') => {
 const rpc = async (fn, args) => { const { data, error } = await sb.rpc(fn, args); return { data, error: error?.message ?? null }; };
 const balance = async (team) => (await sb.rpc('team_balance', { p_team: team })).data;
 
-const created = { team: null, team2: null, teams: [], squads: [], participants: [], items: [], spots: [], puzzles: [] };
+const created = { team: null, team2: null, teams: [], squads: [], participants: [], items: [], spots: [], photoMissions: [] };
 let before = null; // game_settings to restore
 const uid = () => randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
 
@@ -143,18 +143,8 @@ try {
     if (error) throw new Error('create spot: ' + error.message);
     created.spots.push(data.id); return data;
   };
-  const mkPuzzle = async (extra = {}) => {
-    const row = {
-      prompt: 'TEST puzzle ' + uid(), clues: ['a', 'b', 'c', 'd'], options: ['1', '2', '3', '4'],
-      correct_index: 1, tokens: 20, max_attempts: 2, ...extra,
-    };
-    const { data, error } = await sb.from('team_puzzles').insert(row).select().single();
-    if (error) throw new Error('create puzzle: ' + error.message);
-    created.puzzles.push(data.id); return data;
-  };
   const setSwitches = (patch) => sb.from('game_settings').update(patch).eq('id', 1);
   const claim = (person, code) => rpc('claim_spot', { p_participant: person, p_secret: code });
-  const submit = (person, puzzle, sel) => rpc('submit_puzzle', { p_participant: person, p_puzzle: puzzle, p_selected: sel });
   const count = async (table, filter) => {
     let q = sb.from(table).select('id', { count: 'exact', head: true });
     for (const [k, v] of Object.entries(filter)) q = v === null ? q.is(k, null) : q.eq(k, v);
@@ -255,38 +245,37 @@ try {
   check('goal 0 = always met', (await rpc('team_goal_met', { p_team: tEmpty })).data === true);
   check('goal outside 0-100 is rejected', !!(await sb.from('game_settings').update({ team_goal_pct: 101 }).eq('id', 1)).error);
 
-  console.log('\n8. Team puzzles: own switch, shared attempts, once per squad');
-  const tP = await mkTeam('puzzle');
-  const sqPX = await mkSquad(tP, 'TEST PX'), sqPY = await mkSquad(tP, 'TEST PY');
-  const [p_1, p_2] = [await mkMember(tP, sqPX), await mkMember(tP, sqPX)];
-  const p_3 = await mkMember(tP, sqPY);
-  const pz = await mkPuzzle({ correct_index: 1, tokens: 20, max_attempts: 2 });
-  await setSwitches({ hunt_open: true, puzzle_open: false });
-  check('puzzles closed while the hunt is open (separate switches)', (await submit(p_1, pz.id, 1)).error?.includes('PUZZLE_CLOSED'));
-  await setSwitches({ hunt_open: false, puzzle_open: true });
-  check('invalid option is rejected', (await submit(p_1, pz.id, 7)).error?.includes('BAD_INPUT'));
-  r = await submit(p_1, pz.id, 0);
-  check('wrong answer (puzzles open while the hunt is closed): not solved, 1 attempt left, no tokens', !r.error && r.data.solved === false && r.data.attempts_left === 1 && (await balance(tP)) === 0);
-  r = await submit(p_3, pz.id, 1);
-  check('other squad has its own attempts and can solve (+20)', r.data?.solved === true && (await balance(tP)) === 20);
-  r = await submit(p_2, pz.id, 2);
-  check('squad attempts are shared: teammate\'s wrong answer uses the last attempt', r.data?.attempts_left === 0);
-  check('no attempts left: even a correct answer is refused', (await submit(p_1, pz.id, 1)).error?.includes('NO_ATTEMPTS') && (await balance(tP)) === 20);
-  const pz2 = await mkPuzzle({ correct_index: 2, tokens: 8, max_attempts: 3 });
-  const raceP = await Promise.all([p_1, p_2, p_1, p_2, p_1, p_2].map((x) => submit(x, pz2.id, 2)));
-  check('parallel correct answers = one credit, one solve row', raceP.every((x) => !x.error)
-    && (await count('puzzle_solves', { puzzle_id: pz2.id, squad_id: sqPX })) === 1 && (await balance(tP)) === 28, `(balance ${await balance(tP)})`);
-  check('solved puzzle replays as already solved', (await submit(p_2, pz2.id, 0)).data?.already === true);
-  const pz3 = await mkPuzzle({ correct_index: 0, max_attempts: 2 });
-  const raceW = await Promise.all([p_1, p_2, p_1, p_2, p_1, p_2].map((x) => submit(x, pz3.id, 3)));
-  check('parallel wrong answers never exceed the attempt limit', (await count('puzzle_attempts', { puzzle_id: pz3.id, squad_id: sqPX })) === 2
-    && raceW.filter((x) => !x.error).length === 2, `(attempts ${await count('puzzle_attempts', { puzzle_id: pz3.id, squad_id: sqPX })})`);
-  const pzOff = await mkPuzzle({ active: false });
-  check('inactive puzzle cannot be answered', !!(await submit(p_1, pzOff.id, 0)).error);
-  check('puzzle needs 2-8 clues and 4 options', !!(await sb.from('team_puzzles').insert({ prompt: 'TEST bad', clues: ['only one'], options: ['1', '2', '3', '4'], correct_index: 0 })).error);
-  const pz4 = await mkPuzzle({ correct_index: 0 });
+  console.log('\n8. Team photo missions: leader-only upload, own switch, once per team, reject = refund');
+  const tP = await mkTeam('photo');
+  const ldr = await mkMember(tP), mem = await mkMember(tP);
+  await sb.from('participants').update({ is_leader: true }).eq('id', ldr);
+  const tP2 = await mkTeam('photo2');
+  const ldr2 = await mkMember(tP2);
+  await sb.from('participants').update({ is_leader: true }).eq('id', ldr2);
+  const mk1 = (await sb.from('photo_missions').insert({ title: 'TEST photo ' + uid(), tokens: 20, category: 'person' }).select().single()).data;
+  created.photoMissions.push(mk1.id);
+  const sendPhoto = (who, mission = mk1.id) => rpc('submit_photo', { p_participant: who, p_mission: mission, p_url: 'https://example.invalid/test-' + uid() + '.jpg' });
   await setSwitches({ puzzle_open: false });
-  check('closing the puzzle switch blocks answers again', (await submit(p_3, pz4.id, 0)).error?.includes('PUZZLE_CLOSED'));
+  check('photo mission closed while the "team mission" switch is off', (await sendPhoto(ldr)).error?.includes('PUZZLE_CLOSED'));
+  await setSwitches({ puzzle_open: true, hunt_open: false });
+  check('a non-leader cannot upload (database rule)', (await sendPhoto(mem)).error?.includes('NOT_LEADER'));
+  let ph = await sendPhoto(ldr);
+  check('leader upload succeeds and credits the team once (own switch, hunt closed)', !ph.error && ph.data.already === false && ph.data.tokens === 20 && (await balance(tP)) === 20);
+  ph = await sendPhoto(ldr);
+  check('a second upload for the same mission changes nothing', ph.data?.already === true && (await balance(tP)) === 20);
+  check('another team can complete the same mission', (await sendPhoto(ldr2)).data?.already === false && (await balance(tP2)) === 20);
+  const racePh = await Promise.all(Array.from({ length: 6 }, () => sendPhoto(ldr)));
+  check('parallel uploads never double-credit', racePh.every((x) => !x.error) && (await count('photo_submissions', { mission_id: mk1.id, team_id: tP, status: 'approved' })) === 1 && (await balance(tP)) === 20);
+  const off = (await sb.from('photo_missions').insert({ title: 'TEST off ' + uid(), active: false }).select().single()).data;
+  created.photoMissions.push(off.id);
+  check('an inactive mission cannot be submitted', !!(await sendPhoto(ldr, off.id)).error);
+  const sub1 = (await sb.from('photo_submissions').select('id').eq('team_id', tP).eq('status', 'approved').single()).data;
+  const rj = await rpc('reject_photo', { p_submission: sub1.id, p_reason: 'test', p_actor: 'test' });
+  check('rejecting a photo takes the tokens back', !rj.error && rj.data.already === false && (await balance(tP)) === 0);
+  check('rejecting twice does nothing more', (await rpc('reject_photo', { p_submission: sub1.id, p_reason: 'again', p_actor: 'test' })).data?.already === true && (await balance(tP)) === 0);
+  check('after a rejection the team can upload again (+20)', (await sendPhoto(ldr)).data?.already === false && (await balance(tP)) === 20);
+  check('mission category is validated', !!(await sb.from('photo_missions').insert({ title: 'TEST bad', category: 'nope' })).error);
+  await setSwitches({ puzzle_open: false });
 
   console.log('\n10. Team leaders and goods hand-over (database rules)');
   const tL = await mkTeam('leader');
@@ -306,7 +295,7 @@ try {
   if (!process.env.SUPABASE_ANON_KEY) console.log('  SKIP  set SUPABASE_ANON_KEY to test that the public key reaches none of the new tables/functions');
   else {
     const anon = createClient(url, process.env.SUPABASE_ANON_KEY, { auth: { persistSession: false } });
-    for (const t of ['squads', 'hunt_spots', 'hunt_claims', 'hunt_scans', 'team_puzzles', 'puzzle_attempts', 'puzzle_solves']) {
+    for (const t of ['squads', 'hunt_spots', 'hunt_claims', 'hunt_scans', 'photo_missions', 'photo_submissions']) {
       const { data, error } = await anon.from(t).select('*').limit(1);
       check(`anon cannot read ${t}`, !!error || (data ?? []).length === 0);
     }
@@ -314,7 +303,7 @@ try {
     const { data: still } = await sb.from('hunt_spots').select('tokens').eq('id', spotA.id).single();
     check('anon cannot change hunt spots', !!w.error || still.tokens !== 9999);
     check('anon cannot call claim_spot', !!(await anon.rpc('claim_spot', { p_participant: h1, p_secret: spotB.secret })).error);
-    check('anon cannot call submit_puzzle', !!(await anon.rpc('submit_puzzle', { p_participant: p_1, p_puzzle: pz.id, p_selected: 1 })).error);
+    check('anon cannot call submit_photo / reject_photo', !!(await anon.rpc('submit_photo', { p_participant: h1, p_mission: mk1.id, p_url: 'https://example.invalid/x.jpg' })).error && !!(await anon.rpc('reject_photo', { p_submission: sub1.id, p_reason: 'x', p_actor: 'anon' })).error);
     check('anon cannot call team_goal_met', !!(await anon.rpc('team_goal_met', { p_team: tG })).error);
   }
 } catch (e) {
@@ -323,8 +312,7 @@ try {
   // Clean up in dependency order.
   const teamIds = [created.team, created.team2, ...created.teams].filter(Boolean);
   if (teamIds.length) {
-    await sb.from('puzzle_attempts').delete().in('team_id', teamIds);
-    await sb.from('puzzle_solves').delete().in('team_id', teamIds);
+    await sb.from('photo_submissions').delete().in('team_id', teamIds);
     await sb.from('hunt_scans').delete().in('team_id', teamIds);
     await sb.from('hunt_claims').delete().in('team_id', teamIds);
     await sb.from('token_ledger').delete().in('team_id', teamIds);
@@ -333,7 +321,7 @@ try {
   if (created.participants.length) await sb.from('participants').delete().in('id', created.participants);
   if (created.squads.length) await sb.from('squads').delete().in('id', created.squads);
   if (created.spots.length) await sb.from('hunt_spots').delete().in('id', created.spots);
-  if (created.puzzles.length) await sb.from('team_puzzles').delete().in('id', created.puzzles);
+  if (created.photoMissions.length) await sb.from('photo_missions').delete().in('id', created.photoMissions);
   if (created.items.length) await sb.from('market_items').delete().in('id', created.items);
   if (teamIds.length) await sb.from('teams').delete().in('id', teamIds);
   await sb.from('audit_log').delete().eq('actor', 'test');

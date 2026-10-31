@@ -79,9 +79,9 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
   const [msg, setMsg] = useState('');
   const closeMsg = useCallback(() => setMsg(''), []);
   const tabs: [Tab, string, string, boolean][] = [
-    ['overview', '📊', 'ภาพรวม', true], ['market', '🛒', 'ตลาด / แลกของ', true],
+    ['overview', '📊', 'ภาพรวม', true], ['market', '🛒', 'ตลาดสินค้า', true],
     ['people', '👥', 'ทีมและผู้เล่น', role === 'admin'], ['questions', '🍜', 'คำถามควิซ', role === 'admin'],
-    ['hunt', '🧭', 'ล่าสมบัติ', role === 'admin'], ['puzzles', '🧩', 'ภารกิจทีม', role === 'admin'],
+    ['hunt', '🧭', 'ล่าสมบัติ', role === 'admin'], ['puzzles', '📸', 'ภารกิจทีม', true],
     ['history', '📜', 'ประวัติ', role === 'admin'], ['export', '⬇️', 'ส่งออก CSV', role === 'admin'],
   ];
   return (
@@ -91,20 +91,24 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
           <a className="btn small" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }} href="/admin/live" target="_blank" rel="noreferrer">📺 จอใหญ่ (Live)</a>
           <button className="btn small" onClick={onLogout}>ออกจากระบบ</button>
         </>} />
-      <div className="admin">
-        <nav className="admin-tabs" aria-label="เมนูผู้จัด">
+      <div className="admin-layout">
+        <nav className="admin-nav" aria-label="เมนูผู้จัด">
           {tabs.filter((t) => t[3]).map(([k, icon, label]) => (
-            <button key={k} className={tab === k ? 'on' : ''} onClick={() => { setTab(k); setMsg(''); window.scrollTo({ top: 0 }); }}><span aria-hidden>{icon}</span>{label}</button>
+            <button key={k} className={tab === k ? 'on' : ''} onClick={() => { setTab(k); setMsg(''); window.scrollTo({ top: 0 }); }}>
+              <span className="n-ic" aria-hidden>{icon}</span><span className="n-label">{label}</span>
+            </button>
           ))}
         </nav>
+        <div className="admin">
         {tab === 'overview' && <Overview role={role} setMsg={setMsg} />}
         {tab === 'market' && <Market role={role} setMsg={setMsg} />}
         {tab === 'people' && <People setMsg={setMsg} />}
         {tab === 'questions' && <Questions setMsg={setMsg} />}
         {tab === 'hunt' && <Hunt setMsg={setMsg} />}
-        {tab === 'puzzles' && <Puzzles setMsg={setMsg} />}
+        {tab === 'puzzles' && <Missions role={role} setMsg={setMsg} />}
         {tab === 'history' && <History />}
         {tab === 'export' && <Export />}
+        </div>
       </div>
       <Toast msg={msg} onClose={closeMsg} />
     </>
@@ -115,8 +119,8 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
 const FLAGS: { key: 'is_open' | 'hunt_open' | 'puzzle_open' | 'market_open'; icon: string; title: string; desc: string; on: string; off: string }[] = [
   { key: 'is_open', icon: '🍜', title: 'ควิซทายอาหาร', desc: 'ผู้เล่นเริ่มและตอบคำถามได้', on: 'เปิดควิซแล้ว', off: 'ปิดควิซแล้ว' },
   { key: 'hunt_open', icon: '🧭', title: 'ล่าสมบัติ', desc: 'สแกน QR / กรอกรหัสตามจุด', on: 'เปิดล่าสมบัติแล้ว', off: 'ปิดล่าสมบัติแล้ว' },
-  { key: 'puzzle_open', icon: '🧩', title: 'ภารกิจทีม', desc: 'รวมเบาะแสในสควอดเพื่อตอบ', on: 'เปิดภารกิจทีมแล้ว', off: 'ปิดภารกิจทีมแล้ว' },
-  { key: 'market_open', icon: '🛒', title: 'ตลาด: หัวหน้าทีมแลกเอง', desc: 'หัวหน้าทีมกดแลกจากมือถือ (ทีมงานแลกแทนได้เสมอ)', on: 'เปิดให้หัวหน้าทีมแลกของแล้ว', off: 'ปิดการแลกของโดยหัวหน้าทีมแล้ว' },
+  { key: 'puzzle_open', icon: '📸', title: 'ภารกิจทีม', desc: 'ถ่ายภาพทั้งทีม หัวหน้าทีมอัปโหลด', on: 'เปิดภารกิจทีมแล้ว', off: 'ปิดภารกิจทีมแล้ว' },
+  { key: 'market_open', icon: '🛒', title: 'ตลาดสินค้า', desc: 'เปิดให้หัวหน้าทีมกดแลกจากมือถือ (ทีมงานแลกแทนได้เสมอ)', on: 'เปิดให้หัวหน้าทีมแลกของแล้ว', off: 'ปิดการแลกของโดยหัวหน้าทีมแล้ว' },
 ];
 
 function Overview({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
@@ -941,45 +945,71 @@ function Hunt({ setMsg }: { setMsg: (m: string) => void }) {
 }
 
 
-// ------------------------------------------------------------------- puzzles
-function Puzzles({ setMsg }: { setMsg: (m: string) => void }) {
-  const blank = { id: '', position: '1', prompt: '', clues: '', options: ['', '', '', ''], correct_index: 0, tokens: '20', max_attempts: '2', active: true };
-  const [d, setD] = useState<{ puzzles: any[]; solves: any[] }>({ puzzles: [], solves: [] });
+// ------------------------------------------------------------------- team photo missions
+const CATS: [string, string][] = [['person', '👤 ภาพบุคคล'], ['object', '📦 ภาพสิ่งของ'], ['food', '🍜 ภาพอาหาร'], ['place', '📍 ภาพสถานที่'], ['other', '🎯 โจทย์พิเศษ']];
+
+function Missions({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
+  const blank = { id: '', position: '1', title: '', description: '', category: 'person', ref_image_url: '', tokens: '20', active: true };
+  const [d, setD] = useState<{ missions: any[]; submissions: any[] }>({ missions: [], submissions: [] });
   const [f, setF] = useState<typeof blank | null>(null);
-  const load = useCallback(() => call('puzzles').then(setD).catch((e) => setMsg(e.message)), [setMsg]);
-  useEffect(() => { load(); }, [load]);
-  const clueList = (f?.clues ?? '').split('\n').map((x) => x.trim()).filter(Boolean);
+  const [up, setUp] = useState(false);
+  const [zoom, setZoom] = useState('');
+  const isAdmin = role === 'admin';
+  const load = useCallback(() => call('missions').then(setD).catch((e) => setMsg(e.message)), [setMsg]);
+  useEffect(() => { load(); const t = setInterval(load, 20000); return () => clearInterval(t); }, [load]);
 
   async function save() {
     if (!f) return;
     try {
-      await call('puzzle.save', { ...f, id: f.id || undefined, position: Number(f.position), tokens: Number(f.tokens), max_attempts: Number(f.max_attempts), clues: clueList });
+      await call('mission.save', { ...f, id: f.id || undefined, position: Number(f.position), tokens: Number(f.tokens) });
       setF(null); await load(); setMsg('บันทึกภารกิจแล้ว');
     } catch (e) { setMsg((e as Error).message); }
   }
+  async function uploadRef(file: File) {
+    setUp(true);
+    try {
+      const small = await compressImage(file, 1400);
+      const fd = new FormData(); fd.append('file', small);
+      const res = await fetch('/api/admin/upload', { method: 'POST', body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message ?? 'อัปโหลดไม่สำเร็จ');
+      setF((x) => (x ? { ...x, ref_image_url: data.url } : x));
+    } catch (e) { setMsg((e as Error).message); } finally { setUp(false); }
+  }
+  async function reject(sub: any) {
+    const reason = prompt(`ปฏิเสธภาพของทีม ${sub.team}?\\nโทเคน ${sub.tokens} จะถูกหักคืน และทีมอัปโหลดใหม่ได้\\n\\nเหตุผล (เช่น ภาพไม่ชัด / ไม่ครบทีม):`);
+    if (reason === null) return;
+    try { await call('photo.reject', { id: sub.id, reason }); await load(); setMsg(`ปฏิเสธภาพของทีม ${sub.team} แล้ว หักโทเคนคืน ${sub.tokens}`); }
+    catch (e) { setMsg((e as Error).message); }
+  }
+  const approved = d.submissions.filter((x) => x.status === 'approved');
+  const title = (id: string) => d.missions.find((m) => m.id === id)?.title ?? '';
 
   return (
     <>
+      {zoom && <div className="dlg-back" onClick={() => setZoom('')} style={{ cursor: 'zoom-out' }}><img src={zoom} alt="" style={{ maxWidth: '100%', maxHeight: '90dvh', borderRadius: 16 }} /></div>}
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0 }}>🧩 ภารกิจทีม ({d.puzzles.length})</h2>
-          <button className="btn small" onClick={() => setF({ ...blank, position: String(d.puzzles.length + 1) })}>เพิ่มภารกิจ</button>
+          <h2 style={{ margin: 0 }}>📸 ภารกิจทีม: ถ่ายภาพทั้งทีม ({d.missions.length})</h2>
+          {isAdmin && <button className="btn small" onClick={() => setF({ ...blank, position: String(d.missions.length + 1) })}>+ เพิ่มภารกิจ</button>}
         </div>
         <p className="muted">
-          <strong>เบาะแสถูกแบ่งให้สมาชิกในสควอด</strong> แต่ละคนเห็นเฉพาะส่วนของตัวเอง ต้องคุยกันเพื่อรวมเบาะแสแล้วเลือกคำตอบร่วมกัน (ใครก็ส่งแทนสควอดได้ จำกัดจำนวนครั้ง ใช้ร่วมกันทั้งสควอด) ·
-          ควรมีเบาะแสอย่างน้อยเท่าจำนวนสมาชิกในสควอด (4–5 ชิ้น) ถ้าสมาชิกมากกว่าเบาะแส บางคนจะได้เบาะแสซ้ำกัน · มีสวิตช์เปิด/ปิดของตัวเองที่แท็บภาพรวม (แยกจากล่าสมบัติ)
+          ตั้งโจทย์ถ่ายภาพ (บุคคล สิ่งของ อาหาร สถานที่ หรือโจทย์พิเศษ) ใส่ภาพตัวอย่างได้ · <strong>ทั้งทีมต้องอยู่ในภาพ</strong> และ <strong>เฉพาะหัวหน้าทีมเท่านั้นที่อัปโหลดได้</strong> ภารกิจจึงสำเร็จและทีมได้โทเคนทันที ·
+          เปิด-ปิดที่สวิตช์ “ภารกิจทีม” ในหน้าภาพรวม · ภาพไม่เหมาะสมกด “ปฏิเสธ” เพื่อหักโทเคนคืนและให้ทีมส่งใหม่ · ทีมที่ยังไม่มีหัวหน้าจะส่งภาพไม่ได้
         </p>
         <div className="table-wrap"><table>
-          <thead><tr><th>#</th><th>คำถาม</th><th>เบาะแส</th><th>โทเคน</th><th>ครั้งที่ตอบได้</th><th>ไขได้/ตอบทั้งหมด</th><th>สถานะ</th><th /></tr></thead>
-          <tbody>{d.puzzles.map((z) => (
-            <tr key={z.id}>
-              <td className="num">{z.position}</td><td>{z.prompt}<div className="muted">เฉลย: {z.options[z.correct_index]}</div></td>
-              <td className="num">{z.clues.length}</td><td className="num">{z.tokens}</td><td className="num">{z.max_attempts}</td>
-              <td className="num">{z.solves}/{z.attempts}</td><td>{z.active ? 'ใช้งาน' : 'ปิด'}</td>
-              <td className="row">
-                <button className="btn small ghost" onClick={() => setF({ id: z.id, position: String(z.position), prompt: z.prompt, clues: z.clues.join('\n'), options: z.options, correct_index: z.correct_index, tokens: String(z.tokens), max_attempts: String(z.max_attempts), active: z.active })}>แก้ไข</button>
-                <button className="btn small ghost" onClick={() => confirm(`ลบภารกิจ “${z.prompt}”?`) && call('puzzle.delete', { id: z.id }).then((r) => { load(); setMsg(r.deactivated ? 'มีการตอบแล้ว จึงปิดภารกิจแทนการลบ' : 'ลบแล้ว'); }).catch((e) => setMsg(e.message))}>ลบ</button>
-              </td>
+          <thead><tr><th>#</th><th>ภาพตัวอย่าง</th><th>ภารกิจ</th><th>ประเภท</th><th>โทเคน</th><th>ทีมที่สำเร็จ</th><th>สถานะ</th><th /></tr></thead>
+          <tbody>{d.missions.map((m) => (
+            <tr key={m.id}>
+              <td className="num">{m.position}</td>
+              <td>{m.ref_image_url ? <img src={m.ref_image_url} alt="" onClick={() => setZoom(m.ref_image_url)} style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 10, cursor: 'zoom-in', display: 'block' }} /> : <span className="muted">—</span>}</td>
+              <td><strong>{m.title}</strong><div className="muted" style={{ maxWidth: 360 }}>{m.description}</div></td>
+              <td>{CATS.find((c) => c[0] === m.category)?.[1]}</td><td className="num">{m.tokens}</td><td className="num">{m.done} ทีม</td>
+              <td>{m.active ? 'ใช้งาน' : 'ปิด'}</td>
+              <td className="row">{isAdmin && <>
+                <button className="btn small ghost" onClick={() => setF({ id: m.id, position: String(m.position), title: m.title, description: m.description, category: m.category, ref_image_url: m.ref_image_url ?? '', tokens: String(m.tokens), active: m.active })}>แก้ไข</button>
+                <button className="btn small ghost" onClick={() => confirm(`ลบภารกิจ “${m.title}”?`) && call('mission.delete', { id: m.id }).then((r) => { load(); setMsg(r.deactivated ? 'มีทีมส่งภาพแล้ว จึงปิดภารกิจแทนการลบ' : 'ลบแล้ว'); }).catch((e) => setMsg(e.message))}>ลบ</button>
+              </>}</td>
             </tr>))}</tbody>
         </table></div>
       </div>
@@ -987,36 +1017,54 @@ function Puzzles({ setMsg }: { setMsg: (m: string) => void }) {
       {f && (
         <div className="card">
           <h2>{f.id ? 'แก้ไขภารกิจ' : 'เพิ่มภารกิจ'}</h2>
-          <label className="lbl">คำถาม (ทุกคนเห็น)</label>
-          <input className="field" value={f.prompt} onChange={(e) => setF({ ...f, prompt: e.target.value })} />
-          <label className="lbl">เบาะแส — 1 บรรทัดต่อ 1 ชิ้น (2–8 ชิ้น, ตอนนี้ {clueList.length} ชิ้น) · แต่ละชิ้นจะถูกแจกให้สมาชิกคนละส่วน</label>
-          <textarea className="field" rows={5} value={f.clues} onChange={(e) => setF({ ...f, clues: e.target.value })} />
-          <label className="lbl">ตัวเลือก 4 ข้อ (เลือกข้อที่ถูกด้วยวงกลม)</label>
-          {f.options.map((o, i) => (
-            <div className="row" key={i} style={{ marginBottom: 6 }}>
-              <input type="radio" name="pz-correct" checked={f.correct_index === i} onChange={() => setF({ ...f, correct_index: i })} />
-              <input className="field grow" value={o} onChange={(e) => setF({ ...f, options: f.options.map((x, j) => (j === i ? e.target.value : x)) })} />
-            </div>
-          ))}
+          <label className="lbl">ชื่อภารกิจ (ผู้เล่นเห็น)</label>
+          <input className="field" placeholder="เช่น ถ่ายภาพกับเชฟประจำค่าย" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
+          <label className="lbl">โจทย์ / วิธีถ่าย</label>
+          <textarea className="field" rows={3} placeholder="เช่น ทั้งทีมยืนถ่ายภาพคู่กับเชฟ ทุกคนต้องอยู่ในภาพ" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} />
           <div className="row">
-            <div><label className="lbl">โทเคนเมื่อไขได้</label><input className="field" style={{ width: 110 }} type="number" min={0} value={f.tokens} onChange={(e) => setF({ ...f, tokens: e.target.value })} /></div>
-            <div><label className="lbl">ตอบได้กี่ครั้ง/สควอด</label><input className="field" style={{ width: 130 }} type="number" min={1} max={4} value={f.max_attempts} onChange={(e) => setF({ ...f, max_attempts: e.target.value })} /></div>
+            <div><label className="lbl">ประเภทภาพ</label>
+              <select className="field" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>{CATS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}</select></div>
+            <div><label className="lbl">โทเคนเมื่อสำเร็จ</label><input className="field" style={{ width: 120 }} type="number" min={0} value={f.tokens} onChange={(e) => setF({ ...f, tokens: e.target.value })} /></div>
             <div><label className="lbl">ลำดับ</label><input className="field" style={{ width: 90 }} type="number" value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })} /></div>
-            <label className="row" style={{ marginTop: 22 }}><input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} /> ใช้งาน</label>
+            <label className="row" style={{ marginTop: 24 }}><input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} /> ใช้งาน</label>
           </div>
-          <div className="row" style={{ marginTop: 12 }}>
-            <button className="btn small" disabled={!f.prompt.trim() || clueList.length < 2 || f.options.some((o) => !o.trim())} onClick={save}>บันทึก</button>
+          <label className="lbl">ภาพตัวอย่าง (ไม่บังคับ · ไฟล์ภาพ PNG / JPG / WebP ระบบย่อให้อัตโนมัติ)</label>
+          <div className="row">
+            {f.ref_image_url
+              ? <img src={f.ref_image_url} alt="" style={{ width: 120, height: 90, objectFit: 'cover', borderRadius: 12, border: '2px solid var(--cream-deep)' }} />
+              : <div style={{ width: 120, height: 90, borderRadius: 12, border: '2px dashed var(--cream-deep)', display: 'grid', placeItems: 'center', fontSize: 30 }}>📷</div>}
+            <div>
+              <input type="file" accept="image/png,image/jpeg,image/webp" disabled={up} onChange={(e) => { const x = e.target.files?.[0]; if (x) uploadRef(x); e.target.value = ''; }} />
+              <div className="muted">{up ? 'กำลังอัปโหลด…' : 'เลือกไฟล์แล้วรอจนเห็นภาพ จากนั้นกด “บันทึก”'}</div>
+              {f.ref_image_url && <button className="btn small ghost" style={{ marginTop: 6 }} onClick={() => setF({ ...f, ref_image_url: '' })}>ลบภาพตัวอย่าง</button>}
+            </div>
+          </div>
+          <div className="row" style={{ marginTop: 14 }}>
+            <button className="btn small" disabled={!f.title.trim() || up} onClick={save}>บันทึก</button>
             <button className="btn small ghost" onClick={() => setF(null)}>ยกเลิก</button>
           </div>
         </div>
       )}
 
       <div className="card">
-        <h2>ภารกิจที่ไขได้แล้ว (ล่าสุด)</h2>
-        <div className="table-wrap"><table>
-          <thead><tr><th>เวลา</th><th>ทีม</th><th>สควอด</th><th>ภารกิจ</th><th>ผู้ส่งคำตอบ</th><th>โทเคน</th></tr></thead>
-          <tbody>{d.solves.map((x, i) => <tr key={i}><td>{fmt(x.at)}</td><td>{x.team}</td><td>{x.squad || '—'}</td><td>{d.puzzles.find((z) => z.id === x.puzzle_id)?.prompt}</td><td>{x.by}</td><td className="num">{x.tokens}</td></tr>)}</tbody>
-        </table></div>
+        <h2>🖼️ ภาพที่ทีมส่งมา ({approved.length})</h2>
+        {d.submissions.length === 0 ? <p className="muted center" style={{ margin: 0 }}>ยังไม่มีทีมส่งภาพ</p> : (
+          <div className="gallery">
+            {d.submissions.map((x) => (
+              <figure key={x.id} className={`g-item${x.status === 'rejected' ? ' rej' : ''}`}>
+                <img src={x.image_url} alt={title(x.mission_id)} loading="lazy" onClick={() => setZoom(x.image_url)} />
+                <figcaption>
+                  <strong>{x.team}</strong>
+                  <div>{title(x.mission_id)}</div>
+                  <div className="muted" style={{ fontSize: 13 }}>⭐ {x.by} · {fmt(x.at)}</div>
+                  {x.status === 'rejected'
+                    ? <div style={{ color: 'var(--bad)', fontSize: 13 }}>ถูกปฏิเสธ{x.reason ? `: ${x.reason}` : ''}</div>
+                    : isAdmin && <button className="btn small ghost" style={{ marginTop: 6 }} onClick={() => reject(x)}>ปฏิเสธภาพนี้</button>}
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+        )}
       </div>
     </>
   );
@@ -1061,7 +1109,7 @@ function Export() {
     ['redemptions', 'ประวัติการแลกของ'],
     ['adjustments', 'ประวัติการปรับโทเคนด้วยมือ'],
     ['hunt', 'ประวัติการล่าสมบัติ (ทีมไหนเจอจุดไหน)'],
-    ['puzzles', 'ประวัติการตอบภารกิจทีม (ทุกครั้งที่ตอบ)'],
+    ['photos', 'ภาพภารกิจทีม (ทีม ภารกิจ ผู้อัปโหลด ลิงก์ภาพ)'],
   ];
   return (
     <div className="card stack">

@@ -57,11 +57,8 @@ update public.market_items set requires_goal = true where name in ('ดอกไ
 -- Co-op sample: this spot needs 3 squad members to scan it within 3 minutes.
 update public.hunt_spots set min_players = 3, window_sec = 180 where secret = 'HUNTTBL3';
 
--- 2 SAMPLE team puzzles: each squad member sees only some of the clues; the squad must combine them.
-insert into public.team_puzzles (position, prompt, clues, options, correct_index, tokens) values
- (1, 'เมนูลับของค่ายคืออะไร?',
-    array['วัตถุดิบหลักคือมะละกอดิบ','รสชาติครบทั้งเปรี้ยว เผ็ด เค็ม หวาน','ต้องตำในครกให้เข้ากัน','มักกินคู่กับข้าวเหนียวและไก่ย่าง'],
-    array['ส้มตำ','ต้มยำกุ้ง','แกงเขียวหวาน','ผัดไทย'], 0, 20),
- (2, 'สมุนไพรปริศนาคือข้อใด?',
-    array['ใบมีกลิ่นฉุนหอมเฉพาะตัว','นิยมผัดกับหมูสับและพริก','มีทั้งพันธุ์ใบแดงและใบขาว','เมนูผัดจานดังขาดมันไม่ได้'],
-    array['โหระพา','กะเพรา','สะระแหน่','ผักชี'], 1, 20);
+-- 3 SAMPLE team photo missions (the whole team in the photo; only the team leader uploads it).
+insert into public.photo_missions (position, title, description, category, tokens) values
+ (1, 'ถ่ายภาพกับเชฟประจำค่าย', 'ทั้งทีมยืนถ่ายภาพคู่กับเชฟหรือผู้ดูแลครัว ทุกคนต้องอยู่ในภาพและยิ้มให้กล้อง', 'person', 20),
+ (2, 'ถ่ายภาพกับหม้อใบใหญ่ที่สุดในแคมป์', 'ค้นหาหม้อหรือกระทะใบใหญ่ที่สุด แล้วถ่ายภาพทั้งทีมกับมัน', 'object', 20),
+ (3, 'ถ่ายภาพเมนูที่ทีมภูมิใจที่สุด', 'ทั้งทีมถ่ายภาพคู่กับอาหารจานที่ทีมทำหรือเลือก (ให้เห็นอาหารชัดเจน)', 'food', 30);

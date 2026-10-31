@@ -5,7 +5,7 @@ import {
 } from '@/lib/auth';
 import { goalStatus } from '@/lib/goal';
 import { hashCode, normalizeCode, normalizeId } from '@/lib/codes';
-import { removeAvatarFile } from '@/lib/avatars';
+import { removeAvatarFile, removePublicFile } from '@/lib/avatars';
 import { checkOrigin, handler, HttpError, ok, rateLimit, readJson } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
@@ -90,20 +90,18 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     });
   }
 
-  if (action === 'puzzles') {
-    await requireRole('admin');
-    const [{ data: puzzles }, { data: solves }, { data: attempts }] = await Promise.all([
-      sb.from('team_puzzles').select('*').order('position').order('id'),
-      sb.from('puzzle_solves').select('puzzle_id, tokens, solved_at, teams(name), squads(name), participants(name)').order('solved_at', { ascending: false }).limit(300),
-      sb.from('puzzle_attempts').select('puzzle_id, is_correct'),
+  if (action === 'missions') {
+    await requireRole('staff');
+    const [{ data: missions }, { data: subs }] = await Promise.all([
+      sb.from('photo_missions').select('*').order('position').order('id'),
+      sb.from('photo_submissions').select('id, mission_id, image_url, status, tokens, rejected_reason, created_at, teams(name), participants(name, nick_name)').order('created_at', { ascending: false }).limit(400),
     ]);
     return ok({
-      puzzles: (puzzles ?? []).map((z: any) => ({
-        ...z,
-        solves: (solves ?? []).filter((x: any) => x.puzzle_id === z.id).length,
-        attempts: (attempts ?? []).filter((a: any) => a.puzzle_id === z.id).length,
+      missions: (missions ?? []).map((m: any) => ({ ...m, done: (subs ?? []).filter((x: any) => x.mission_id === m.id && x.status === 'approved').length })),
+      submissions: (subs ?? []).map((x: any) => ({
+        id: x.id, mission_id: x.mission_id, image_url: x.image_url, status: x.status, tokens: x.tokens, reason: x.rejected_reason,
+        at: x.created_at, team: x.teams?.name ?? '', by: x.participants?.nick_name || x.participants?.name || '',
       })),
-      solves: (solves ?? []).map((x: any) => ({ puzzle_id: x.puzzle_id, at: x.solved_at, team: x.teams?.name ?? '', squad: x.squads?.name ?? '', by: x.participants?.name ?? '', tokens: x.tokens })),
     });
   }
 
@@ -131,7 +129,7 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
         sb.from('token_ledger').select('team_id, kind, amount').in('kind', ['quiz', 'hunt', 'puzzle']),
         sb.from('redemptions').select('item_name, quantity, created_at, teams(name)').order('created_at', { ascending: false }).limit(10),
         sb.from('participants').select('completed_at, teams(name)').eq('status', 'completed').order('completed_at', { ascending: false }).limit(10),
-        sb.from('puzzle_solves').select('solved_at, teams(name), squads(name), team_puzzles(prompt)').order('solved_at', { ascending: false }).limit(10),
+        sb.from('photo_submissions').select('created_at, teams(name), photo_missions(title)').eq('status', 'approved').order('created_at', { ascending: false }).limit(10),
       ]);
     const earned = new Map<string, { quiz: number; hunt: number; puzzle: number }>();
     for (const l of (ledger ?? []) as any[]) {
@@ -143,7 +141,7 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     for (const c of (claims ?? []) as any[]) found.set(c.team_id, (found.get(c.team_id) ?? 0) + 1);
     const feed = [
       ...((claims ?? []) as any[]).slice(0, 10).map((c) => ({ at: c.claimed_at, kind: 'hunt', team: c.teams?.name ?? '', text: `${c.squads?.name ? `(${c.squads.name}) ` : ''}เจอจุด “${c.hunt_spots?.title ?? ''}”` })),
-      ...((psolves ?? []) as any[]).map((x) => ({ at: x.solved_at, kind: 'puzzle', team: x.teams?.name ?? '', text: `${x.squads?.name ? `(${x.squads.name}) ` : ''}ไขภารกิจทีมสำเร็จ “${String(x.team_puzzles?.prompt ?? '').slice(0, 40)}”` })),
+      ...((psolves ?? []) as any[]).map((x) => ({ at: x.created_at, kind: 'puzzle', team: x.teams?.name ?? '', text: `ส่งภาพภารกิจสำเร็จ “${String(x.photo_missions?.title ?? '').slice(0, 40)}”` })),
       ...((reds ?? []) as any[]).map((r) => ({ at: r.created_at, kind: 'redeem', team: r.teams?.name ?? '', text: `แลก ${r.item_name} ×${r.quantity}` })),
       ...((done ?? []) as any[]).map((p) => ({ at: p.completed_at, kind: 'quiz', team: p.teams?.name ?? '', text: 'สมาชิกเล่นควิซจบ' })),
     ].sort((a, b) => +new Date(b.at) - +new Date(a.at)).slice(0, 12);
@@ -251,10 +249,10 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
       const { data } = await sb.from('hunt_claims').select('claimed_at, tokens, teams(name), squads(name), participants(name), hunt_spots(title)').order('claimed_at');
       rows = [['Time', 'Team', 'Squad', 'Spot', 'Found by', 'Tokens'],
         ...(data ?? []).map((r: any) => [r.claimed_at, r.teams?.name, r.squads?.name ?? '', r.hunt_spots?.title, r.participants?.name, r.tokens])];
-    } else if (type === 'puzzles') {
-      const { data } = await sb.from('puzzle_attempts').select('created_at, is_correct, selected_index, teams(name), squads(name), participants(name), team_puzzles(prompt)').order('created_at');
-      rows = [['Time', 'Team', 'Squad', 'Puzzle', 'Answered by', 'Option', 'Correct'],
-        ...(data ?? []).map((r: any) => [r.created_at, r.teams?.name, r.squads?.name ?? '', r.team_puzzles?.prompt, r.participants?.name, r.selected_index + 1, r.is_correct ? 'yes' : 'no'])];
+    } else if (type === 'photos') {
+      const { data } = await sb.from('photo_submissions').select('created_at, status, tokens, image_url, rejected_reason, teams(name), participants(name), photo_missions(title)').order('created_at');
+      rows = [['Time', 'Team', 'Mission', 'Uploaded by (leader)', 'Status', 'Tokens', 'Photo URL', 'Reject reason'],
+        ...(data ?? []).map((r: any) => [r.created_at, r.teams?.name, r.photo_missions?.title, r.participants?.name, r.status, r.tokens, r.image_url, r.rejected_reason ?? ''])];
     } else throw new HttpError(400, 'BAD_INPUT');
     await audit('admin', 'export', { type });
     return new NextResponse(csv(rows), {
@@ -445,6 +443,14 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       }
       await audit(role, 'participant.save', { id: body.id ?? null, idChanged: !!loginId, leader: wantLeader });
       return ok();
+    }
+    case 'photo.reject': {
+      // A bad/irrelevant photo: tokens are taken back, the photo is deleted and the team can upload again.
+      const { data: sub } = await sb.from('photo_submissions').select('image_url').eq('id', body.id).maybeSingle();
+      const { data, error } = await sb.rpc('reject_photo', { p_submission: need(str(body.id)), p_reason: str(body.reason, 200), p_actor: role });
+      if (error) throw error;
+      await removePublicFile('mission-photos', sub?.image_url);
+      return ok(data);
     }
     case 'leader.set': {
       // Exactly one leader per team: demote the current one first, then promote the chosen player.
@@ -720,33 +726,32 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       return ok();
     }
 
-    case 'puzzle.save': {
-      const options = Array.isArray(body.options) ? body.options.map((o: unknown) => str(o, 120)) : [];
-      const clues = (Array.isArray(body.clues) ? body.clues : []).map((c: unknown) => str(c, 300)).filter(Boolean);
-      const correct_index = int(body.correct_index);
+    case 'mission.save': {
+      const category = ['person', 'object', 'food', 'place', 'other'].includes(body.category) ? body.category : 'other';
+      const ref = str(body.ref_image_url, 500);
+      if (ref && !imageOk(ref)) throw new HttpError(400, 'BAD_INPUT');
       const tokens = int(body.tokens);
-      const max_attempts = int(body.max_attempts ?? 2);
-      if (options.length !== 4 || options.some((o: string) => !o) || correct_index < 0 || correct_index > 3
-          || clues.length < 2 || clues.length > 8 || tokens < 0 || tokens > 1000 || max_attempts < 1 || max_attempts > 4) {
-        throw new HttpError(400, 'BAD_INPUT');
-      }
-      const row = { position: int(body.position), prompt: need(str(body.prompt, 300)), clues, options, correct_index, tokens, max_attempts, active: body.active !== false };
-      const q = body.id ? sb.from('team_puzzles').update(row).eq('id', body.id) : sb.from('team_puzzles').insert(row);
+      if (tokens < 0 || tokens > 1000) throw new HttpError(400, 'BAD_INPUT');
+      const row = {
+        position: int(body.position), title: need(str(body.title, 100)), description: str(body.description, 600),
+        category, ref_image_url: ref || null, tokens, active: body.active !== false,
+      };
+      const q = body.id ? sb.from('photo_missions').update(row).eq('id', body.id) : sb.from('photo_missions').insert(row);
       const { error } = await q;
       if (error) throw error;
-      await audit(role, 'puzzle.save', { id: body.id ?? null });
+      await audit(role, 'mission.save', { id: body.id ?? null, title: row.title });
       return ok();
     }
-    case 'puzzle.delete': {
-      const { count } = await sb.from('puzzle_attempts').select('id', { count: 'exact', head: true }).eq('puzzle_id', body.id);
+    case 'mission.delete': {
+      const { count } = await sb.from('photo_submissions').select('id', { count: 'exact', head: true }).eq('mission_id', body.id);
       if ((count ?? 0) > 0) {
-        await sb.from('team_puzzles').update({ active: false }).eq('id', body.id);
-        await audit(role, 'puzzle.deactivate', { id: body.id });
+        await sb.from('photo_missions').update({ active: false }).eq('id', body.id);
+        await audit(role, 'mission.deactivate', { id: body.id });
         return ok({ deactivated: true });
       }
-      const { error } = await sb.from('team_puzzles').delete().eq('id', body.id);
+      const { error } = await sb.from('photo_missions').delete().eq('id', body.id);
       if (error) throw error;
-      await audit(role, 'puzzle.delete', { id: body.id });
+      await audit(role, 'mission.delete', { id: body.id });
       return ok();
     }
 

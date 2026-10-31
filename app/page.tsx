@@ -24,10 +24,10 @@ type Me = {
   history: { item: string; qty: number; cost: number; at: string }[];
   market: { id: string; name: string; category: string; price: number; stock: number; requires_goal: boolean; image_url: string | null }[];
 };
-type PuzzleData = {
-  open: boolean; squad: string | null; groupSize: number;
-  puzzles: { id: string; prompt: string; options: string[]; tokens: number; clueTotal: number;
-    myClues: { no: number; text: string }[]; maxAttempts: number; used: number; left: number; solved: boolean; solvedBy: string | null }[];
+type PhotoData = {
+  open: boolean; isLeader: boolean; leaderName: string | null; team: string;
+  missions: { id: string; title: string; description: string; category: string; refImageUrl: string | null; tokens: number;
+    done: { url: string; by: string; at: string } | null }[];
 };
 type HuntData = {
   open: boolean;
@@ -278,8 +278,8 @@ export default function Page() {
         </div>
         <div className="card">
           <div className="mission">
-            <div className="m-ic" style={{ background: '#e8dcf5' }}>🧩</div>
-            <div className="m-body"><h2>ภารกิจทีม</h2><div className="muted">รวมเบาะแสของเพื่อนในสควอดเพื่อไขปริศนา</div></div>
+            <div className="m-ic" style={{ background: '#e8dcf5' }}>📸</div>
+            <div className="m-body"><h2>ภารกิจทีม</h2><div className="muted">ถ่ายภาพทั้งทีมตามโจทย์ · หัวหน้าทีมเป็นผู้อัปโหลด</div></div>
           </div>
           <button className="btn green" style={{ marginTop: 12 }} onClick={() => { setHuntTab('puzzle'); setView('hunt'); }}>เปิดภารกิจทีม</button>
         </div>
@@ -575,7 +575,7 @@ function TeamView({ me, onAuthLost }: { me: Me; onAuthLost: (e: unknown) => void
           <div style={{ marginTop: 4 }}>{g.list.map(row)}</div>
         </div>
       ))}
-      {d.squads.length > 0 && <p className="muted center" style={{ margin: '0 0 14px' }}>คนในสควอดเดียวกันช่วยกันรวมเบาะแสภารกิจทีมและกระจายกันหาจุดล่าสมบัติ</p>}
+      {d.squads.length > 0 && <p className="muted center" style={{ margin: '0 0 14px' }}>คนในสควอดเดียวกันช่วยกันกระจายหาจุดล่าสมบัติ ส่วนภารกิจถ่ายภาพทีม หัวหน้าทีมเป็นผู้อัปโหลด</p>}
     </>
   );
 }
@@ -616,87 +616,154 @@ function Activities(props: { initialTab?: 'hunt' | 'puzzle'; pending: string; cl
     <>
       <div className="tabs" style={{ marginTop: 14 }}>
         <button className={tab === 'hunt' ? 'on' : ''} onClick={() => setTab('hunt')}>🧭 ล่าสมบัติ</button>
-        <button className={tab === 'puzzle' ? 'on' : ''} onClick={() => setTab('puzzle')}>🧩 ภารกิจทีม</button>
+        <button className={tab === 'puzzle' ? 'on' : ''} onClick={() => setTab('puzzle')}>📸 ภารกิจทีม</button>
       </div>
-      {tab === 'hunt' || props.pending ? <HuntView {...props} /> : <PuzzleView onBalance={props.onBalance} onAuthLost={props.onAuthLost} />}
+      {tab === 'hunt' || props.pending ? <HuntView {...props} /> : <PhotoMissionsView onBalance={props.onBalance} onAuthLost={props.onAuthLost} />}
     </>
   );
 }
 
-function PuzzleView({ onBalance, onAuthLost }: { onBalance: () => void; onAuthLost: (e: unknown) => void }) {
-  const [d, setD] = useState<PuzzleData | null>(null);
-  const [pick, setPick] = useState<Record<string, number>>({});
-  const [busy, setBusy] = useState('');
-  const [note, setNote] = useState<Record<string, { ok: boolean; text: string }>>({});
+const CATEGORY: Record<string, { icon: string; label: string }> = {
+  person: { icon: '👤', label: 'ภาพบุคคล' }, object: { icon: '📦', label: 'ภาพสิ่งของ' }, food: { icon: '🍜', label: 'ภาพอาหาร' },
+  place: { icon: '📍', label: 'ภาพสถานที่' }, other: { icon: '🎯', label: 'โจทย์พิเศษ' },
+};
+
+/** Shrinks a photo to max 1600px JPEG in the browser (phone photos are several MB). */
+async function fitJpeg(file: File, maxSide = 1600): Promise<File> {
+  const bmp = await createImageBitmap(file).catch(() => null);
+  if (!bmp) throw new Error('เปิดไฟล์ภาพนี้ไม่ได้ ลองถ่ายหรือเลือกภาพใหม่ (JPG / PNG)');
+  const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bmp.width * scale); canvas.height = Math.round(bmp.height * scale);
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  const blob: Blob | null = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.85));
+  if (!blob) throw new Error('แปลงภาพไม่สำเร็จ');
+  return new File([blob], 'mission.jpg', { type: 'image/jpeg' });
+}
+
+/** Team photo missions: everyone sees the brief; ONLY the team leader can upload the photo, and that completes the mission. */
+function PhotoMissionsView({ onBalance, onAuthLost }: { onBalance: () => void; onAuthLost: (e: unknown) => void }) {
+  const [d, setD] = useState<PhotoData | null>(null);
   const [err, setErr] = useState('');
+  const [done, setDone] = useState('');
+  const [zoom, setZoom] = useState<string | null>(null);
   const cb = useRef({ onBalance, onAuthLost });
   cb.current = { onBalance, onAuthLost };
-
   const load = useCallback(async () => {
-    try { setD(await api<PuzzleData>('/api/puzzles')); } catch (e) { cb.current.onAuthLost(e); setErr((e as Error).message); }
+    try { setD(await api<PhotoData>('/api/photos')); } catch (e) { cb.current.onAuthLost(e); setErr((e as Error).message); }
   }, []);
-  useEffect(() => { load(); const t = setInterval(load, 6000); return () => clearInterval(t); }, [load]); // teammates may solve it
-
-  async function send(z: PuzzleData['puzzles'][number]) {
-    const sel = pick[z.id];
-    if (sel === undefined) return;
-    if (!confirm(`ตกลงกับเพื่อนในสควอดแล้วใช่ไหม?\nคำตอบ: ${z.options[sel]}\n(ทั้งสควอดเหลือสิทธิ์ตอบ ${z.left} ครั้ง)`)) return;
-    setBusy(z.id); setErr('');
-    try {
-      const r = await api<{ correct: boolean; already: boolean; tokens: number; left: number }>('/api/puzzles/answer', { puzzleId: z.id, selected: sel });
-      setNote({ ...note, [z.id]: r.correct
-        ? { ok: true, text: r.already ? 'สควอดของคุณไขภารกิจนี้ได้แล้ว' : `ถูกต้อง! +${r.tokens} โทเคนเข้ากระเป๋าทีม` }
-        : { ok: false, text: r.left > 0 ? `ยังไม่ถูก ลองคุยกับเพื่อนอีกครั้ง (เหลือสิทธิ์ ${r.left} ครั้ง)` : 'ยังไม่ถูก และสิทธิ์ตอบของสควอดหมดแล้ว' } });
-      if (r.correct) cb.current.onBalance();
-    } catch (e) {
-      if (e instanceof ApiError && e.status === 401) cb.current.onAuthLost(e);
-      setErr((e as Error).message);
-    } finally { setBusy(''); await load(); }
-  }
+  useEffect(() => { load(); const t = setInterval(load, 10000); return () => clearInterval(t); }, [load]); // the leader may upload from another phone
 
   if (!d) return <div className="card center">{err ? <div className="error">{err}</div> : <div className="spinner" />}</div>;
+  const successCount = d.missions.filter((m) => m.done).length;
   return (
     <>
+      {zoom && (
+        <div onClick={() => setZoom(null)} role="dialog" aria-label="ภาพ"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.82)', display: 'grid', placeItems: 'center', padding: 16, zIndex: 50, cursor: 'zoom-out' }}>
+          <img src={zoom} alt="" style={{ maxWidth: '100%', maxHeight: '88dvh', borderRadius: 16 }} />
+        </div>
+      )}
       <div className="card">
-        <h2>🧩 ภารกิจทีม</h2>
+        <h2>📸 ภารกิจทีม</h2>
         <p className="muted" style={{ margin: 0 }}>
-          เบาะแสถูก<strong>แบ่งกัน</strong>ในสควอด{d.squad ? ` ${d.squad}` : ''} ({d.groupSize} คน) — คุณเห็นแค่ส่วนของคุณ
-          ต้องเดินไปคุยกับเพื่อนเพื่อรวมเบาะแสแล้วช่วยกันตอบ ใครก็ส่งคำตอบแทนสควอดได้ แต่จำกัดจำนวนครั้ง
+          ถ่ายภาพ<strong>ทั้งทีม</strong>ตามโจทย์ที่กำหนด (ทุกคนอยู่ในภาพพร้อมกับสิ่งนั้น) แล้ว <strong>หัวหน้าทีมเท่านั้น</strong>เป็นผู้อัปโหลดภาพ ภารกิจจึงจะสำเร็จ
+          {d.leaderName ? <> · หัวหน้าทีมของเรา: <strong>⭐ {d.leaderName}</strong></> : ' · ทีมนี้ยังไม่มีหัวหน้า ติดต่อทีมงาน'}
         </p>
-        {!d.open && <div className="banner" style={{ marginTop: 12 }}>กิจกรรมยังไม่เปิด หรือปิดแล้ว</div>}
+        <div className="muted" style={{ marginTop: 6 }}>สำเร็จแล้ว {successCount}/{d.missions.length} ภารกิจ</div>
+        {d.isLeader && <div className="role leader" style={{ marginTop: 8 }}>⭐ คุณคือหัวหน้าทีม มีสิทธิ์อัปโหลดภาพ</div>}
+        {!d.open && <div className="banner" style={{ marginTop: 12 }}>ภารกิจทีมยังไม่เปิด หรือปิดแล้ว รอทีมงานประกาศ</div>}
         {err && <div className="error" style={{ marginTop: 12 }}>{err}</div>}
       </div>
-      {d.puzzles.length === 0 && <div className="card center muted">ยังไม่มีภารกิจ</div>}
-      {d.puzzles.map((z, n) => (
-        <div className="card" key={z.id} style={z.solved ? { border: '3px solid #2f8f5b' } : undefined}>
-          <strong>ภารกิจที่ {n + 1} · {z.tokens} โทเคน</strong>
-          <h2 style={{ fontSize: 19, marginTop: 6 }}>{z.prompt}</h2>
-          <div style={{ background: '#fff3d6', borderRadius: 14, padding: '12px 14px', margin: '8px 0 12px' }}>
-            <div className="muted">🔎 เบาะแสของคุณ (ชิ้นที่ {z.myClues.map((c) => c.no).join(', ')} จากทั้งหมด {z.clueTotal})</div>
-            {z.myClues.map((c) => <div key={c.no} style={{ fontWeight: 600, marginTop: 4 }}>“{c.text}”</div>)}
-          </div>
-          {z.options.map((o, i) => (
-            <button key={i} className={`opt${pick[z.id] === i ? ' sel' : ''}`} disabled={z.solved || z.left === 0 || !d.open || busy === z.id}
-              onClick={() => setPick({ ...pick, [z.id]: i })}>
-              <span className="letter">{LETTERS[i]}</span><span>{o}</span>
-            </button>
-          ))}
-          {z.solved ? (
-            <div className="verdict ok">✅ สควอดไขได้แล้ว{z.solvedBy ? ` (ส่งโดย ${z.solvedBy})` : ''}</div>
-          ) : z.left === 0 ? (
-            <div className="verdict bad" style={{ fontSize: 16 }}>สิทธิ์ตอบของสควอดหมดแล้ว</div>
-          ) : (
-            <div style={{ marginTop: 14 }}>
-              <div className="muted" style={{ marginBottom: 8 }}>สิทธิ์ตอบที่เหลือของทั้งสควอด: {z.left}/{z.maxAttempts}</div>
-              <button className="btn" disabled={pick[z.id] === undefined || busy === z.id || !d.open} onClick={() => send(z)}>
-                {busy === z.id ? 'กำลังส่ง…' : 'ส่งคำตอบของสควอด'}
-              </button>
+      {done && <div className="card center" style={{ border: '3px solid #2f8f5b' }}><div className="verdict ok" style={{ fontSize: 17 }}>{done}</div></div>}
+      {d.missions.length === 0 && <div className="card center muted">ยังไม่มีภารกิจ</div>}
+      {d.missions.map((m) => {
+        const c = CATEGORY[m.category] ?? CATEGORY.other;
+        return (
+          <div className="card" key={m.id} style={m.done ? { border: '3px solid #2f8f5b' } : undefined}>
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <span className="pill">{c.icon} {c.label}</span>
+              <span className="pill" style={{ background: '#fbe7b8' }}>🪙 +{m.tokens}</span>
             </div>
-          )}
-          {note[z.id] && <div className={`verdict ${note[z.id].ok ? 'ok' : 'bad'}`} style={{ fontSize: 16 }}>{note[z.id].text}</div>}
-        </div>
-      ))}
+            <h2 style={{ fontSize: 19, margin: '10px 0 4px' }}>{m.title}</h2>
+            {m.description && <p style={{ margin: '0 0 10px', whiteSpace: 'pre-line' }}>{m.description}</p>}
+            {m.refImageUrl && (
+              <div style={{ marginBottom: 10 }}>
+                <div className="muted" style={{ fontSize: 14, marginBottom: 4 }}>ภาพตัวอย่าง (แตะเพื่อขยาย)</div>
+                <img src={m.refImageUrl} alt="ภาพตัวอย่าง" onClick={() => setZoom(m.refImageUrl)} loading="lazy"
+                  style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 14, cursor: 'zoom-in', background: 'var(--cream-deep)' }} />
+              </div>
+            )}
+            {m.done ? (
+              <>
+                <img src={m.done.url} alt="ภาพของทีม" onClick={() => setZoom(m.done!.url)} loading="lazy"
+                  style={{ width: '100%', maxHeight: 260, objectFit: 'cover', borderRadius: 14, cursor: 'zoom-in' }} />
+                <div className="verdict ok" style={{ fontSize: 16 }}>✅ ภารกิจสำเร็จ · ส่งโดย ⭐ {m.done.by}</div>
+              </>
+            ) : d.isLeader ? (
+              <PhotoUpload mission={m} open={d.open}
+                onDone={async (text) => { setDone(text); cb.current.onBalance(); await load(); }} onAuthLost={onAuthLost} />
+            ) : (
+              <div className="banner" style={{ margin: 0 }}>
+                ⏳ ยังไม่ส่ง · {d.leaderName ? `รอหัวหน้าทีม ${d.leaderName} ถ่ายภาพทั้งทีมและอัปโหลด` : 'ทีมยังไม่มีหัวหน้า ติดต่อทีมงาน'}
+              </div>
+            )}
+          </div>
+        );
+      })}
     </>
+  );
+}
+
+/** Leader only: pick/take the team photo, preview it, confirm everyone is in it, upload. */
+function PhotoUpload({ mission, open, onDone, onAuthLost }: { mission: PhotoData['missions'][number]; open: boolean; onDone: (text: string) => void | Promise<void>; onAuthLost: (e: unknown) => void }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState('');
+  const [all, setAll] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
+  async function pick(f: File) {
+    setErr('');
+    try {
+      const small = await fitJpeg(f);
+      setFile(small); setPreview(URL.createObjectURL(small)); setAll(false);
+    } catch (e) { setErr((e as Error).message); }
+  }
+  async function upload() {
+    if (!file) return;
+    setBusy(true); setErr('');
+    try {
+      const fd = new FormData(); fd.append('file', file); fd.append('missionId', mission.id);
+      const res = await fetch('/api/photos/submit', { method: 'POST', body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new ApiError(res.status, data.message ?? 'อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้ง');
+      await onDone(data.already ? 'ทีมของคุณส่งภารกิจนี้ไปแล้ว' : `ภารกิจสำเร็จ! +${data.tokens} โทเคนเข้ากระเป๋าทีม 🎉`);
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) onAuthLost(e);
+      setErr((e as Error).message);
+    } finally { setBusy(false); }
+  }
+  return (
+    <div>
+      {preview && <img src={preview} alt="ตัวอย่างภาพที่จะส่ง" style={{ width: '100%', maxHeight: 280, objectFit: 'cover', borderRadius: 14, marginBottom: 10 }} />}
+      <label className={`btn ${preview ? 'ghost' : ''}`} style={{ display: 'block', textAlign: 'center', opacity: busy || !open ? 0.5 : 1 }}>
+        {preview ? '📷 เปลี่ยนภาพ' : '📷 ถ่ายภาพ / เลือกภาพของทีม'}
+        <input type="file" accept="image/*" hidden disabled={busy || !open} onChange={(e) => { const f = e.target.files?.[0]; if (f) pick(f); e.target.value = ''; }} />
+      </label>
+      {file && (
+        <>
+          <label className="row" style={{ margin: '12px 0', alignItems: 'flex-start', gap: 10 }}>
+            <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} style={{ width: 22, height: 22, marginTop: 2 }} />
+            <span>ยืนยันว่า<strong>ทุกคนในทีมอยู่ในภาพ</strong>พร้อมกับสิ่งที่โจทย์กำหนดแล้ว</span>
+          </label>
+          <button className="btn" disabled={!all || busy || !open} onClick={upload}>{busy ? 'กำลังอัปโหลด…' : 'ส่งภาพภารกิจ'}</button>
+        </>
+      )}
+      {err && <div className="error" style={{ marginTop: 10 }}>{err}</div>}
+    </div>
   );
 }
 
