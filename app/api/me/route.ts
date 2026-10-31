@@ -17,7 +17,7 @@ export const GET = handler(async () => {
       sb.from('answers').select('question_id').eq('participant_id', p.id),
       sb.rpc('team_balance', { p_team: p.team_id }),
       sb.from('redemptions').select('item_name, quantity, total_cost, created_at').eq('team_id', p.team_id).order('created_at', { ascending: false }).limit(50),
-      sb.from('market_items').select('name, category, price, stock, requires_goal').eq('active', true).order('price'),
+      sb.from('market_items').select('name, category, price, stock, requires_goal, image_url').eq('active', true).order('price'),
       teamGoal(p.team_id),
     ]);
 

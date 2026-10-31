@@ -16,7 +16,7 @@ type Me = {
   current: Question | null;
   result: { correct: number; tokens: number } | null;
   history: { item: string; qty: number; cost: number; at: string }[];
-  market: { name: string; category: string; price: number; stock: number; requires_goal: boolean }[];
+  market: { name: string; category: string; price: number; stock: number; requires_goal: boolean; image_url: string | null }[];
 };
 type PuzzleData = {
   open: boolean; squad: string | null; groupSize: number;
@@ -590,8 +590,15 @@ function HuntView({ pending, clearPending, onBalance, onAuthLost }: {
 
 function Wallet({ me }: { me: Me }) {
   const [tab, setTab] = useState<'history' | 'market'>('history');
+  const [zoom, setZoom] = useState<string | null>(null);
   return (
     <>
+      {zoom && (
+        <div onClick={() => setZoom(null)} role="dialog" aria-label="รูปสินค้า"
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.8)', display: 'grid', placeItems: 'center', padding: 16, zIndex: 50, cursor: 'zoom-out' }}>
+          <img src={zoom} alt="" style={{ maxWidth: '100%', maxHeight: '85dvh', borderRadius: 16 }} />
+        </div>
+      )}
       <GoalCard goal={me.goal} mine />
       <div className="card center">
         <div className="muted">โทเคนของทีม</div>
@@ -620,8 +627,12 @@ function Wallet({ me }: { me: Me }) {
           me.market.length === 0 ? <p className="muted center" style={{ margin: 0 }}>ยังไม่มีสินค้า</p> : (
             <ul className="list">
               {me.market.map((m, i) => (
-                <li key={i}>
-                  <span>{m.requires_goal && !me.goal.met ? '🔒 ' : m.requires_goal ? '🎯 ' : ''}{m.name}<br /><span className="muted">{m.requires_goal ? (me.goal.met ? 'สินค้าพิเศษ ปลดล็อกแล้ว · ' : 'สินค้าพิเศษ ต้องถึงเป้าหมายทีมก่อน · ') : ''}เหลือ {m.stock} ชิ้น</span></span>
+                <li key={i} style={{ alignItems: 'center' }}>
+                  <button type="button" aria-label={`ดูรูป ${m.name}`} disabled={!m.image_url} onClick={() => m.image_url && setZoom(m.image_url)}
+                    style={{ flex: 'none', width: 64, height: 64, padding: 0, border: 0, borderRadius: 12, overflow: 'hidden', background: 'var(--cream-deep)', cursor: m.image_url ? 'zoom-in' : 'default' }}>
+                    {m.image_url ? <img src={m.image_url} alt={m.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : <span style={{ fontSize: 28 }}>🍽️</span>}
+                  </button>
+                  <span style={{ flex: 1 }}>{m.requires_goal && !me.goal.met ? '🔒 ' : m.requires_goal ? '🎯 ' : ''}{m.name}<br /><span className="muted">{m.requires_goal ? (me.goal.met ? 'สินค้าพิเศษ ปลดล็อกแล้ว · ' : 'สินค้าพิเศษ ต้องถึงเป้าหมายทีมก่อน · ') : ''}เหลือ {m.stock} ชิ้น</span></span>
                   <strong>{m.price} <span className="muted">โทเคน</span></strong>
                 </li>
               ))}

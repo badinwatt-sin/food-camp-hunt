@@ -32,7 +32,8 @@ Other teams can find the same spot too. Tokens go into the same team wallet and 
   squad has to meet and combine them. Anyone can submit the squad's answer; attempts are shared by the squad (default 2) and enforced by the database; the correct answer is never sent to phones.
   Tokens go to the team wallet once per squad. Puzzles have **their own open/close switch** in **Admin → ภาพรวม** (separate from the quiz and the hunt; default closed).
   Tip: write at least as many clues as there are people in a squad (4–5) so everyone has something to share.
-- **Existing database?** run, in order, `supabase/hunt.sql`, `supabase/squads.sql`, `supabase/coop.sql`, `supabase/ids.sql` (all safe to re-run).
+- **Market pictures:** in **Admin → ตลาด / แลกของ → แก้ไข/เพิ่มสินค้า** choose an image file (PNG/JPG/WebP; a phone photo is fine — it is shrunk in the browser before upload). Players see it as a thumbnail in **ของที่แลกได้** (tap to enlarge). Images are stored in the public `question-images` storage bucket.
+- **Existing database?** run, in order, `supabase/hunt.sql`, `supabase/squads.sql`, `supabase/coop.sql`, `supabase/ids.sql`, `supabase/items.sql` (all safe to re-run).
 - Hunt and puzzle history can be exported (**ส่งออก CSV → ล่าสมบัติ / ภารกิจทีม**).
 
 > **Status — please read.** The code was written and reviewed carefully, but in the environment where it

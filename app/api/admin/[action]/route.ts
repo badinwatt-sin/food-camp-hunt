@@ -638,7 +638,9 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
         name: need(str(body.name, 100)), category: str(body.category, 30) || 'ingredient',
         price: int(body.price), stock: int(body.stock), active: body.active !== false,
         requires_goal: body.requires_goal === true,
+        image_url: str(body.image_url, 500) || null,
       };
+      if (row.image_url && !imageOk(row.image_url)) throw new HttpError(400, 'BAD_INPUT');
       if (row.price < 1 || row.stock < 0) throw new HttpError(400, 'BAD_INPUT');
       const q = body.id ? sb.from('market_items').update(row).eq('id', body.id) : sb.from('market_items').insert(row);
       const { error } = await q;

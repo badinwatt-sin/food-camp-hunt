@@ -199,12 +199,30 @@ function Overview({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
 }
 
 // -------------------------------------------------------------------- market
+
+/** Shrinks a phone/camera photo in the browser (max 1000px, JPEG) so it uploads fast and fits the 2 MB limit. */
+async function compressImage(file: File, maxSide = 1000): Promise<File> {
+  if (!/^image\/(png|jpe?g|webp)$/i.test(file.type)) throw new Error('รองรับเฉพาะไฟล์ภาพ PNG / JPG / WebP');
+  const bmp = await createImageBitmap(file).catch(() => null);
+  if (!bmp) throw new Error('เปิดไฟล์ภาพนี้ไม่ได้');
+  const scale = Math.min(1, maxSide / Math.max(bmp.width, bmp.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bmp.width * scale); canvas.height = Math.round(bmp.height * scale);
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, canvas.width, canvas.height); // flatten transparency
+  ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  const blob: Blob | null = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.85));
+  if (!blob) throw new Error('แปลงภาพไม่สำเร็จ');
+  return new File([blob], 'photo.jpg', { type: 'image/jpeg' });
+}
+
 function Market({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
   const [items, setItems] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [rd, setRd] = useState({ team_id: '', item_id: '', quantity: '1', key: uuid() });
   const [edit, setEdit] = useState<any | null>(null);
   const [busy, setBusy] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -229,6 +247,19 @@ function Market({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
       await load();
     } catch (e) { setMsg((e as Error).message + ' (ถ้าไม่แน่ใจว่าบันทึกหรือยัง กดยืนยันซ้ำได้อย่างปลอดภัย)'); await load(); }
     finally { setBusy(false); }
+  }
+  async function uploadPhoto(file: File) {
+    setUploading(true);
+    try {
+      const small = await compressImage(file);
+      const fd = new FormData(); fd.append('file', small);
+      const res = await fetch('/api/admin/upload', { method: 'POST', body: fd });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message ?? 'อัปโหลดไม่สำเร็จ');
+      setEdit((e: any) => ({ ...e, image_url: data.url }));
+      setMsg('อัปโหลดรูปแล้ว กด "บันทึก" เพื่อใช้รูปนี้');
+    } catch (e) { setMsg((e as Error).message); }
+    finally { setUploading(false); }
   }
   async function saveItem() {
     try { await call('item.save', edit); setEdit(null); await load(); setMsg('บันทึกสินค้าแล้ว'); }
@@ -265,14 +296,15 @@ function Market({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0 }}>รายการสินค้า</h2>
-          {role === 'admin' && <button className="btn small green" onClick={() => setEdit({ name: '', category: 'ingredient', price: 10, stock: 10, active: true, requires_goal: false })}>+ เพิ่มสินค้า</button>}
+          {role === 'admin' && <button className="btn small green" onClick={() => setEdit({ name: '', category: 'ingredient', price: 10, stock: 10, active: true, requires_goal: false, image_url: '' })}>+ เพิ่มสินค้า</button>}
         </div>
         <div className="table-wrap">
           <table>
-            <thead><tr><th>ชื่อ</th><th>หมวด</th><th>ราคา</th><th>คงเหลือ</th><th>ล็อกด้วยเป้าหมาย</th><th>สถานะ</th>{role === 'admin' && <th />}</tr></thead>
+            <thead><tr><th>รูป</th><th>ชื่อ</th><th>หมวด</th><th>ราคา</th><th>คงเหลือ</th><th>ล็อกด้วยเป้าหมาย</th><th>สถานะ</th>{role === 'admin' && <th />}</tr></thead>
             <tbody>
               {items.map((i) => (
                 <tr key={i.id}>
+                  <td>{i.image_url ? <img src={i.image_url} alt="" style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 8, display: 'block' }} /> : <span className="muted">—</span>}</td>
                   <td>{i.name}</td><td>{i.category}</td><td className="num">{i.price}</td><td className="num">{i.stock}</td>
                   <td>{i.requires_goal ? '🎯 ต้องถึงเป้า' : '—'}</td>
                   <td>{i.active ? 'เปิดขาย' : 'ปิด'}</td>
@@ -295,6 +327,18 @@ function Market({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
             <div className="grow"><label className="lbl">หมวด (ingredient / sauce / topping / decoration)</label><input className="field" value={edit.category} onChange={(e) => setEdit({ ...edit, category: e.target.value })} /></div>
             <div><label className="lbl">ราคา (โทเคน)</label><input className="field" style={{ width: 110 }} type="number" min={1} value={edit.price} onChange={(e) => setEdit({ ...edit, price: Number(e.target.value) })} /></div>
             <div><label className="lbl">จำนวนคงเหลือ</label><input className="field" style={{ width: 110 }} type="number" min={0} value={edit.stock} onChange={(e) => setEdit({ ...edit, stock: Number(e.target.value) })} /></div>
+          </div>
+          <label className="lbl">รูปสินค้า (ไฟล์ภาพ PNG / JPG / WebP · ระบบย่อรูปให้อัตโนมัติ ถ่ายจากมือถือได้เลย)</label>
+          <div className="row">
+            {edit.image_url
+              ? <img src={edit.image_url} alt="" style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 12, border: '2px solid var(--cream-deep)' }} />
+              : <div style={{ width: 96, height: 96, borderRadius: 12, border: '2px dashed var(--cream-deep)', display: 'grid', placeItems: 'center', fontSize: 32 }}>🍽️</div>}
+            <div>
+              <input type="file" accept="image/png,image/jpeg,image/webp" disabled={uploading}
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadPhoto(f); e.target.value = ''; }} />
+              <div className="muted">{uploading ? 'กำลังอัปโหลด…' : 'เลือกไฟล์แล้วรอจนเห็นรูปตัวอย่าง จากนั้นกด “บันทึก”'}</div>
+              {edit.image_url && <button className="btn small ghost" style={{ marginTop: 6 }} onClick={() => setEdit({ ...edit, image_url: '' })}>ลบรูป</button>}
+            </div>
           </div>
           <label className="lbl"><input type="checkbox" checked={edit.active} onChange={(e) => setEdit({ ...edit, active: e.target.checked })} /> เปิดขาย</label>
           <label className="lbl"><input type="checkbox" checked={!!edit.requires_goal} onChange={(e) => setEdit({ ...edit, requires_goal: e.target.checked })} /> 🎯 สินค้าพิเศษ: ทีมต้องถึงเป้าหมายการเล่นควิซก่อนจึงแลกได้</label>

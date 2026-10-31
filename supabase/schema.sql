@@ -68,6 +68,7 @@ create table if not exists public.market_items (
   category   text not null default 'ingredient',
   price      int not null check (price > 0),
   stock      int not null default 0 check (stock >= 0),   -- DB refuses negative stock
+  image_url  text,                                        -- optional picture shown to players
   active     boolean not null default true,
   created_at timestamptz not null default now()
 );
