@@ -75,7 +75,7 @@ export default function Page() {
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
-  const [view, setView] = useState<'main' | 'wallet' | 'hunt'>('main');
+  const [view, setView] = useState<'main' | 'wallet' | 'hunt' | 'market'>('main');
   const [pendingSpot, setPendingSpot] = useState('');
   const completing = useRef(false);
 
@@ -213,6 +213,17 @@ export default function Page() {
     );
   }
 
+  // Market: what can be bought, price in tokens, and whether it is in stock (available any time)
+  if (view === 'market') {
+    return (
+      <Shell subtitle={`ทีม ${team.name}`}>
+        <MarketView me={me} onRefresh={load} />
+        {err && <div className="error">{err}</div>}
+        <button className="btn" onClick={() => setView('main')}>กลับ</button>
+      </Shell>
+    );
+  }
+
   // Wallet view (available any time)
   if (view === 'wallet') {
     return (
@@ -245,6 +256,8 @@ export default function Page() {
           </button>
           {!me.game.open && <button className="btn ghost" onClick={() => load()}>ตรวจสอบอีกครั้ง</button>}
           <button className="btn green" onClick={() => setView('hunt')}>🧭 กิจกรรม: ล่าสมบัติ & ภารกิจทีม</button>
+        <button className="btn green" onClick={() => setView('market')}>🛒 ตลาด: ดูของ ราคา และสต็อก</button>
+          <button className="btn green" onClick={() => setView('market')}>🛒 ตลาด: ดูของ ราคา และสต็อก</button>
           <button className="btn ghost" onClick={logout}>ไม่ใช่ฉัน</button>
         </div>
       </Shell>
@@ -276,7 +289,10 @@ export default function Page() {
     const pct = ((feedback ? feedback.answered : me.answered) / me.total) * 100;
     return (
       <Shell subtitle={`ทีม ${team.name}`}>
-        <button className="btn small ghost" style={{ margin: '14px 0 10px', background: '#fff' }} onClick={() => setView('hunt')}>🧭 ล่าสมบัติ & ภารกิจทีม</button>
+        <div className="row" style={{ margin: '14px 0 10px' }}>
+          <button className="btn small ghost" style={{ background: '#fff' }} onClick={() => setView('hunt')}>🧭 ล่าสมบัติ & ภารกิจทีม</button>
+          <button className="btn small ghost" style={{ background: '#fff' }} onClick={() => setView('market')}>🛒 ตลาด</button>
+        </div>
         <div className="card">
           <div className="row" style={{ justifyContent: 'space-between' }}>
             <strong>ข้อ {Math.min(idx, me.total)} / {me.total}</strong>
@@ -588,9 +604,11 @@ function HuntView({ pending, clearPending, onBalance, onAuthLost }: {
   );
 }
 
-function Wallet({ me }: { me: Me }) {
-  const [tab, setTab] = useState<'history' | 'market'>('history');
+/** Market list: picture, price in tokens, and stock status. Sold-out items stay visible (dimmed) so players know what exists. */
+function MarketList({ me }: { me: Me }) {
   const [zoom, setZoom] = useState<string | null>(null);
+  if (me.market.length === 0) return <p className="muted center" style={{ margin: 0 }}>ยังไม่มีสินค้า</p>;
+  const items = [...me.market].sort((a, b) => Number(a.stock === 0) - Number(b.stock === 0) || a.price - b.price);
   return (
     <>
       {zoom && (
@@ -599,6 +617,67 @@ function Wallet({ me }: { me: Me }) {
           <img src={zoom} alt="" style={{ maxWidth: '100%', maxHeight: '85dvh', borderRadius: 16 }} />
         </div>
       )}
+      <ul className="list">
+        {items.map((m, i) => {
+          const out = m.stock <= 0;
+          const locked = m.requires_goal && !me.goal.met;
+          const low = !out && m.stock <= 3;
+          const afford = me.team.balance >= m.price;
+          return (
+            <li key={i} style={{ alignItems: 'center', opacity: out ? 0.55 : 1 }}>
+              <button type="button" aria-label={`ดูรูป ${m.name}`} disabled={!m.image_url} onClick={() => m.image_url && setZoom(m.image_url)}
+                style={{ flex: 'none', width: 64, height: 64, padding: 0, border: 0, borderRadius: 12, overflow: 'hidden', background: 'var(--cream-deep)', cursor: m.image_url ? 'zoom-in' : 'default' }}>
+                {m.image_url ? <img src={m.image_url} alt={m.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : <span style={{ fontSize: 28 }}>🍽️</span>}
+              </button>
+              <span style={{ flex: 1 }}>
+                <strong>{locked ? '🔒 ' : m.requires_goal ? '🎯 ' : ''}{m.name}</strong>
+                <br />
+                <span className="pill" style={{ background: out ? '#f1d4d1' : low ? '#f2c46d' : 'var(--green)', fontSize: 13, padding: '2px 10px' }}>
+                  {out ? '⛔ หมดแล้ว' : low ? `⚠️ เหลือน้อย ${m.stock} ชิ้น` : `✅ มีของ เหลือ ${m.stock} ชิ้น`}
+                </span>
+                {m.requires_goal && (
+                  <><br /><span className="muted" style={{ fontSize: 13 }}>{locked ? 'สินค้าพิเศษ: ทีมต้องถึงเป้าหมายก่อนจึงแลกได้' : 'สินค้าพิเศษ ปลดล็อกแล้ว'}</span></>
+                )}
+                {!out && !locked && !afford && <><br /><span className="muted" style={{ fontSize: 13 }}>โทเคนทีมยังไม่พอ (ขาดอีก {m.price - me.team.balance})</span></>}
+              </span>
+              <strong style={{ textAlign: 'right' }}>{m.price}<br /><span className="muted" style={{ fontWeight: 400 }}>โทเคน</span></strong>
+            </li>
+          );
+        })}
+      </ul>
+    </>
+  );
+}
+
+/** Full-page market for players (reachable before, during and after the quiz). Stock refreshes by itself. */
+function MarketView({ me, onRefresh }: { me: Me; onRefresh: () => unknown }) {
+  const refresh = useRef(onRefresh);
+  refresh.current = onRefresh;
+  useEffect(() => {
+    const t = setInterval(() => { refresh.current(); }, 15000);
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <>
+      <div className="card center">
+        <h2>🛒 ตลาด / แลกของ</h2>
+        <div className="muted">โทเคนของทีม {me.team.name}</div>
+        <div className="coin-row"><Coin size={40} /> {me.team.balance}</div>
+        <p className="muted" style={{ marginBottom: 0 }}>
+          ดูของที่แลกได้ ราคา (โทเคน) และจำนวนที่เหลือ · ให้ตัวแทนทีมแจ้งทีมงานเพื่อแลก ทีมงานเป็นผู้บันทึกการแลกเท่านั้น · จำนวนที่เหลืออัปเดตอัตโนมัติ
+        </p>
+      </div>
+      <GoalCard goal={me.goal} mine />
+      <div className="card"><MarketList me={me} /></div>
+      <button className="btn ghost" onClick={() => { refresh.current(); }}>รีเฟรชสต็อกตอนนี้</button>
+    </>
+  );
+}
+
+function Wallet({ me }: { me: Me }) {
+  const [tab, setTab] = useState<'history' | 'market'>('history');
+  return (
+    <>
       <GoalCard goal={me.goal} mine />
       <div className="card center">
         <div className="muted">โทเคนของทีม</div>
@@ -624,20 +703,7 @@ function Wallet({ me }: { me: Me }) {
             </ul>
           )
         ) : (
-          me.market.length === 0 ? <p className="muted center" style={{ margin: 0 }}>ยังไม่มีสินค้า</p> : (
-            <ul className="list">
-              {me.market.map((m, i) => (
-                <li key={i} style={{ alignItems: 'center' }}>
-                  <button type="button" aria-label={`ดูรูป ${m.name}`} disabled={!m.image_url} onClick={() => m.image_url && setZoom(m.image_url)}
-                    style={{ flex: 'none', width: 64, height: 64, padding: 0, border: 0, borderRadius: 12, overflow: 'hidden', background: 'var(--cream-deep)', cursor: m.image_url ? 'zoom-in' : 'default' }}>
-                    {m.image_url ? <img src={m.image_url} alt={m.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : <span style={{ fontSize: 28 }}>🍽️</span>}
-                  </button>
-                  <span style={{ flex: 1 }}>{m.requires_goal && !me.goal.met ? '🔒 ' : m.requires_goal ? '🎯 ' : ''}{m.name}<br /><span className="muted">{m.requires_goal ? (me.goal.met ? 'สินค้าพิเศษ ปลดล็อกแล้ว · ' : 'สินค้าพิเศษ ต้องถึงเป้าหมายทีมก่อน · ') : ''}เหลือ {m.stock} ชิ้น</span></span>
-                  <strong>{m.price} <span className="muted">โทเคน</span></strong>
-                </li>
-              ))}
-            </ul>
-          )
+          <MarketList me={me} />
         )}
       </div>
     </>
