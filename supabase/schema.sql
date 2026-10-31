@@ -14,6 +14,9 @@ create table if not exists public.game_settings (
   is_open           boolean not null default false,
   tokens_per_correct int not null default 10 check (tokens_per_correct >= 0),
   hunt_open         boolean not null default false,
+  checkin_open      boolean not null default false,   -- event-day check-in switch
+  checkin_code      text,                             -- secret inside the staff check-in QR code
+  checkin_announced_at timestamptz,                   -- bump = pop-up again for players not yet checked in
   market_open       boolean not null default false   -- lets team leaders redeem from their phones
 );
 insert into public.game_settings (id) values (1) on conflict do nothing;
@@ -32,6 +35,8 @@ create table if not exists public.participants (
   -- The player's login ID is set by the organiser; only a keyed hash of it is stored. NULL = no active ID.
   code_hash       text unique,
   is_leader       boolean not null default false,   -- team leader: may redeem for the team (max one per team)
+  checked_in_at   timestamptz,                      -- event-day check-in
+  checked_in_by   text,                             -- 'self' or 'staff:<role>'
   avatar_url      text,                             -- uploaded profile photo (public 'avatars' bucket)
   avatar_emoji    text check (avatar_emoji is null or length(avatar_emoji) <= 16),
   session_version int not null default 1,

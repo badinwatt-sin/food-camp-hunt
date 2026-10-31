@@ -4,6 +4,7 @@ import {
   checkAdminPassword, clearAdminSession, getAdminRole, setAdminSession, type AdminRole,
 } from '@/lib/auth';
 import { goalStatus } from '@/lib/goal';
+import crypto from 'crypto';
 import { hashCode, normalizeCode, normalizeId } from '@/lib/codes';
 import { removeAvatarFile, removePublicFile } from '@/lib/avatars';
 import { BULK_CONFIRM, BULK_PLANS, type BulkTarget } from '@/lib/bulk';
@@ -19,6 +20,9 @@ async function requireRole(min: AdminRole): Promise<AdminRole> {
   if (min === 'admin' && role !== 'admin') throw new HttpError(403, 'FORBIDDEN');
   return role;
 }
+
+/** 8-char code without look-alike letters, shown inside the staff check-in QR code. */
+const newCheckinCode = () => Array.from({ length: 8 }, () => 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'[crypto.randomInt(31)]).join('');
 
 const str = (v: unknown, max = 200) => String(v ?? '').trim().slice(0, max);
 const int = (v: unknown) => {
@@ -54,12 +58,13 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
 
   if (action === 'overview') {
     await requireRole('staff');
-    const [{ data: settings }, { data: teams }, { data: leaders }, { data: pend }, { count: pendingPhotos }] = await Promise.all([
+    const [{ data: settings }, { data: teams }, { data: leaders }, { data: pend }, { count: pendingPhotos }, { count: checkedIn }] = await Promise.all([
       sb.from('game_settings').select('*').eq('id', 1).single(),
       sb.from('team_summary').select('*').order('name'),
       sb.from('participants').select('team_id, name, nick_name').eq('is_leader', true),
       sb.from('redemptions').select('quantity').is('fulfilled_at', null),
       sb.from('photo_submissions').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+      sb.from('participants').select('id', { count: 'exact', head: true }).not('checked_in_at', 'is', null),
     ]);
     const leaderOf = new Map((leaders ?? []).map((l: any) => [l.team_id, l.nick_name || l.name]));
     return ok({
@@ -67,6 +72,7 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
       teams: (teams ?? []).map((t: any) => ({ ...t, leader: leaderOf.get(t.team_id) ?? null })),
       pendingPickup: (pend ?? []).reduce((n: number, r: any) => n + r.quantity, 0),
       pendingPhotos: pendingPhotos ?? 0,
+      checkedIn: checkedIn ?? 0,
     });
   }
 
@@ -89,6 +95,22 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
         squad_id: p.squad_id ?? null, squad_name: p.squads?.name ?? '',
         status: p.status, has_code: !!p.code_hash, correct_count: p.correct_count,
         tokens_earned: p.tokens_earned, completed_at: p.completed_at,
+      })),
+    });
+  }
+
+  if (action === 'checkin') {
+    // Door staff need this: the QR code to show, who is in and who is still missing.
+    await requireRole('staff');
+    const [{ data: st }, { data: people }] = await Promise.all([
+      sb.from('game_settings').select('checkin_open, checkin_code, checkin_announced_at').eq('id', 1).single(),
+      sb.from('participants').select('id, name, nick_name, status, checked_in_at, checked_in_by, team_id, teams(name), squads(name)').order('name'),
+    ]);
+    return ok({
+      open: !!st?.checkin_open, code: st?.checkin_code ?? null, announcedAt: st?.checkin_announced_at ?? null,
+      people: (people ?? []).map((p: any) => ({
+        id: p.id, name: p.name, nick_name: p.nick_name ?? '', team_id: p.team_id, team: p.teams?.name ?? '', squad: p.squads?.name ?? '',
+        checked_in_at: p.checked_in_at, checked_in_by: p.checked_in_by,
       })),
     });
   }
@@ -264,6 +286,10 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
       const { data } = await sb.from('hunt_claims').select('claimed_at, tokens, teams(name), squads(name), participants(name), hunt_spots(title)').order('claimed_at');
       rows = [['Time', 'Team', 'Squad', 'Spot', 'Found by', 'Tokens'],
         ...(data ?? []).map((r: any) => [r.claimed_at, r.teams?.name, r.squads?.name ?? '', r.hunt_spots?.title, r.participants?.name, r.tokens])];
+    } else if (type === 'checkin') {
+      const { data } = await sb.from('participants').select('name, nick_name, checked_in_at, checked_in_by, teams(name), squads(name)').order('name');
+      rows = [['Full name', 'Nick name', 'Team', 'Squad', 'Checked in', 'Checked in at', 'How'],
+        ...(data ?? []).map((p: any) => [p.name, p.nick_name ?? '', p.teams?.name, p.squads?.name ?? '', p.checked_in_at ? 'yes' : 'no', p.checked_in_at ?? '', p.checked_in_by ?? ''])];
     } else if (type === 'photos') {
       const { data } = await sb.from('photo_submissions').select('created_at, status, tokens, image_url, rejected_reason, reviewed_at, reviewed_by, teams(name), participants(name), photo_missions(title)').order('created_at');
       rows = [['Uploaded at', 'Team', 'Mission', 'Uploaded by (leader)', 'Status', 'Tokens', 'Reviewed at', 'Reviewed by', 'Photo URL', 'Reject reason'],
@@ -332,6 +358,21 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
     });
     if (error) throw error;
     return ok(data);
+  }
+
+  if (action === 'checkin.mark') {
+    // Door staff check people in (or undo it) by hand, e.g. when a phone can't scan.
+    const r3 = await requireRole('staff');
+    const ids: string[] = (Array.isArray(body.ids) ? body.ids : [body.id]).filter(Boolean).map(String).slice(0, 300);
+    if (ids.length === 0) throw new HttpError(400, 'BAD_INPUT');
+    const done = body.done !== false;
+    const q = done
+      ? sb.from('participants').update({ checked_in_at: new Date().toISOString(), checked_in_by: `staff:${r3}` }).in('id', ids).is('checked_in_at', null)  // keep the first time
+      : sb.from('participants').update({ checked_in_at: null, checked_in_by: null }).in('id', ids);
+    const { error } = await q;
+    if (error) throw error;
+    await audit(r3, done ? 'checkin.mark' : 'checkin.unmark', { count: ids.length });
+    return ok({ updated: ids.length });
   }
 
   if (action === 'photo.review') {
@@ -506,16 +547,32 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       }
       if (plan.resetPlayers) {
         const { error } = await sb.from('participants')
-          .update({ status: 'not_started', correct_count: 0, tokens_earned: 0, confirmed_at: null, completed_at: null }).not('id', 'is', null);
+          .update({ status: 'not_started', correct_count: 0, tokens_earned: 0, confirmed_at: null, completed_at: null, checked_in_at: null, checked_in_by: null }).not('id', 'is', null);
         if (error) throw error;
       }
       if (plan.switchesOff) {
-        const { error } = await sb.from('game_settings').update({ is_open: false, hunt_open: false, puzzle_open: false, market_open: false }).eq('id', 1);
+        const { error } = await sb.from('game_settings').update({ is_open: false, hunt_open: false, puzzle_open: false, market_open: false, checkin_open: false }).eq('id', 1);
         if (error) throw error;
       }
       for (const f of files) await removePublicFile(f.bucket, f.url);
       await audit(role, 'bulk.delete', { target, counts });
       return ok({ target, counts });
+    }
+    case 'checkin.set': {
+      // Open/close event-day check-in, re-announce it to players, or make a new QR code (the old one stops working).
+      const { data: cur } = await sb.from('game_settings').select('checkin_open, checkin_code').eq('id', 1).single();
+      const patch: Record<string, unknown> = {};
+      if (typeof body.open === 'boolean') {
+        patch.checkin_open = body.open;
+        if (body.open) patch.checkin_announced_at = new Date().toISOString(); // opening = first announcement
+      }
+      if (body.announce === true) patch.checkin_announced_at = new Date().toISOString();
+      if (body.regenerate === true || (patch.checkin_open === true && !cur?.checkin_code)) patch.checkin_code = newCheckinCode();
+      if (Object.keys(patch).length === 0) throw new HttpError(400, 'BAD_INPUT');
+      const { error } = await sb.from('game_settings').update(patch).eq('id', 1);
+      if (error) throw error;
+      await audit(role, 'checkin.set', { open: patch.checkin_open ?? null, announce: body.announce === true, regenerate: body.regenerate === true });
+      return ok();
     }
     case 'leader.set': {
       // Exactly one leader per team: demote the current one first, then promote the chosen player.

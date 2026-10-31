@@ -56,7 +56,7 @@ function Login({ onDone }: { onDone: (r: Role) => void }) {
   );
 }
 
-type Tab = 'overview' | 'market' | 'people' | 'questions' | 'hunt' | 'puzzles' | 'history' | 'export';
+type Tab = 'overview' | 'checkin' | 'market' | 'people' | 'questions' | 'hunt' | 'puzzles' | 'history' | 'export';
 
 /** Bottom toast: always visible wherever you are on the page (the old banner sat at the top, out of sight). */
 function Toast({ msg, onClose }: { msg: string; onClose: () => void }) {
@@ -88,7 +88,7 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
     return () => { clearInterval(t); window.removeEventListener('fc-photos-changed', poll); };
   }, []);
   const tabs: [Tab, string, string, boolean][] = [
-    ['overview', '📊', 'ภาพรวม', true], ['market', '🛒', 'ตลาดสินค้า', true],
+    ['overview', '📊', 'ภาพรวม', true], ['checkin', '📍', 'เช็กอินวันงาน', true], ['market', '🛒', 'ตลาดสินค้า', true],
     ['people', '👥', 'ทีมและผู้เล่น', role === 'admin'], ['questions', '🍜', 'คำถามควิซ', role === 'admin'],
     ['hunt', '🧭', 'ล่าสมบัติ', role === 'admin'], ['puzzles', '📸', 'ภารกิจทีม', true],
     ['history', '📜', 'ประวัติ', role === 'admin'], ['export', '⬇️', 'ส่งออก CSV', role === 'admin'],
@@ -111,6 +111,7 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
         </nav>
         <div className="admin">
         {tab === 'overview' && <Overview key={rk} role={role} setMsg={setMsg} />}
+        {tab === 'checkin' && <Checkin key={rk} role={role} setMsg={setMsg} />}
         {tab === 'market' && <Market key={rk} role={role} setMsg={setMsg} />}
         {tab === 'people' && <People key={rk} setMsg={setMsg} />}
         {tab === 'questions' && <Questions key={rk} setMsg={setMsg} />}
@@ -251,6 +252,7 @@ function Overview({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
         <div className="stat"><b>🪙 {totalBal}</b><span>โทเคนคงเหลือรวมทุกทีม</span></div>
         <div className="stat"><b>{totalSpent}</b><span>โทเคนที่ใช้ไปแล้ว</span></div>
         <div className="stat"><b>📦 {d.pendingPickup ?? 0}</b><span>ชิ้นที่รอจ่ายของ</span></div>
+        <div className="stat"><b>📍 {d.checkedIn ?? 0}/{totalP}</b><span>เช็กอินวันงานแล้ว{d.settings.checkin_open ? ' · 🟢 เปิดอยู่' : ''}</span></div>
         <div className="stat" style={(d.pendingPhotos ?? 0) > 0 ? { outline: '3px solid #f0c36a' } : undefined}><b>📸 {d.pendingPhotos ?? 0}</b><span>ภาพภารกิจที่รอตรวจ</span></div>
       </div>
 
@@ -362,6 +364,119 @@ function AdjustDialog({ team, onClose, onDone }: { team: any; onClose: () => voi
         <button className="btn" disabled={busy || !!problem} onClick={save}>{busy ? 'กำลังบันทึก…' : 'บันทึกการปรับโทเคน'}</button>
       </div>
     </div>
+  );
+}
+
+// ------------------------------------------------------------------ event-day check-in
+function Checkin({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
+  const [d, setD] = useState<any>(null);
+  const [filter, setFilter] = useState<'missing' | 'in' | 'all'>('missing');
+  const [q, setQ] = useState('');
+  const [big, setBig] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const isAdmin = role === 'admin';
+  const load = useCallback(() => call('checkin').then(setD).catch((e) => setMsg(e.message)), [setMsg]);
+  useEffect(() => { load(); const t = setInterval(load, 8000); return () => clearInterval(t); }, [load]);
+  if (!d) return <div className="spinner" />;
+
+  const people: any[] = d.people;
+  const inCount = people.filter((p) => p.checked_in_at).length;
+  const url = d.code ? `${window.location.origin}/?checkin=${d.code}` : '';
+  const teams = Array.from(new Set(people.map((p) => p.team))).sort();
+  const shown = people
+    .filter((p) => (filter === 'all' ? true : filter === 'in' ? !!p.checked_in_at : !p.checked_in_at))
+    .filter((p) => !q.trim() || `${p.name} ${p.nick_name} ${p.team}`.toLowerCase().includes(q.trim().toLowerCase()));
+
+  async function set(patch: Record<string, unknown>, text: string) {
+    setBusy(true);
+    try { await call('checkin.set', patch); await load(); setMsg(text); }
+    catch (e) { setMsg((e as Error).message); }
+    finally { setBusy(false); }
+  }
+  async function mark(ids: string[], done: boolean) {
+    try { await call('checkin.mark', { ids, done }); await load(); setMsg(done ? `เช็กอินให้ ${ids.length} คนแล้ว` : 'ยกเลิกการเช็กอินแล้ว'); }
+    catch (e) { setMsg((e as Error).message); }
+  }
+  const time = (iso: string) => new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+
+  return (
+    <>
+      {big && url && (
+        <div className="dlg-back" onClick={() => setBig(false)} style={{ cursor: 'zoom-out', background: '#fff' }}>
+          <div className="center">
+            <div style={{ fontSize: 32, fontWeight: 700, marginBottom: 12 }}>📍 สแกน QR เพื่อเช็กอินเข้างาน</div>
+            <Qr text={url} size={Math.min(560, typeof window !== 'undefined' ? window.innerWidth - 40 : 320)} />
+            <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: 4, marginTop: 10 }} className="codebox">{d.code}</div>
+            <div className="muted">สแกนด้วยกล้องมือถือ แล้วกด “ยืนยันการเข้าร่วม” (แตะเพื่อปิด)</div>
+          </div>
+        </div>
+      )}
+
+      <div className="card noprint">
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <div>
+            <h2 style={{ margin: 0 }}>📍 เช็กอินวันงาน: {d.open ? '🟢 เปิดอยู่' : '🔴 ปิดอยู่'}</h2>
+            <div className="muted">เมื่อเปิด ผู้เล่นจะเห็นป๊อปอัปและแถบ “ถึงสถานที่แล้ว? เช็กอิน” ที่หน้าแรก · ผู้เล่นสแกน QR ของทีมงาน แล้วต้องกด <strong>ยืนยันการเข้าร่วม</strong> เอง</div>
+          </div>
+          {isAdmin && (
+            <div className="row">
+              <button className={`btn small ${d.open ? 'danger' : ''}`} disabled={busy} onClick={() => set({ open: !d.open }, d.open ? 'ปิดเช็กอินแล้ว' : 'เปิดเช็กอินแล้ว · ผู้เล่นจะเห็นแจ้งเตือน')}>{d.open ? 'ปิดเช็กอิน' : '▶ เปิดการลงทะเบียนวันงาน'}</button>
+              {d.open && <button className="btn small ghost" disabled={busy} onClick={() => set({ announce: true }, 'แจ้งเตือนผู้ที่ยังไม่เช็กอินอีกครั้งแล้ว')}>📣 แจ้งเตือนอีกครั้ง</button>}
+            </div>
+          )}
+        </div>
+        <div style={{ marginTop: 14 }}>
+          <strong>เช็กอินแล้ว {inCount}/{people.length} คน</strong>
+          <div className="progress"><i style={{ width: `${people.length ? (inCount / people.length) * 100 : 0}%` }} /></div>
+          <div className="row" style={{ gap: 6 }}>
+            {teams.map((t) => {
+              const tp = people.filter((p) => p.team === t); const ti = tp.filter((p) => p.checked_in_at).length;
+              return <span key={t} className="pill" style={{ background: ti === tp.length && tp.length ? '#cfe9c9' : '#f6efdc' }}>{t} {ti}/{tp.length}</span>;
+            })}
+          </div>
+        </div>
+      </div>
+
+      <div className="card center">
+        <h2 style={{ margin: 0 }}>QR Code เช็กอิน (ให้ผู้เล่นสแกน)</h2>
+        {url ? (
+          <>
+            <div style={{ margin: '12px 0' }}><Qr text={url} size={240} /></div>
+            <div className="codebox" style={{ fontSize: 24 }}>{d.code}</div>
+            {!d.open && <div className="banner" style={{ marginTop: 10 }}>เช็กอินยังปิดอยู่ · QR ใช้ไม่ได้จนกว่าจะเปิด</div>}
+            <div className="row noprint" style={{ justifyContent: 'center', marginTop: 10 }}>
+              <button className="btn small" onClick={() => setBig(true)}>🖥️ แสดงเต็มจอ</button>
+              <button className="btn small ghost" onClick={() => window.print()}>🖨️ พิมพ์</button>
+              {isAdmin && <button className="btn small ghost" disabled={busy} onClick={() => confirm('สร้าง QR ใหม่? QR เดิมที่พิมพ์หรือแสดงไว้จะใช้ไม่ได้ทันที') && set({ regenerate: true }, 'สร้าง QR เช็กอินใหม่แล้ว (QR เดิมใช้ไม่ได้)')}>🔄 สร้าง QR ใหม่</button>}
+            </div>
+            <div className="muted noprint" style={{ marginTop: 8, fontSize: 14 }}>ให้ผู้เล่นสแกนที่หน้างานเท่านั้น ถ้า QR หลุดไปถึงคนที่ไม่ได้มา ให้กด “สร้าง QR ใหม่”</div>
+          </>
+        ) : <p className="muted" style={{ margin: '10px 0 0' }}>{isAdmin ? 'กด “เปิดการลงทะเบียนวันงาน” เพื่อสร้าง QR Code เช็กอิน' : 'ยังไม่มี QR (Admin ต้องเปิดเช็กอินก่อน)'}</p>}
+      </div>
+
+      <div className="card noprint">
+        <h2>รายชื่อผู้เล่น</h2>
+        <div className="row" style={{ margin: '4px 0 10px' }}>
+          {([['missing', `⏳ ยังไม่มา (${people.length - inCount})`], ['in', `✅ เช็กอินแล้ว (${inCount})`], ['all', 'ทั้งหมด']] as const).map(([k, label]) => (
+            <button key={k} className={`btn small ${filter === k ? '' : 'ghost'}`} onClick={() => setFilter(k)}>{label}</button>
+          ))}
+          <input className="field grow" placeholder="ค้นหาชื่อ / ทีม" value={q} onChange={(e) => setQ(e.target.value)} />
+          <a className="btn small ghost" style={{ textDecoration: 'none' }} href="/api/admin/export?type=checkin">⬇️ CSV</a>
+        </div>
+        <div className="table-wrap"><table>
+          <thead><tr><th>ชื่อ</th><th>ทีม</th><th>สควอด</th><th>สถานะ</th><th /></tr></thead>
+          <tbody>{shown.map((p) => (
+            <tr key={p.id}>
+              <td>{p.name}{p.nick_name ? <span className="muted"> ({p.nick_name})</span> : null}</td><td>{p.team}</td><td>{p.squad || '—'}</td>
+              <td>{p.checked_in_at ? <>✅ {time(p.checked_in_at)} <span className="muted">· {p.checked_in_by === 'self' ? 'สแกนเอง' : 'ทีมงานเช็กอินให้'}</span></> : '⏳ ยังไม่มา'}</td>
+              <td>{p.checked_in_at
+                ? <button className="btn small ghost" onClick={() => confirm(`ยกเลิกเช็กอินของ ${p.name}?`) && mark([p.id], false)}>ยกเลิก</button>
+                : <button className="btn small" onClick={() => mark([p.id], true)}>เช็กอินให้</button>}</td>
+            </tr>))}</tbody>
+        </table></div>
+        {shown.length === 0 && <p className="muted center" style={{ margin: '8px 0 0' }}>{filter === 'missing' ? 'ทุกคนเช็กอินครบแล้ว 🎉' : 'ไม่พบรายชื่อ'}</p>}
+      </div>
+    </>
   );
 }
 
@@ -1240,6 +1355,7 @@ function Export() {
     ['adjustments', 'ประวัติการปรับโทเคนด้วยมือ'],
     ['hunt', 'ประวัติการล่าสมบัติ (ทีมไหนเจอจุดไหน)'],
     ['photos', 'ภาพภารกิจทีม (ทีม ภารกิจ ผู้อัปโหลด ลิงก์ภาพ)'],
+    ['checkin', 'เช็กอินวันงาน (ใครมาถึงแล้ว เวลา วิธีเช็กอิน)'],
   ];
   return (
     <div className="card stack">

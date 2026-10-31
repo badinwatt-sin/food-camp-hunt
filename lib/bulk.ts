@@ -30,7 +30,7 @@ export const BULK_PLANS: Record<BulkTarget, BulkPlan> = {
       { table: 'answers' }, { table: 'hunt_scans' }, { table: 'hunt_claims' }, { table: 'photo_submissions' }, { table: 'puzzle_attempts' }, { table: 'puzzle_solves' },
       { table: 'token_ledger' }, { table: 'redemptions' }, { table: 'audit_log' },
     ],
-    resetPlayers: true,
+    resetPlayers: true,   // also clears event-day check-ins
     switchesOff: true,
   },
 };

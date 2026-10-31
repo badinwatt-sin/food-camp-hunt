@@ -6,7 +6,7 @@
 // Requires the full schema (schema.sql, or hunt.sql + squads.sql + coop.sql on an older database) and at least one
 // ACTIVE question (the seed provides 5). The test briefly opens the quiz/hunt/puzzle switches and restores them at the end.
 //
-//   1 quiz  2 market  3 anon (quiz)  4 hunt  5 squads  6 co-op spots  7 team goal  8 team photo missions  10 leaders/hand-over  9 anon (new features)
+//   1 quiz  2 market  3 anon (quiz)  4 hunt  5 squads  6 co-op spots  7 team goal  8 team photo missions  10 leaders/hand-over  11 check-in  9 anon (new features)
 import { createClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
 
@@ -304,6 +304,17 @@ try {
   check('staff can mark goods as handed over', !(await sb.from('redemptions').update({ fulfilled_at: new Date().toISOString(), fulfilled_by: 'staff' }).eq('id', red.id)).error);
   check('market self-service switch exists and defaults to a boolean', typeof (await sb.from('game_settings').select('market_open').eq('id', 1).single()).data?.market_open === 'boolean');
 
+  console.log('\n11. Event-day check-in (database columns and rules)');
+  const tK = await mkTeam('checkin');
+  const k1 = await mkMember(tK);
+  const { data: ci0 } = await sb.from('game_settings').select('checkin_open, checkin_code, checkin_announced_at').eq('id', 1).single();
+  check('check-in switch and code columns exist', ci0 && typeof ci0.checkin_open === 'boolean' && 'checkin_code' in ci0 && 'checkin_announced_at' in ci0);
+  const t1 = new Date().toISOString();
+  check('first check-in is stored', !(await sb.from('participants').update({ checked_in_at: t1, checked_in_by: 'self' }).eq('id', k1).is('checked_in_at', null)).error);
+  await sb.from('participants').update({ checked_in_at: new Date(Date.now() + 60000).toISOString(), checked_in_by: 'self' }).eq('id', k1).is('checked_in_at', null);
+  const { data: ci1 } = await sb.from('participants').select('checked_in_at, checked_in_by').eq('id', k1).single();
+  check('a second check-in keeps the first time', new Date(ci1.checked_in_at).toISOString() === t1 && ci1.checked_in_by === 'self');
+
   console.log('\n9. Public (anon) access to the new features is blocked');
   if (!process.env.SUPABASE_ANON_KEY) console.log('  SKIP  set SUPABASE_ANON_KEY to test that the public key reaches none of the new tables/functions');
   else {
@@ -341,7 +352,7 @@ try {
   // Put every switch back exactly as it was.
   if (before) {
     await sb.from('game_settings').update({
-      is_open: before.is_open, hunt_open: before.hunt_open, puzzle_open: before.puzzle_open, team_goal_pct: before.team_goal_pct, market_open: before.market_open,
+      is_open: before.is_open, hunt_open: before.hunt_open, puzzle_open: before.puzzle_open, team_goal_pct: before.team_goal_pct, market_open: before.market_open, checkin_open: before.checkin_open, checkin_code: before.checkin_code, checkin_announced_at: before.checkin_announced_at,
     }).eq('id', 1);
   }
   console.log(`\n${passed} passed, ${failed} failed`);

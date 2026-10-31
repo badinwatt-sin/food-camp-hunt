@@ -12,7 +12,7 @@ export const GET = handler(async () => {
 
   const [{ data: settings }, { data: questions }, { data: answers }, balance, { data: reds }, { data: items }, goal, { data: leaderRow }] =
     await Promise.all([
-      sb.from('game_settings').select('is_open, tokens_per_correct, market_open').eq('id', 1).single(),
+      sb.from('game_settings').select('is_open, tokens_per_correct, market_open, checkin_open').eq('id', 1).single(),
       sb.from('questions').select('id, position, prompt, image_url, options').eq('active', true).order('position').order('id'),
       sb.from('answers').select('question_id').eq('participant_id', p.id),
       sb.rpc('team_balance', { p_team: p.team_id }),
@@ -47,6 +47,7 @@ export const GET = handler(async () => {
     current: p.status === 'in_progress' && next ? next : null,
     result: p.status === 'completed' ? { correct: p.correct_count, tokens: p.tokens_earned } : null,
     avatar: { url: p.avatar_url ?? null, emoji: p.avatar_emoji ?? null },
+    checkin: { open: !!settings?.checkin_open, done: !!p.checked_in_at, at: p.checked_in_at ?? null },
     isLeader: !!p.is_leader,
     leaderName: leaderRow ? (leaderRow.nick_name || leaderRow.name) : null,
     marketOpen: !!settings?.market_open,

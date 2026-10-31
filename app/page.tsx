@@ -12,6 +12,7 @@ type Me = {
   squad: string | null;
   goal: Goal;
   avatar: { url: string | null; emoji: string | null };
+  checkin: { open: boolean; done: boolean; at: string | null };
   isLeader: boolean;
   leaderName: string | null;
   marketOpen: boolean;
@@ -29,6 +30,7 @@ type PhotoData = {
   missions: { id: string; title: string; description: string; category: string; refImageUrl: string | null; tokens: number;
     submission: { status: 'pending' | 'approved' | 'rejected'; url: string; tokens: number; reason: string | null; at: string; reviewedAt: string | null; by: string } | null }[];
 };
+type CheckinNotice = { kind: 'checkin'; id: string };
 type PhotoNotice = { id: string; status: 'approved' | 'rejected'; tokens: number; reason: string | null; at: string; title: string };
 type HuntData = {
   open: boolean;
@@ -82,7 +84,8 @@ export default function Page() {
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
-  const [view, setView] = useState<'home' | 'missions' | 'quiz' | 'hunt' | 'team' | 'market'>('home');
+  const [view, setView] = useState<'home' | 'missions' | 'quiz' | 'hunt' | 'team' | 'market' | 'checkin'>('home');
+  const [pendingCheckin, setPendingCheckin] = useState('');
   const [huntTab, setHuntTab] = useState<'hunt' | 'puzzle'>('hunt');
   const [editAvatar, setEditAvatar] = useState(false);
   const [pendingSpot, setPendingSpot] = useState('');
@@ -123,19 +126,39 @@ export default function Page() {
     if (me && pendingSpot) setView('hunt');
   }, [me, pendingSpot]);
 
+  // The staff check-in QR opens /?checkin=CODE: keep the code across the login step, then show the confirm screen.
+  useEffect(() => {
+    try {
+      const u = new URL(window.location.href);
+      const c = u.searchParams.get('checkin');
+      if (c) {
+        sessionStorage.setItem('fc_checkin', c);
+        u.searchParams.delete('checkin');
+        window.history.replaceState(null, '', u.pathname + u.search);
+      }
+      const saved = sessionStorage.getItem('fc_checkin');
+      if (saved) setPendingCheckin(saved);
+    } catch { /* storage blocked: the player can type the code instead */ }
+  }, []);
+  useEffect(() => {
+    if (me && pendingCheckin) setView('checkin');
+  }, [me, pendingCheckin]);
+
   // Photo-mission decisions from staff: poll lightly and pop up "confirmed +N" / "not accepted" for the whole team.
   const loggedIn = !!me;
   useEffect(() => {
     if (!loggedIn) return;
     noticeStore.onClose = () => { load(); };
+    noticeStore.onCheckin = () => setView('checkin');
     let stop = false;
     const tick = async () => {
       if (document.visibilityState === 'hidden' || noticeStore.get()) return;
       try {
-        const r = await api<{ photos: PhotoNotice[] }>('/api/notices', undefined, 1);
+        const r = await api<{ photos: PhotoNotice[]; checkin: { announcedAt: string } | null }>('/api/notices', undefined, 1);
         if (stop) return;
         const seen = readSeen();
-        const next = r.photos.find((x) => !seen.has(x.id));
+        const ci = r.checkin ? { kind: 'checkin' as const, id: `checkin:${r.checkin.announcedAt}` } : null;
+        const next: PhotoNotice | CheckinNotice | undefined = (ci && !seen.has(ci.id) ? ci : undefined) ?? r.photos.find((x) => !seen.has(x.id));
         if (next && !noticeStore.get()) noticeStore.set(next);
       } catch { /* offline or logged out: try again later */ }
     };
@@ -143,7 +166,7 @@ export default function Page() {
     const t = setInterval(tick, 15000);
     const vis = () => { if (document.visibilityState === 'visible') tick(); };
     document.addEventListener('visibilitychange', vis);
-    return () => { stop = true; clearInterval(t); document.removeEventListener('visibilitychange', vis); noticeStore.onClose = undefined; };
+    return () => { stop = true; clearInterval(t); document.removeEventListener('visibilitychange', vis); noticeStore.onClose = undefined; noticeStore.onCheckin = undefined; };
   }, [loggedIn, load]);
 
   // If every question is answered but the finish step didn't run (e.g. connection dropped), finish now.
@@ -170,7 +193,8 @@ export default function Page() {
   async function logout() {
     await api('/api/logout', {}, 1).catch(() => {});
     setMe(null); setCode(''); setFeedback(null); setSelected(null); setView('home'); setPendingSpot('');
-    try { sessionStorage.removeItem('fc_spot'); } catch { /* ignore */ }
+    try { sessionStorage.removeItem('fc_spot'); sessionStorage.removeItem('fc_checkin'); } catch { /* ignore */ }
+    setPendingCheckin('');
   }
   async function start() {
     setBusy(true); setErr('');
@@ -266,6 +290,18 @@ export default function Page() {
     return (
       <Shell subtitle={subtitle} onHome={goHome}>
         <TeamView me={me} onAuthLost={fail} />
+        <button className="btn ghost" onClick={goHome}>กลับหน้าหลัก</button>
+      </Shell>
+    );
+  }
+
+  // ---- Event-day check-in (scan the staff QR, then confirm)
+  if (view === 'checkin') {
+    return (
+      <Shell subtitle={subtitle} onHome={goHome}>
+        <CheckinView me={me} pendingCode={pendingCheckin}
+          clearPending={() => { setPendingCheckin(''); try { sessionStorage.removeItem('fc_checkin'); } catch { /* ignore */ } }}
+          onDone={() => load()} onAuthLost={fail} />
         <button className="btn ghost" onClick={goHome}>กลับหน้าหลัก</button>
       </Shell>
     );
@@ -429,6 +465,14 @@ export default function Page() {
   // ---- Home: who am I + three big buttons
   return (
     <Shell subtitle={subtitle}>
+      {me.checkin.open && !me.checkin.done && (
+        <div className="card" style={{ border: '3px solid #f0c36a', background: '#fff9e8' }}>
+          <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
+            <div><strong>📍 ถึงสถานที่จัดงานแล้วใช่ไหม?</strong><div className="muted" style={{ fontSize: 14 }}>เช็กอินกับทีมงานหน้างาน: สแกน QR แล้วกดยืนยันการเข้าร่วม</div></div>
+            <button className="btn small" style={{ flex: 'none' }} onClick={() => setView('checkin')}>เช็กอิน</button>
+          </div>
+        </div>
+      )}
       {editAvatar && <AvatarSheet me={me} onClose={() => setEditAvatar(false)} onSaved={() => load()} onAuthLost={fail} />}
       <div className="card">
         <div className="profile">
@@ -443,6 +487,7 @@ export default function Page() {
               <span className={`role ${me.isLeader ? 'leader' : 'member'}`}>{me.isLeader ? '⭐ หัวหน้าทีม' : '🏕️ สมาชิกทีม'}</span>
               <span className="pill">ทีม {team.name}</span>
               {me.squad && <span className="pill" style={{ background: '#f9dca0' }}>{me.squad}</span>}
+              {me.checkin.done && <span className="pill" style={{ background: '#cfe9c9' }}>✅ เช็กอินแล้ว{me.checkin.at ? ` ${new Date(me.checkin.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : ''}</span>}
             </div>
           </div>
         </div>
@@ -474,6 +519,83 @@ export default function Page() {
         <button className="btn small ghost" onClick={logout}>ไม่ใช่คุณ? ออกจากระบบ</button>
       </p>
     </Shell>
+  );
+}
+
+/** Event-day check-in: (1) scan the staff QR (the app opens with its code), (2) press confirm. */
+function CheckinView({ me, pendingCode, clearPending, onDone, onAuthLost }: {
+  me: Me; pendingCode: string; clearPending: () => void; onDone: () => unknown; onAuthLost: (e: unknown) => void;
+}) {
+  const [code, setCode] = useState(pendingCode);
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const [justDone, setJustDone] = useState(false);
+  const name = me.participant.name;
+  const at = me.checkin.at ? new Date(me.checkin.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) : '';
+
+  async function confirm() {
+    setBusy(true); setErr('');
+    try {
+      await api('/api/checkin', { code, confirm: true }, 1);
+      setJustDone(true); clearPending(); await onDone();
+    } catch (e) {
+      if (e instanceof ApiError && e.status === 401) onAuthLost(e);
+      setErr((e as Error).message);
+      if (e instanceof ApiError && e.status === 400) setCode(''); // wrong QR / code: scan or type again
+    } finally { setBusy(false); }
+  }
+
+  if (me.checkin.done || justDone) {
+    return (
+      <div className="card center stack" style={{ border: '3px solid #2f8f5b' }}>
+        <div style={{ fontSize: 64, lineHeight: 1 }}>🎉</div>
+        <h2 style={{ margin: 0 }}>เช็กอินสำเร็จ!</h2>
+        <div className="muted">ยินดีต้อนรับ <strong>{name}</strong> · ทีม {me.team.name}{at ? ` · เช็กอินเมื่อ ${at}` : ''}</div>
+        <div className="muted">เตรียมพร้อมสนุกกับกิจกรรมได้เลย</div>
+      </div>
+    );
+  }
+  if (!me.checkin.open) {
+    return (
+      <div className="card center stack">
+        <div style={{ fontSize: 56, lineHeight: 1 }}>⏳</div>
+        <h2 style={{ margin: 0 }}>ยังไม่เปิดให้เช็กอิน</h2>
+        <div className="muted">ทีมงานจะประกาศเมื่อเปิดเช็กอิน (จะมีข้อความแจ้งเตือนขึ้นบนหน้าจอ)</div>
+        <button className="btn ghost" onClick={() => onDone()}>ตรวจสอบอีกครั้ง</button>
+      </div>
+    );
+  }
+  if (code) {   // step 2: confirm
+    return (
+      <div className="card center stack" style={{ border: '3px solid #f0c36a' }}>
+        <div style={{ fontSize: 56, lineHeight: 1 }}>📍</div>
+        <h2 style={{ margin: 0 }}>ยืนยันการเข้าร่วมงาน</h2>
+        <div className="avatar" style={{ margin: '0 auto', cursor: 'default' }}><Avatar url={me.avatar.url} emoji={me.avatar.emoji} name={name} /></div>
+        <div style={{ fontSize: 22, fontWeight: 700 }}>{name}</div>
+        <div className="muted">{me.participant.fullName !== name ? `${me.participant.fullName} · ` : ''}ทีม {me.team.name}{me.squad ? ` · ${me.squad}` : ''}</div>
+        <div className="banner" style={{ margin: 0 }}>สแกน QR เช็กอินของทีมงานแล้ว · กดยืนยันเมื่อคุณ <strong>มาถึงสถานที่จัดงานแล้ว</strong></div>
+        {err && <div className="error">{err}</div>}
+        <button className="btn" disabled={busy} onClick={confirm}>{busy ? 'กำลังบันทึก…' : '✅ ยืนยันการเข้าร่วม ฉันมาถึงแล้ว'}</button>
+        <button className="btn ghost" disabled={busy} onClick={() => { setCode(''); clearPending(); setErr(''); }}>ไม่ใช่ / สแกนใหม่</button>
+      </div>
+    );
+  }
+  return (   // step 1: scan
+    <div className="card center stack">
+      <div style={{ fontSize: 56, lineHeight: 1 }}>📷</div>
+      <h2 style={{ margin: 0 }}>เช็กอินวันงาน</h2>
+      <ol style={{ textAlign: 'left', margin: 0, paddingLeft: 22 }}>
+        <li>ไปที่จุดลงทะเบียนของทีมงานหน้างาน</li>
+        <li>เปิด <strong>กล้องมือถือ</strong> แล้วสแกน <strong>QR Code เช็กอิน</strong> ของทีมงาน</li>
+        <li>เมื่อหน้านี้เปิดขึ้น ให้กด <strong>ยืนยันการเข้าร่วม</strong></li>
+      </ol>
+      {err && <div className="error">{err}</div>}
+      <div className="muted" style={{ marginTop: 6 }}>สแกนไม่ได้? พิมพ์รหัส 8 ตัวที่ทีมงานแจ้ง</div>
+      <input className="input" autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="รหัสเช็กอิน" value={typed} maxLength={12}
+        onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && typed.trim().length >= 4 && (setCode(typed.trim()), setErr(''))} />
+      <button className="btn" disabled={typed.replace(/[^a-zA-Z0-9]/g, '').length < 4} onClick={() => { setCode(typed.trim()); setErr(''); }}>ถัดไป</button>
+    </div>
   );
 }
 
@@ -626,11 +748,12 @@ function GoalCard({ goal, mine }: { goal: Goal; mine?: boolean }) {
 // ---- pop-up for staff decisions on team photos (shown on whatever page the player is on)
 const SEEN_KEY = 'fc_seen_photos';
 const noticeStore = {
-  current: null as PhotoNotice | null,
+  current: null as PhotoNotice | CheckinNotice | null,
   listeners: new Set<() => void>(),
   onClose: undefined as (() => void) | undefined,
+  onCheckin: undefined as (() => void) | undefined,
   get() { return noticeStore.current; },
-  set(n: PhotoNotice | null) { noticeStore.current = n; noticeStore.listeners.forEach((l) => l()); },
+  set(n: PhotoNotice | CheckinNotice | null) { noticeStore.current = n; noticeStore.listeners.forEach((l) => l()); },
   subscribe(l: () => void) { noticeStore.listeners.add(l); return () => { noticeStore.listeners.delete(l); }; },
 };
 function readSeen(): Set<string> {
@@ -642,6 +765,22 @@ function markSeen(id: string) {
 function NoticeModal() {
   const n = useSyncExternalStore(noticeStore.subscribe, noticeStore.get, () => null);
   if (!n) return null;
+  if ('kind' in n) {   // admin opened event-day check-in
+    const later = () => { markSeen(n.id); noticeStore.set(null); };
+    const go = () => { markSeen(n.id); noticeStore.set(null); noticeStore.onCheckin?.(); };
+    return (
+      <div role="alertdialog" aria-label="เช็กอินวันงาน" onClick={later}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(31,47,77,.6)', display: 'grid', placeItems: 'center', padding: 18, zIndex: 100 }}>
+        <div className="card center stack" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, margin: 0, border: '4px solid #f0c36a' }}>
+          <div style={{ fontSize: 64, lineHeight: 1 }}>📍</div>
+          <h2 style={{ margin: 0 }}>ถึงสถานที่จัดงานแล้วใช่ไหม?</h2>
+          <div className="muted">ทีมงานเปิดให้ <strong>เช็กอิน</strong> แล้ว สแกน QR Code เช็กอินที่ทีมงานหน้างานด้วยกล้องมือถือ แล้วกด <strong>ยืนยันการเข้าร่วม</strong></div>
+          <button className="btn" onClick={go}>📷 ไปเช็กอิน</button>
+          <button className="btn ghost" onClick={later}>ไว้ทีหลัง</button>
+        </div>
+      </div>
+    );
+  }
   const ok = n.status === 'approved';
   const close = () => { markSeen(n.id); noticeStore.set(null); noticeStore.onClose?.(); };
   return (
