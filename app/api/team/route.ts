@@ -12,7 +12,7 @@ export const GET = handler(async () => {
   const p = await requirePlayer();
   const sb = db();
   const [{ data: people }, { data: squads }] = await Promise.all([
-    sb.from('participants').select('id, name, nick_name, is_leader, status, squad_id').eq('team_id', p.team_id),
+    sb.from('participants').select('id, name, nick_name, is_leader, status, squad_id, avatar_url, avatar_emoji').eq('team_id', p.team_id),
     sb.from('squads').select('id, name').eq('team_id', p.team_id).order('name'),
   ]);
   const squadName = new Map((squads ?? []).map((s: any) => [s.id, s.name]));
@@ -22,6 +22,8 @@ export const GET = handler(async () => {
     isMe: m.id === p.id,
     squad: m.squad_id ? squadName.get(m.squad_id) ?? null : null,
     quizDone: m.status === 'completed',
+    avatarUrl: m.avatar_url ?? null,
+    avatarEmoji: m.avatar_emoji ?? null,
   }));
   members.sort((a: any, b: any) => Number(b.isLeader) - Number(a.isLeader) || (a.squad ?? '~').localeCompare(b.squad ?? '~', 'th') || a.name.localeCompare(b.name, 'th'));
   return ok({

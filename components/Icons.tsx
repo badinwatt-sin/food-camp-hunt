@@ -110,18 +110,37 @@ export function IconShop({ size = 72 }: { size?: number }) {
   );
 }
 
-/** Camp-site header: night sky, moon, mountains, pines, a tent and a campfire. Home button on the left when given. */
+/** Camp tent in earth tones (sand canvas, clay stripe, navy door). */
+export function CampTent({ size = 80 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden>
+      <path d="M6 88 50 14l44 74z" fill="#efe3c6" />
+      <path d="M50 14 94 88H64L50 58z" fill="#d8c79f" />
+      <path d="M50 14 50 88H6z" fill="#f6edd6" opacity=".6" />
+      <path d="M50 14 6 88h12L50 30z" fill="#c4764a" />
+      <path d="M50 88V58l-13 30z" fill="#1f2f4d" />
+      <path d="M50 14V6" stroke="#8a5a2b" strokeWidth="3" strokeLinecap="round" />
+      <path d="M50 6l13 4-13 4z" fill="#2f6b4a" />
+    </svg>
+  );
+}
+
+/** Daytime camp header: sky, sun, clouds, green hills, pines, an earth-tone tent, a campfire pot and carrots. */
 export function Hero({ subtitle, onHome }: { subtitle?: string; onHome?: () => void }) {
   return (
     <header className="hero">
-      <svg className="hero-scene" viewBox="0 0 480 160" preserveAspectRatio="xMidYMax slice" aria-hidden>
-        <circle cx="410" cy="34" r="15" fill="#fbe9b0" />
-        <circle cx="416" cy="30" r="13" fill="#2a4f3a" opacity=".9" />
-        {[[40, 18], [90, 42], [150, 14], [230, 30], [300, 12], [350, 44], [452, 70]].map(([x, y], k) => <circle key={k} cx={x} cy={y} r="1.6" fill="#fbf5e6" opacity=".8" />)}
-        <path d="M0 120 70 70l50 40 60-56 70 62 60-44 80 54 90-40v74H0z" fill="#2c5a42" />
-        <path d="M0 140 60 104l60 30 70-36 80 40 70-30 70 28 70-26v50H0z" fill="#1f4331" />
-        {[[22, 128], [48, 136], [330, 130], [356, 138], [380, 126], [440, 134]].map(([x, y], k) => (
-          <path key={k} d={`M${x} ${y - 30} ${x + 11} ${y} ${x - 11} ${y}z M${x} ${y - 20} ${x + 14} ${y + 8} ${x - 14} ${y + 8}z`} fill="#173626" />
+      <svg className="hero-scene" viewBox="0 0 480 170" preserveAspectRatio="xMidYMax slice" aria-hidden>
+        <circle cx="420" cy="38" r="30" fill="#fbe39a" opacity=".45" />
+        <circle cx="420" cy="38" r="19" fill="#f7d774" />
+        <g fill="#fff" opacity=".92">
+          <ellipse cx="300" cy="34" rx="30" ry="9" /><ellipse cx="322" cy="28" rx="20" ry="9" /><ellipse cx="282" cy="30" rx="16" ry="7" />
+          <ellipse cx="120" cy="22" rx="26" ry="7" /><ellipse cx="138" cy="17" rx="16" ry="7" />
+        </g>
+        <path d="M0 118 60 82l54 30 64-46 70 50 60-34 84 48 88-36v76H0z" fill="#b9d9b4" />
+        <path d="M0 138 70 106l60 26 74-34 80 38 70-28 70 26 56-22v60H0z" fill="#7fb283" />
+        <path d="M0 154 60 132l70 16 80-20 90 22 70-16 70 16 40-10v10H0z" fill="#4f8f64" />
+        {[[28, 132], [54, 140], [338, 134], [362, 142], [386, 130], [446, 138]].map(([x, y], k) => (
+          <path key={k} d={`M${x} ${y - 32} ${x + 11} ${y} ${x - 11} ${y}z M${x} ${y - 21} ${x + 14} ${y + 8} ${x - 14} ${y + 8}z`} fill="#2f6b4a" />
         ))}
       </svg>
       <div className="hero-row">
@@ -129,13 +148,15 @@ export function Hero({ subtitle, onHome }: { subtitle?: string; onHome?: () => v
           <button className="home-btn" onClick={onHome} aria-label="กลับหน้าหลัก" title="หน้าหลัก"><HomeIcon size={24} /></button>
         )}
         <div className="hero-text">
+          <div className="kicker">Agency Camp · Food</div>
           <h1>Food Camp Hunt</h1>
           <p>{subtitle ?? 'ทายอาหาร ล่าสมบัติ สะสมโทเคนให้ทีม'}</p>
         </div>
       </div>
       <div className="deco" aria-hidden>
-        <Tent size={74} />
-        <Campfire size={40} />
+        <Carrot size={30} />
+        <CampTent size={74} />
+        <Pot size={36} />
       </div>
     </header>
   );

@@ -5,6 +5,7 @@ import {
 } from '@/lib/auth';
 import { goalStatus } from '@/lib/goal';
 import { hashCode, normalizeCode, normalizeId } from '@/lib/codes';
+import { removeAvatarFile } from '@/lib/avatars';
 import { checkOrigin, handler, HttpError, ok, rateLimit, readJson } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
@@ -69,12 +70,12 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     await requireRole('admin');
     const { data, error } = await sb
       .from('participants')
-      .select('id, name, nick_name, is_leader, team_id, squad_id, status, code_hash, correct_count, tokens_earned, completed_at, teams(name), squads(name)')
+      .select('id, name, nick_name, is_leader, avatar_url, team_id, squad_id, status, code_hash, correct_count, tokens_earned, completed_at, teams(name), squads(name)')
       .order('name');
     if (error) throw error;
     return ok({
       participants: (data ?? []).map((p: any) => ({
-        id: p.id, name: p.name, nick_name: p.nick_name ?? '', is_leader: !!p.is_leader, team_id: p.team_id, team_name: p.teams?.name ?? '',
+        id: p.id, name: p.name, nick_name: p.nick_name ?? '', is_leader: !!p.is_leader, has_avatar: !!p.avatar_url, team_id: p.team_id, team_name: p.teams?.name ?? '',
         squad_id: p.squad_id ?? null, squad_name: p.squads?.name ?? '',
         status: p.status, has_code: !!p.code_hash, correct_count: p.correct_count,
         tokens_earned: p.tokens_earned, completed_at: p.completed_at,
@@ -436,6 +437,15 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       const { error: e2 } = await sb.from('participants').update({ is_leader: true }).eq('id', body.id);
       if (e2) throw e2;
       await audit(role, 'leader.set', { id: body.id, team_id: p.team_id });
+      return ok();
+    }
+    case 'avatar.clear': {
+      // Moderation: remove an uploaded profile photo (the player can upload another or pick an emoji).
+      const { data: a } = await sb.from('participants').select('avatar_url').eq('id', body.id).maybeSingle();
+      const { error } = await sb.from('participants').update({ avatar_url: null, avatar_emoji: null }).eq('id', body.id);
+      if (error) throw error;
+      await removeAvatarFile(a?.avatar_url);
+      await audit(role, 'avatar.clear', { id: body.id });
       return ok();
     }
     case 'leader.clear': {

@@ -46,6 +46,7 @@ export const GET = handler(async () => {
     answered,
     current: p.status === 'in_progress' && next ? next : null,
     result: p.status === 'completed' ? { correct: p.correct_count, tokens: p.tokens_earned } : null,
+    avatar: { url: p.avatar_url ?? null, emoji: p.avatar_emoji ?? null },
     isLeader: !!p.is_leader,
     leaderName: leaderRow ? (leaderRow.nick_name || leaderRow.name) : null,
     marketOpen: !!settings?.market_open,

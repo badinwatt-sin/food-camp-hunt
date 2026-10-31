@@ -669,6 +669,7 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
                     ? <button className="btn small ghost" onClick={() => run(() => call('leader.clear', { id: p.id }), 'ยกเลิกหัวหน้าทีมแล้ว')}>ยกเลิกหัวหน้า</button>
                     : <button className="btn small ghost" onClick={() => confirm(`ตั้ง ${p.name} เป็นหัวหน้าทีม ${p.team_name}? (หัวหน้าคนเดิมจะถูกแทนที่)`) && run(() => call('leader.set', { id: p.id }), 'ตั้งหัวหน้าทีมแล้ว')}>ตั้งเป็นหัวหน้า</button>}
                   <button className="btn small ghost" onClick={() => { const v = prompt(`ID ใหม่ของ ${p.name} (ID เดิมจะใช้ไม่ได้ทันที)`); if (v?.trim()) run(() => call('participant.save', { id: p.id, login_id: v, name: p.name, nick_name: p.nick_name ?? '', team_id: p.team_id, squad_id: p.squad_id ?? '' }), 'เปลี่ยน ID แล้ว'); }}>เปลี่ยน ID</button>
+                  {p.has_avatar && <button className="btn small ghost" onClick={() => confirm(`ลบรูปโปรไฟล์ของ ${p.name}?`) && run(() => call('avatar.clear', { id: p.id }), 'ลบรูปโปรไฟล์แล้ว')}>ลบรูปโปรไฟล์</button>}
                   {p.has_code && <button className="btn small ghost" onClick={() => confirm(`ยกเลิก ID ของ ${p.name}? จะเข้าเกมไม่ได้จนกว่าจะตั้ง ID ใหม่`) && run(() => call('code.revoke', { id: p.id }), 'ยกเลิก ID แล้ว')}>ยกเลิก ID</button>}
                   {p.status === 'not_started' && <button className="btn small ghost" onClick={() => confirm(`ลบ ${p.name}?`) && run(() => call('participant.delete', { id: p.id }), 'ลบแล้ว')}>ลบ</button>}
                 </td>

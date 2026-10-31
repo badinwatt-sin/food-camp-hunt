@@ -32,6 +32,8 @@ create table if not exists public.participants (
   -- The player's login ID is set by the organiser; only a keyed hash of it is stored. NULL = no active ID.
   code_hash       text unique,
   is_leader       boolean not null default false,   -- team leader: may redeem for the team (max one per team)
+  avatar_url      text,                             -- uploaded profile photo (public 'avatars' bucket)
+  avatar_emoji    text check (avatar_emoji is null or length(avatar_emoji) <= 16),
   session_version int not null default 1,
   status          text not null default 'not_started'
                   check (status in ('not_started','in_progress','completed')),
@@ -664,6 +666,9 @@ grant execute on function public.claim_spot(uuid, text), public.submit_puzzle(uu
 -- ---------- storage bucket for question images ---------------------------
 insert into storage.buckets (id, name, public)
 values ('question-images', 'question-images', true)
+on conflict (id) do nothing;
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
 on conflict (id) do nothing;
 
 -- ---------- LOCK EVERYTHING DOWN -----------------------------------------

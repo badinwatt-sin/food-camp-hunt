@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Coin, Hero, IconMission, IconShop, IconTeam, Pot } from '@/components/Icons';
+import { AVATAR_EMOJIS } from '@/lib/avatar-list';
 
 type Question = { id: string; position: number; prompt: string; image_url: string | null; options: string[] };
 type Goal = { goalPct: number; completed: number; participants: number; met: boolean; need: number };
@@ -10,6 +11,7 @@ type Me = {
   team: { name: string; balance: number };
   squad: string | null;
   goal: Goal;
+  avatar: { url: string | null; emoji: string | null };
   isLeader: boolean;
   leaderName: string | null;
   marketOpen: boolean;
@@ -81,6 +83,7 @@ export default function Page() {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [view, setView] = useState<'home' | 'missions' | 'quiz' | 'hunt' | 'team' | 'market'>('home');
   const [huntTab, setHuntTab] = useState<'hunt' | 'puzzle'>('hunt');
+  const [editAvatar, setEditAvatar] = useState(false);
   const [pendingSpot, setPendingSpot] = useState('');
   const completing = useRef(false);
 
@@ -400,12 +403,15 @@ export default function Page() {
   }
 
   // ---- Home: who am I + three big buttons
-  const initial = Array.from(participant.name)[0] ?? '🏕️';
   return (
     <Shell subtitle={subtitle}>
+      {editAvatar && <AvatarSheet me={me} onClose={() => setEditAvatar(false)} onSaved={() => load()} onAuthLost={fail} />}
       <div className="card">
         <div className="profile">
-          <div className="avatar" aria-hidden>{initial}</div>
+          <button className="avatar" onClick={() => setEditAvatar(true)} aria-label="เปลี่ยนรูปโปรไฟล์" title="เปลี่ยนรูปโปรไฟล์">
+            <Avatar url={me.avatar.url} emoji={me.avatar.emoji} name={participant.name} />
+            <span className="edit" aria-hidden>✎</span>
+          </button>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.25 }}>สวัสดี {participant.name}</div>
             {participant.fullName && participant.fullName !== participant.name && <div className="muted" style={{ fontSize: 14 }}>{participant.fullName}</div>}
@@ -416,6 +422,7 @@ export default function Page() {
             </div>
           </div>
         </div>
+        {!me.avatar.url && !me.avatar.emoji && <div className="muted" style={{ marginTop: 10, fontSize: 14 }}>👆 แตะที่วงกลมเพื่อเลือกรูปโปรไฟล์ของคุณ</div>}
         <div className="row" style={{ marginTop: 12, justifyContent: 'space-between' }}>
           <span className="muted">{me.isLeader ? 'คุณมีสิทธิ์แลกสินค้าให้ทีม' : 'หัวหน้าทีมเป็นผู้แลกสินค้า'}</span>
           <span className="coin-row" style={{ fontSize: 22, gap: 6 }}><Coin size={26} /> {team.balance}</span>
@@ -423,17 +430,17 @@ export default function Page() {
       </div>
 
       <div className="tiles">
-        <button className="tile fire" onClick={() => setView('missions')}>
+        <button className="tile t-green" onClick={() => setView('missions')}>
           <span className="t-icon"><IconMission size={76} /></span>
           <span><div className="t-title">เริ่มภารกิจ</div><div className="t-desc">ควิซ · ล่าสมบัติ · ภารกิจทีม</div></span>
           <span className="t-go" aria-hidden>›</span>
         </button>
-        <button className="tile forest" onClick={() => setView('team')}>
+        <button className="tile t-navy" onClick={() => setView('team')}>
           <span className="t-icon"><IconTeam size={76} /></span>
           <span><div className="t-title">สมาชิกในทีม</div><div className="t-desc">ใครอยู่ทีมเรา ใครทำหน้าที่อะไร</div></span>
           <span className="t-go" aria-hidden>›</span>
         </button>
-        <button className="tile wood" onClick={() => setView('market')}>
+        <button className="tile t-clay" onClick={() => setView('market')}>
           <span className="t-icon"><IconShop size={76} /></span>
           <span><div className="t-title">ตลาดของ</div><div className="t-desc">ดูของ ราคา สต็อก และของของทีม</div></span>
           <span className="t-go" aria-hidden>›</span>
@@ -446,9 +453,82 @@ export default function Page() {
   );
 }
 
+/** Profile picture: uploaded photo, else the chosen emoji, else the first letter of the name. */
+function Avatar({ url, emoji, name }: { url: string | null; emoji: string | null; name: string }) {
+  if (url) return <img src={url} alt="" loading="lazy" />;
+  if (emoji) return <span aria-hidden>{emoji}</span>;
+  return <span aria-hidden>{Array.from(name)[0] ?? '🏕️'}</span>;
+}
+
+/** Centre-crops a picture to a small square JPEG (fast upload, privacy-friendly size). */
+async function squareJpeg(file: File, side = 320): Promise<File> {
+  const bmp = await createImageBitmap(file).catch(() => null);
+  if (!bmp) throw new Error('เปิดไฟล์ภาพนี้ไม่ได้ ลองเลือกรูปอื่น (JPG / PNG)');
+  const crop = Math.min(bmp.width, bmp.height);
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = side;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, side, side);
+  ctx.drawImage(bmp, (bmp.width - crop) / 2, (bmp.height - crop) / 2, crop, crop, 0, 0, side, side);
+  const blob: Blob | null = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.85));
+  if (!blob) throw new Error('แปลงภาพไม่สำเร็จ');
+  return new File([blob], 'me.jpg', { type: 'image/jpeg' });
+}
+
+/** Bottom sheet: take/choose a photo, or pick an emoji. */
+function AvatarSheet({ me, onClose, onSaved, onAuthLost }: { me: Me; onClose: () => void; onSaved: () => unknown; onAuthLost: (e: unknown) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  async function run(fn: () => Promise<unknown>) {
+    setBusy(true); setErr('');
+    try { await fn(); await onSaved(); }
+    catch (e) { if (e instanceof ApiError && e.status === 401) onAuthLost(e); setErr((e as Error).message); }
+    finally { setBusy(false); }
+  }
+  const pickEmoji = (emoji: string) => run(() => api('/api/profile', { emoji }));
+  const removePhoto = () => run(() => api('/api/profile', { removePhoto: true }));
+  const upload = (file: File) => run(async () => {
+    const small = await squareJpeg(file);
+    const fd = new FormData(); fd.append('file', small);
+    const res = await fetch('/api/profile/photo', { method: 'POST', body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new ApiError(res.status, data.message ?? 'อัปโหลดรูปไม่สำเร็จ');
+  });
+  return (
+    <div role="dialog" aria-label="เลือกรูปโปรไฟล์" onClick={onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(31,47,77,.55)', display: 'grid', placeItems: 'end center', zIndex: 60 }}>
+      <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, borderRadius: '24px 24px 0 0', margin: 0, maxHeight: '88dvh', overflowY: 'auto' }}>
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <h2 style={{ margin: 0 }}>รูปโปรไฟล์ของฉัน</h2>
+          <button className="btn small ghost" onClick={onClose}>ปิด</button>
+        </div>
+        <div className="center" style={{ margin: '14px 0' }}>
+          <div className="avatar" style={{ width: 110, height: 110, fontSize: 56, margin: '0 auto', cursor: 'default' }}>
+            <Avatar url={me.avatar.url} emoji={me.avatar.emoji} name={me.participant.name} />
+          </div>
+        </div>
+        <label className="btn" style={{ display: 'block', textAlign: 'center', opacity: busy ? 0.5 : 1 }}>
+          📷 ถ่ายรูป / เลือกรูปจากเครื่อง
+          <input type="file" accept="image/*" disabled={busy} hidden
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ''; }} />
+        </label>
+        {me.avatar.url && <button className="btn ghost" style={{ marginTop: 8 }} disabled={busy} onClick={removePhoto}>ลบรูปนี้</button>}
+        <div className="muted" style={{ margin: '14px 0 8px' }}>หรือเลือกอีโมจิน่ารัก ๆ</div>
+        <div className="emoji-grid">
+          {AVATAR_EMOJIS.map((e) => (
+            <button key={e} className={me.avatar.emoji === e && !me.avatar.url ? 'on' : ''} disabled={busy} onClick={() => pickEmoji(e)} aria-label={`เลือก ${e}`}>{e}</button>
+          ))}
+        </div>
+        {err && <div className="error" style={{ marginTop: 12 }}>{err}</div>}
+        <p className="muted" style={{ margin: '12px 0 0', fontSize: 13.5 }}>รูปที่อัปโหลดเพื่อนร่วมทีมและทีมงานเห็นได้ ใช้เฉพาะรูปที่เหมาะสมนะ</p>
+      </div>
+    </div>
+  );
+}
+
 /** Team page: who is in the team, who leads, which squad each person is in. */
 function TeamView({ me, onAuthLost }: { me: Me; onAuthLost: (e: unknown) => void }) {
-  type Member = { name: string; isLeader: boolean; isMe: boolean; squad: string | null; quizDone: boolean };
+  type Member = { name: string; isLeader: boolean; isMe: boolean; squad: string | null; quizDone: boolean; avatarUrl: string | null; avatarEmoji: string | null };
   const [d, setD] = useState<{ team: string; total: number; quizDone: number; squads: string[]; members: Member[] } | null>(null);
   const [err, setErr] = useState('');
   const cb = useRef(onAuthLost);
@@ -465,7 +545,7 @@ function TeamView({ me, onAuthLost }: { me: Me; onAuthLost: (e: unknown) => void
   ].filter((g) => g.list.length > 0);
   const row = (m: Member, k: number) => (
     <div className="m-row" key={k}>
-      <div className={`m-av ${m.isLeader ? 'leader' : ''}`} aria-hidden>{Array.from(m.name)[0] ?? '🏕️'}</div>
+      <div className={`m-av ${m.isLeader ? 'leader' : ''}`} aria-hidden><Avatar url={m.avatarUrl} emoji={m.avatarEmoji} name={m.name} /></div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <strong>{m.name}</strong>{m.isMe && <span className="me-tag">คุณ</span>}
         <div className="muted" style={{ fontSize: 14 }}>{m.isLeader ? '⭐ หัวหน้าทีม · แลกสินค้าให้ทีม' : '🏕️ สมาชิก · ทำภารกิจเก็บโทเคน'}</div>
