@@ -60,6 +60,7 @@ async function api<T = any>(path: string, body?: unknown, tries = 3): Promise<T>
         headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
         body: body === undefined ? undefined : JSON.stringify(body),
         cache: 'no-store',
+        signal: AbortSignal.timeout(20000),   // never spin forever if the network hangs
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) return data as T;

@@ -13,7 +13,8 @@ async function call<T = any>(action: string, body?: unknown): Promise<T> {
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
     cache: 'no-store',
-  });
+    signal: AbortSignal.timeout(20000),
+  }).catch(() => { throw new Error('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ลองรีเฟรชหน้า'); });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.message ?? 'เกิดข้อผิดพลาด');
   return data as T;
