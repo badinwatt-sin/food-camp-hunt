@@ -6,7 +6,7 @@ import { checkOrigin, handler, HttpError, ok, rateLimit } from '@/lib/http';
 
 /**
  * The team LEADER uploads the team's photo for a mission. Anyone else is refused (here and again in the database).
- * The mission succeeds on upload: the database function records it and credits the team wallet once.
+ * The upload is PENDING: tokens are only given after staff confirm the photo (review_photo).
  */
 export const POST = handler(async (req: Request) => {
   checkOrigin(req);
@@ -36,5 +36,6 @@ export const POST = handler(async (req: Request) => {
     await removePublicFile('mission-photos', url); // nothing was recorded for this file
     if (error) throw error;
   }
-  return ok({ already: !!data.already, tokens: data.tokens, balance: data.balance, url: data.already ? null : url });
+  if (data?.replaced && data.old_url) await removePublicFile('mission-photos', data.old_url); // the pending photo that was swapped out
+  return ok({ already: !!data.already, status: data.status, replaced: !!data.replaced, tokens: data.tokens, url: data.already ? null : url });
 });

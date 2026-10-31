@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Coin, Hero, IconMission, IconShop, IconTeam, Pot } from '@/components/Icons';
 import { AVATAR_EMOJIS } from '@/lib/avatar-list';
 
@@ -27,8 +27,9 @@ type Me = {
 type PhotoData = {
   open: boolean; isLeader: boolean; leaderName: string | null; team: string;
   missions: { id: string; title: string; description: string; category: string; refImageUrl: string | null; tokens: number;
-    done: { url: string; by: string; at: string } | null }[];
+    submission: { status: 'pending' | 'approved' | 'rejected'; url: string; tokens: number; reason: string | null; at: string; reviewedAt: string | null; by: string } | null }[];
 };
+type PhotoNotice = { id: string; status: 'approved' | 'rejected'; tokens: number; reason: string | null; at: string; title: string };
 type HuntData = {
   open: boolean;
   team: { name: string; balance: number };
@@ -121,6 +122,29 @@ export default function Page() {
   useEffect(() => {
     if (me && pendingSpot) setView('hunt');
   }, [me, pendingSpot]);
+
+  // Photo-mission decisions from staff: poll lightly and pop up "confirmed +N" / "not accepted" for the whole team.
+  const loggedIn = !!me;
+  useEffect(() => {
+    if (!loggedIn) return;
+    noticeStore.onClose = () => { load(); };
+    let stop = false;
+    const tick = async () => {
+      if (document.visibilityState === 'hidden' || noticeStore.get()) return;
+      try {
+        const r = await api<{ photos: PhotoNotice[] }>('/api/notices', undefined, 1);
+        if (stop) return;
+        const seen = readSeen();
+        const next = r.photos.find((x) => !seen.has(x.id));
+        if (next && !noticeStore.get()) noticeStore.set(next);
+      } catch { /* offline or logged out: try again later */ }
+    };
+    tick();
+    const t = setInterval(tick, 15000);
+    const vis = () => { if (document.visibilityState === 'visible') tick(); };
+    document.addEventListener('visibilitychange', vis);
+    return () => { stop = true; clearInterval(t); document.removeEventListener('visibilitychange', vis); noticeStore.onClose = undefined; };
+  }, [loggedIn, load]);
 
   // If every question is answered but the finish step didn't run (e.g. connection dropped), finish now.
   useEffect(() => {
@@ -599,11 +623,58 @@ function GoalCard({ goal, mine }: { goal: Goal; mine?: boolean }) {
   );
 }
 
+// ---- pop-up for staff decisions on team photos (shown on whatever page the player is on)
+const SEEN_KEY = 'fc_seen_photos';
+const noticeStore = {
+  current: null as PhotoNotice | null,
+  listeners: new Set<() => void>(),
+  onClose: undefined as (() => void) | undefined,
+  get() { return noticeStore.current; },
+  set(n: PhotoNotice | null) { noticeStore.current = n; noticeStore.listeners.forEach((l) => l()); },
+  subscribe(l: () => void) { noticeStore.listeners.add(l); return () => { noticeStore.listeners.delete(l); }; },
+};
+function readSeen(): Set<string> {
+  try { return new Set<string>(JSON.parse(localStorage.getItem(SEEN_KEY) ?? '[]')); } catch { return new Set<string>(); }
+}
+function markSeen(id: string) {
+  try { const s = Array.from(readSeen()); s.push(id); localStorage.setItem(SEEN_KEY, JSON.stringify(s.slice(-100))); } catch { /* storage blocked: it may show again, harmless */ }
+}
+function NoticeModal() {
+  const n = useSyncExternalStore(noticeStore.subscribe, noticeStore.get, () => null);
+  if (!n) return null;
+  const ok = n.status === 'approved';
+  const close = () => { markSeen(n.id); noticeStore.set(null); noticeStore.onClose?.(); };
+  return (
+    <div role="alertdialog" aria-label="ผลการตรวจภาพภารกิจ" onClick={close}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(31,47,77,.6)', display: 'grid', placeItems: 'center', padding: 18, zIndex: 100 }}>
+      <div className="card center stack" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, margin: 0, border: `4px solid ${ok ? '#2f8f5b' : '#d98b86'}` }}>
+        <div style={{ fontSize: 64, lineHeight: 1 }}>{ok ? '🎉' : '😅'}</div>
+        <h2 style={{ margin: 0 }}>{ok ? 'ภารกิจผ่านแล้ว!' : 'ภาพยังไม่ผ่าน'}</h2>
+        <div><strong>{n.title}</strong></div>
+        {ok ? (
+          <>
+            <div className="muted">ทีมงานยืนยันภาพของทีมคุณแล้ว</div>
+            <div className="coin-row" style={{ justifyContent: 'center' }}><Coin size={44} /> +{n.tokens}</div>
+            <div className="muted">โทเคนเข้ากระเป๋าทีมเรียบร้อย</div>
+          </>
+        ) : (
+          <>
+            <div className="error" style={{ textAlign: 'left' }}>{n.reason ? `เหตุผล: ${n.reason}` : 'ภาพไม่ตรงกับโจทย์'}</div>
+            <div className="muted">ให้หัวหน้าทีมถ่ายภาพใหม่ให้ตรงโจทย์ แล้วส่งอีกครั้งได้เลย</div>
+          </>
+        )}
+        <button className="btn" onClick={close}>ตกลง</button>
+      </div>
+    </div>
+  );
+}
+
 function Shell({ children, subtitle, onHome }: { children: React.ReactNode; subtitle?: string; onHome?: () => void }) {
   return (
     <div className="app">
       <Hero subtitle={subtitle} onHome={onHome} />
       <main className="main">{children}</main>
+      <NoticeModal />
     </div>
   );
 }
@@ -657,7 +728,8 @@ function PhotoMissionsView({ onBalance, onAuthLost }: { onBalance: () => void; o
   useEffect(() => { load(); const t = setInterval(load, 10000); return () => clearInterval(t); }, [load]); // the leader may upload from another phone
 
   if (!d) return <div className="card center">{err ? <div className="error">{err}</div> : <div className="spinner" />}</div>;
-  const successCount = d.missions.filter((m) => m.done).length;
+  const successCount = d.missions.filter((m) => m.submission?.status === 'approved').length;
+  const waitingCount = d.missions.filter((m) => m.submission?.status === 'pending').length;
   return (
     <>
       {zoom && (
@@ -669,10 +741,11 @@ function PhotoMissionsView({ onBalance, onAuthLost }: { onBalance: () => void; o
       <div className="card">
         <h2>📸 ภารกิจทีม</h2>
         <p className="muted" style={{ margin: 0 }}>
-          ถ่ายภาพ<strong>ทั้งทีม</strong>ตามโจทย์ที่กำหนด (ทุกคนอยู่ในภาพพร้อมกับสิ่งนั้น) แล้ว <strong>หัวหน้าทีมเท่านั้น</strong>เป็นผู้อัปโหลดภาพ ภารกิจจึงจะสำเร็จ
+          ถ่ายภาพ<strong>ทั้งทีม</strong>ตามโจทย์ที่กำหนด (ทุกคนอยู่ในภาพพร้อมกับสิ่งนั้น) แล้ว <strong>หัวหน้าทีมเท่านั้น</strong>เป็นผู้อัปโหลดภาพ ·
+          <strong>ทีมงานจะตรวจภาพก่อน</strong> เมื่อกดยืนยันภารกิจจึงสำเร็จและทีมได้โทเคน (ถ้าไม่ตรงโจทย์จะถูกปฏิเสธ และถ่ายส่งใหม่ได้)
           {d.leaderName ? <> · หัวหน้าทีมของเรา: <strong>⭐ {d.leaderName}</strong></> : ' · ทีมนี้ยังไม่มีหัวหน้า ติดต่อทีมงาน'}
         </p>
-        <div className="muted" style={{ marginTop: 6 }}>สำเร็จแล้ว {successCount}/{d.missions.length} ภารกิจ</div>
+        <div className="muted" style={{ marginTop: 6 }}>สำเร็จแล้ว {successCount}/{d.missions.length} ภารกิจ{waitingCount > 0 ? ` · ⏳ รอทีมงานตรวจ ${waitingCount}` : ''}</div>
         {d.isLeader && <div className="role leader" style={{ marginTop: 8 }}>⭐ คุณคือหัวหน้าทีม มีสิทธิ์อัปโหลดภาพ</div>}
         {!d.open && <div className="banner" style={{ marginTop: 12 }}>ภารกิจทีมยังไม่เปิด หรือปิดแล้ว รอทีมงานประกาศ</div>}
         {err && <div className="error" style={{ marginTop: 12 }}>{err}</div>}
@@ -681,8 +754,11 @@ function PhotoMissionsView({ onBalance, onAuthLost }: { onBalance: () => void; o
       {d.missions.length === 0 && <div className="card center muted">ยังไม่มีภารกิจ</div>}
       {d.missions.map((m) => {
         const c = CATEGORY[m.category] ?? CATEGORY.other;
+        const sub = m.submission;
+        const border = sub?.status === 'approved' ? '3px solid #2f8f5b' : sub?.status === 'pending' ? '3px solid #f0c36a' : sub?.status === 'rejected' ? '3px solid #e0a29d' : undefined;
+        const canUpload = d.isLeader && (!sub || sub.status === 'rejected' || sub.status === 'pending');
         return (
-          <div className="card" key={m.id} style={m.done ? { border: '3px solid #2f8f5b' } : undefined}>
+          <div className="card" key={m.id} style={border ? { border } : undefined}>
             <div className="row" style={{ justifyContent: 'space-between' }}>
               <span className="pill">{c.icon} {c.label}</span>
               <span className="pill" style={{ background: '#fbe7b8' }}>🪙 +{m.tokens}</span>
@@ -696,16 +772,27 @@ function PhotoMissionsView({ onBalance, onAuthLost }: { onBalance: () => void; o
                   style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 14, cursor: 'zoom-in', background: 'var(--cream-deep)' }} />
               </div>
             )}
-            {m.done ? (
+            {sub && (
               <>
-                <img src={m.done.url} alt="ภาพของทีม" onClick={() => setZoom(m.done!.url)} loading="lazy"
-                  style={{ width: '100%', maxHeight: 260, objectFit: 'cover', borderRadius: 14, cursor: 'zoom-in' }} />
-                <div className="verdict ok" style={{ fontSize: 16 }}>✅ ภารกิจสำเร็จ · ส่งโดย ⭐ {m.done.by}</div>
+                <img src={sub.url} alt="ภาพของทีม" onClick={() => setZoom(sub.url)} loading="lazy"
+                  style={{ width: '100%', maxHeight: 260, objectFit: 'cover', borderRadius: 14, cursor: 'zoom-in', opacity: sub.status === 'rejected' ? 0.55 : 1 }} />
+                {sub.status === 'pending' && <div className="banner" style={{ margin: '10px 0 0' }}>⏳ <strong>รอทีมงานตรวจสอบและยืนยัน</strong> · ส่งโดย ⭐ {sub.by} · ยังไม่ได้โทเคน</div>}
+                {sub.status === 'approved' && <div className="verdict ok" style={{ fontSize: 16 }}>✅ ทีมงานยืนยันแล้ว · ได้ +{sub.tokens} โทเคน · ส่งโดย ⭐ {sub.by}</div>}
+                {sub.status === 'rejected' && (
+                  <div className="error" style={{ marginTop: 10 }}>
+                    ❌ <strong>ภาพนี้ไม่ผ่าน</strong>{sub.reason ? `: ${sub.reason}` : ' (ไม่ตรงโจทย์)'}<br />
+                    {d.isLeader ? 'ถ่ายภาพใหม่แล้วส่งอีกครั้งได้เลย' : `ให้หัวหน้าทีม ${d.leaderName ?? ''} ถ่ายภาพใหม่แล้วส่งอีกครั้ง`}
+                  </div>
+                )}
               </>
-            ) : d.isLeader ? (
-              <PhotoUpload mission={m} open={d.open}
-                onDone={async (text) => { setDone(text); cb.current.onBalance(); await load(); }} onAuthLost={onAuthLost} />
-            ) : (
+            )}
+            {canUpload && (
+              <div style={{ marginTop: 10 }}>
+                <PhotoUpload mission={m} open={d.open} replacing={sub?.status === 'pending'}
+                  onDone={async (text) => { setDone(text); cb.current.onBalance(); await load(); }} onAuthLost={onAuthLost} />
+              </div>
+            )}
+            {!sub && !d.isLeader && (
               <div className="banner" style={{ margin: 0 }}>
                 ⏳ ยังไม่ส่ง · {d.leaderName ? `รอหัวหน้าทีม ${d.leaderName} ถ่ายภาพทั้งทีมและอัปโหลด` : 'ทีมยังไม่มีหัวหน้า ติดต่อทีมงาน'}
               </div>
@@ -718,7 +805,7 @@ function PhotoMissionsView({ onBalance, onAuthLost }: { onBalance: () => void; o
 }
 
 /** Leader only: pick/take the team photo, preview it, confirm everyone is in it, upload. */
-function PhotoUpload({ mission, open, onDone, onAuthLost }: { mission: PhotoData['missions'][number]; open: boolean; onDone: (text: string) => void | Promise<void>; onAuthLost: (e: unknown) => void }) {
+function PhotoUpload({ mission, open, replacing, onDone, onAuthLost }: { mission: PhotoData['missions'][number]; open: boolean; replacing?: boolean; onDone: (text: string) => void | Promise<void>; onAuthLost: (e: unknown) => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState('');
   const [all, setAll] = useState(false);
@@ -740,7 +827,7 @@ function PhotoUpload({ mission, open, onDone, onAuthLost }: { mission: PhotoData
       const res = await fetch('/api/photos/submit', { method: 'POST', body: fd });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new ApiError(res.status, data.message ?? 'อัปโหลดไม่สำเร็จ ลองใหม่อีกครั้ง');
-      await onDone(data.already ? 'ทีมของคุณส่งภารกิจนี้ไปแล้ว' : `ภารกิจสำเร็จ! +${data.tokens} โทเคนเข้ากระเป๋าทีม 🎉`);
+      await onDone(data.already ? 'ภารกิจนี้ทีมของคุณผ่านการยืนยันแล้ว' : `ส่งภาพ “${mission.title}” แล้ว ⏳ รอทีมงานตรวจสอบและยืนยัน เมื่อยืนยันแล้วทีมจะได้ +${data.tokens} โทเคน`);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) onAuthLost(e);
       setErr((e as Error).message);
@@ -750,7 +837,7 @@ function PhotoUpload({ mission, open, onDone, onAuthLost }: { mission: PhotoData
     <div>
       {preview && <img src={preview} alt="ตัวอย่างภาพที่จะส่ง" style={{ width: '100%', maxHeight: 280, objectFit: 'cover', borderRadius: 14, marginBottom: 10 }} />}
       <label className={`btn ${preview ? 'ghost' : ''}`} style={{ display: 'block', textAlign: 'center', opacity: busy || !open ? 0.5 : 1 }}>
-        {preview ? '📷 เปลี่ยนภาพ' : '📷 ถ่ายภาพ / เลือกภาพของทีม'}
+        {preview ? '📷 เปลี่ยนภาพ' : replacing ? '📷 เปลี่ยนภาพที่ส่งไปแล้ว (ก่อนทีมงานตรวจ)' : '📷 ถ่ายภาพ / เลือกภาพของทีม'}
         <input type="file" accept="image/*" hidden disabled={busy || !open} onChange={(e) => { const f = e.target.files?.[0]; if (f) pick(f); e.target.value = ''; }} />
       </label>
       {file && (
@@ -759,7 +846,7 @@ function PhotoUpload({ mission, open, onDone, onAuthLost }: { mission: PhotoData
             <input type="checkbox" checked={all} onChange={(e) => setAll(e.target.checked)} style={{ width: 22, height: 22, marginTop: 2 }} />
             <span>ยืนยันว่า<strong>ทุกคนในทีมอยู่ในภาพ</strong>พร้อมกับสิ่งที่โจทย์กำหนดแล้ว</span>
           </label>
-          <button className="btn" disabled={!all || busy || !open} onClick={upload}>{busy ? 'กำลังอัปโหลด…' : 'ส่งภาพภารกิจ'}</button>
+          <button className="btn" disabled={!all || busy || !open} onClick={upload}>{busy ? 'กำลังอัปโหลด…' : replacing ? 'ส่งภาพใหม่แทนภาพเดิม' : 'ส่งภาพให้ทีมงานตรวจ'}</button>
         </>
       )}
       {err && <div className="error" style={{ marginTop: 10 }}>{err}</div>}

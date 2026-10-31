@@ -78,6 +78,13 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
   const [tab, setTab] = useState<Tab>('overview');
   const [msg, setMsg] = useState('');
   const closeMsg = useCallback(() => setMsg(''), []);
+  const [pendingPhotos, setPendingPhotos] = useState(0);
+  useEffect(() => {
+    const poll = () => call<{ pendingPhotos: number }>('badges').then((b) => setPendingPhotos(b.pendingPhotos)).catch(() => {});
+    poll(); const t = setInterval(poll, 15000);
+    window.addEventListener('fc-photos-changed', poll); // a review was just made: update the menu badge now
+    return () => { clearInterval(t); window.removeEventListener('fc-photos-changed', poll); };
+  }, []);
   const tabs: [Tab, string, string, boolean][] = [
     ['overview', '📊', 'ภาพรวม', true], ['market', '🛒', 'ตลาดสินค้า', true],
     ['people', '👥', 'ทีมและผู้เล่น', role === 'admin'], ['questions', '🍜', 'คำถามควิซ', role === 'admin'],
@@ -96,6 +103,7 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
           {tabs.filter((t) => t[3]).map(([k, icon, label]) => (
             <button key={k} className={tab === k ? 'on' : ''} onClick={() => { setTab(k); setMsg(''); window.scrollTo({ top: 0 }); }}>
               <span className="n-ic" aria-hidden>{icon}</span><span className="n-label">{label}</span>
+              {k === 'puzzles' && pendingPhotos > 0 && <span className="n-badge" title="ภาพที่รอตรวจ">{pendingPhotos}</span>}
             </button>
           ))}
         </nav>
@@ -154,6 +162,7 @@ function Overview({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
         <div className="stat"><b>🪙 {totalBal}</b><span>โทเคนคงเหลือรวมทุกทีม</span></div>
         <div className="stat"><b>{totalSpent}</b><span>โทเคนที่ใช้ไปแล้ว</span></div>
         <div className="stat"><b>📦 {d.pendingPickup ?? 0}</b><span>ชิ้นที่รอจ่ายของ</span></div>
+        <div className="stat" style={(d.pendingPhotos ?? 0) > 0 ? { outline: '3px solid #f0c36a' } : undefined}><b>📸 {d.pendingPhotos ?? 0}</b><span>ภาพภารกิจที่รอตรวจ</span></div>
       </div>
 
       <div className="switches">
@@ -954,6 +963,8 @@ function Missions({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
   const [f, setF] = useState<typeof blank | null>(null);
   const [up, setUp] = useState(false);
   const [zoom, setZoom] = useState('');
+  const [filter, setFilter] = useState<'pending' | 'approved' | 'rejected' | 'all'>('pending');
+  const [busyId, setBusyId] = useState('');
   const isAdmin = role === 'admin';
   const load = useCallback(() => call('missions').then(setD).catch((e) => setMsg(e.message)), [setMsg]);
   useEffect(() => { load(); const t = setInterval(load, 20000); return () => clearInterval(t); }, [load]);
@@ -976,13 +987,27 @@ function Missions({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
       setF((x) => (x ? { ...x, ref_image_url: data.url } : x));
     } catch (e) { setMsg((e as Error).message); } finally { setUp(false); }
   }
-  async function reject(sub: any) {
-    const reason = prompt(`ปฏิเสธภาพของทีม ${sub.team}?\\nโทเคน ${sub.tokens} จะถูกหักคืน และทีมอัปโหลดใหม่ได้\\n\\nเหตุผล (เช่น ภาพไม่ชัด / ไม่ครบทีม):`);
-    if (reason === null) return;
-    try { await call('photo.reject', { id: sub.id, reason }); await load(); setMsg(`ปฏิเสธภาพของทีม ${sub.team} แล้ว หักโทเคนคืน ${sub.tokens}`); }
-    catch (e) { setMsg((e as Error).message); }
+  async function review(sub: any, approve: boolean) {
+    let reason = '';
+    if (!approve) {
+      const r = prompt(sub.status === 'approved'
+        ? `ยกเลิกการยืนยันภาพของทีม ${sub.team}?\nโทเคน ${sub.tokens} จะถูกหักคืนจากทีม\n\nเหตุผล:`
+        : `ปฏิเสธภาพของทีม ${sub.team}?\n(ไม่ได้โทเคน และหัวหน้าทีมส่งภาพใหม่ได้)\n\nเหตุผลที่ผู้เล่นจะเห็น (เช่น ภาพไม่ชัด / ไม่ตรงโจทย์ / ไม่ครบทีม):`, 'ไม่ตรงโจทย์');
+      if (r === null) return;
+      reason = r;
+    }
+    setBusyId(sub.id);
+    try {
+      await call('photo.review', { id: sub.id, approve, reason });
+      await load();
+      window.dispatchEvent(new Event('fc-photos-changed'));
+      setMsg(approve ? `ยืนยันภาพของทีม ${sub.team} แล้ว · ทีมได้ +${sub.tokens} โทเคน` : `ปฏิเสธภาพของทีม ${sub.team} แล้ว`);
+    } catch (e) { setMsg((e as Error).message); }
+    finally { setBusyId(''); }
   }
   const approved = d.submissions.filter((x) => x.status === 'approved');
+  const pendingList = d.submissions.filter((x) => x.status === 'pending');
+  const shown = filter === 'all' ? d.submissions : d.submissions.filter((x) => x.status === filter);
   const title = (id: string) => d.missions.find((m) => m.id === id)?.title ?? '';
 
   return (
@@ -994,17 +1019,18 @@ function Missions({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
           {isAdmin && <button className="btn small" onClick={() => setF({ ...blank, position: String(d.missions.length + 1) })}>+ เพิ่มภารกิจ</button>}
         </div>
         <p className="muted">
-          ตั้งโจทย์ถ่ายภาพ (บุคคล สิ่งของ อาหาร สถานที่ หรือโจทย์พิเศษ) ใส่ภาพตัวอย่างได้ · <strong>ทั้งทีมต้องอยู่ในภาพ</strong> และ <strong>เฉพาะหัวหน้าทีมเท่านั้นที่อัปโหลดได้</strong> ภารกิจจึงสำเร็จและทีมได้โทเคนทันที ·
-          เปิด-ปิดที่สวิตช์ “ภารกิจทีม” ในหน้าภาพรวม · ภาพไม่เหมาะสมกด “ปฏิเสธ” เพื่อหักโทเคนคืนและให้ทีมส่งใหม่ · ทีมที่ยังไม่มีหัวหน้าจะส่งภาพไม่ได้
+          ตั้งโจทย์ถ่ายภาพ (บุคคล สิ่งของ อาหาร สถานที่ หรือโจทย์พิเศษ) ใส่ภาพตัวอย่างได้ · <strong>ทั้งทีมต้องอยู่ในภาพ</strong> และ <strong>เฉพาะหัวหน้าทีมเท่านั้นที่อัปโหลดได้</strong> ·
+          ภาพที่ส่งจะ <strong>รอทีมงานตรวจ</strong>: กด <strong>✅ ยืนยัน</strong> ทีมจึงได้โทเคน หรือ <strong>❌ ปฏิเสธ</strong> (ไม่ตรงโจทย์) ทีมจะไม่ได้โทเคนและหัวหน้าส่งใหม่ได้ ·
+          เปิด-ปิดที่สวิตช์ “ภารกิจทีม” ในหน้าภาพรวม · ทีมที่ยังไม่มีหัวหน้าจะส่งภาพไม่ได้
         </p>
         <div className="table-wrap"><table>
-          <thead><tr><th>#</th><th>ภาพตัวอย่าง</th><th>ภารกิจ</th><th>ประเภท</th><th>โทเคน</th><th>ทีมที่สำเร็จ</th><th>สถานะ</th><th /></tr></thead>
+          <thead><tr><th>#</th><th>ภาพตัวอย่าง</th><th>ภารกิจ</th><th>ประเภท</th><th>โทเคน</th><th>ผ่านแล้ว</th><th>รอตรวจ</th><th>สถานะ</th><th /></tr></thead>
           <tbody>{d.missions.map((m) => (
             <tr key={m.id}>
               <td className="num">{m.position}</td>
               <td>{m.ref_image_url ? <img src={m.ref_image_url} alt="" onClick={() => setZoom(m.ref_image_url)} style={{ width: 56, height: 56, objectFit: 'cover', borderRadius: 10, cursor: 'zoom-in', display: 'block' }} /> : <span className="muted">—</span>}</td>
               <td><strong>{m.title}</strong><div className="muted" style={{ maxWidth: 360 }}>{m.description}</div></td>
-              <td>{CATS.find((c) => c[0] === m.category)?.[1]}</td><td className="num">{m.tokens}</td><td className="num">{m.done} ทีม</td>
+              <td>{CATS.find((c) => c[0] === m.category)?.[1]}</td><td className="num">{m.tokens}</td><td className="num">{m.done} ทีม</td><td className="num">{m.pending ? <strong style={{ color: '#a35a00' }}>{m.pending}</strong> : '—'}</td>
               <td>{m.active ? 'ใช้งาน' : 'ปิด'}</td>
               <td className="row">{isAdmin && <>
                 <button className="btn small ghost" onClick={() => setF({ id: m.id, position: String(m.position), title: m.title, description: m.description, category: m.category, ref_image_url: m.ref_image_url ?? '', tokens: String(m.tokens), active: m.active })}>แก้ไข</button>
@@ -1047,19 +1073,34 @@ function Missions({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
       )}
 
       <div className="card">
-        <h2>🖼️ ภาพที่ทีมส่งมา ({approved.length})</h2>
-        {d.submissions.length === 0 ? <p className="muted center" style={{ margin: 0 }}>ยังไม่มีทีมส่งภาพ</p> : (
+        <h2>🖼️ ตรวจภาพที่ทีมส่งมา {pendingList.length > 0 && <span className="pill" style={{ background: '#fbe7b8', marginLeft: 6 }}>⏳ รอตรวจ {pendingList.length}</span>}</h2>
+        <div className="row" style={{ margin: '6px 0 10px' }}>
+          {([['pending', `⏳ รอตรวจ (${pendingList.length})`], ['approved', `✅ ผ่านแล้ว (${approved.length})`], ['rejected', `❌ ไม่ผ่าน (${d.submissions.length - approved.length - pendingList.length})`], ['all', 'ทั้งหมด']] as const).map(([k, label]) => (
+            <button key={k} className={`btn small ${filter === k ? '' : 'ghost'}`} onClick={() => setFilter(k)}>{label}</button>
+          ))}
+        </div>
+        {shown.length === 0 ? <p className="muted center" style={{ margin: 0 }}>{filter === 'pending' ? 'ไม่มีภาพที่รอตรวจ 🎉' : 'ไม่มีภาพในหมวดนี้'}</p> : (
           <div className="gallery">
-            {d.submissions.map((x) => (
-              <figure key={x.id} className={`g-item${x.status === 'rejected' ? ' rej' : ''}`}>
+            {shown.map((x) => (
+              <figure key={x.id} className={`g-item ${x.status}`}>
                 <img src={x.image_url} alt={title(x.mission_id)} loading="lazy" onClick={() => setZoom(x.image_url)} />
                 <figcaption>
                   <strong>{x.team}</strong>
                   <div>{title(x.mission_id)}</div>
                   <div className="muted" style={{ fontSize: 13 }}>⭐ {x.by} · {fmt(x.at)}</div>
-                  {x.status === 'rejected'
-                    ? <div style={{ color: 'var(--bad)', fontSize: 13 }}>ถูกปฏิเสธ{x.reason ? `: ${x.reason}` : ''}</div>
-                    : isAdmin && <button className="btn small ghost" style={{ marginTop: 6 }} onClick={() => reject(x)}>ปฏิเสธภาพนี้</button>}
+                  {x.status === 'pending' && (
+                    <div className="row" style={{ marginTop: 8 }}>
+                      <button className="btn small" disabled={busyId === x.id} onClick={() => review(x, true)}>✅ ยืนยัน (+{x.tokens})</button>
+                      <button className="btn small danger" disabled={busyId === x.id} onClick={() => review(x, false)}>❌ ปฏิเสธ</button>
+                    </div>
+                  )}
+                  {x.status === 'approved' && (
+                    <>
+                      <div style={{ color: 'var(--ok)', fontSize: 14, fontWeight: 600 }}>✅ ยืนยันแล้ว +{x.tokens}{x.reviewedBy ? ` · โดย ${x.reviewedBy}` : ''}</div>
+                      {isAdmin && <button className="btn small ghost" style={{ marginTop: 6 }} disabled={busyId === x.id} onClick={() => review(x, false)}>ยกเลิกการยืนยัน (หักโทเคนคืน)</button>}
+                    </>
+                  )}
+                  {x.status === 'rejected' && <div style={{ color: 'var(--bad)', fontSize: 14 }}>❌ ไม่ผ่าน{x.reason ? `: ${x.reason}` : ''}</div>}
                 </figcaption>
               </figure>
             ))}

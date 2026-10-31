@@ -245,7 +245,7 @@ try {
   check('goal 0 = always met', (await rpc('team_goal_met', { p_team: tEmpty })).data === true);
   check('goal outside 0-100 is rejected', !!(await sb.from('game_settings').update({ team_goal_pct: 101 }).eq('id', 1)).error);
 
-  console.log('\n8. Team photo missions: leader-only upload, own switch, once per team, reject = refund');
+  console.log('\n8. Team photo missions: leader-only upload, ADMIN REVIEW decides the tokens');
   const tP = await mkTeam('photo');
   const ldr = await mkMember(tP), mem = await mkMember(tP);
   await sb.from('participants').update({ is_leader: true }).eq('id', ldr);
@@ -253,27 +253,40 @@ try {
   const ldr2 = await mkMember(tP2);
   await sb.from('participants').update({ is_leader: true }).eq('id', ldr2);
   const mk1 = (await sb.from('photo_missions').insert({ title: 'TEST photo ' + uid(), tokens: 20, category: 'person' }).select().single()).data;
-  created.photoMissions.push(mk1.id);
+  const mk2 = (await sb.from('photo_missions').insert({ title: 'TEST photo B ' + uid(), tokens: 30, category: 'food' }).select().single()).data;
+  created.photoMissions.push(mk1.id, mk2.id);
   const sendPhoto = (who, mission = mk1.id) => rpc('submit_photo', { p_participant: who, p_mission: mission, p_url: 'https://example.invalid/test-' + uid() + '.jpg' });
+  const review = (id, approve, reason = '') => rpc('review_photo', { p_submission: id, p_approve: approve, p_reason: reason, p_actor: 'test' });
+  const subOf = async (team, mission, status) => (await sb.from('photo_submissions').select('id, status').eq('team_id', team).eq('mission_id', mission).eq('status', status).maybeSingle()).data;
   await setSwitches({ puzzle_open: false });
-  check('photo mission closed while the "team mission" switch is off', (await sendPhoto(ldr)).error?.includes('PUZZLE_CLOSED'));
+  check('photo upload closed while the "team mission" switch is off', (await sendPhoto(ldr)).error?.includes('PUZZLE_CLOSED'));
   await setSwitches({ puzzle_open: true, hunt_open: false });
   check('a non-leader cannot upload (database rule)', (await sendPhoto(mem)).error?.includes('NOT_LEADER'));
   let ph = await sendPhoto(ldr);
-  check('leader upload succeeds and credits the team once (own switch, hunt closed)', !ph.error && ph.data.already === false && ph.data.tokens === 20 && (await balance(tP)) === 20);
+  check('leader upload is PENDING and gives NO tokens yet', !ph.error && ph.data.status === 'pending' && ph.data.already === false && (await balance(tP)) === 0);
   ph = await sendPhoto(ldr);
-  check('a second upload for the same mission changes nothing', ph.data?.already === true && (await balance(tP)) === 20);
-  check('another team can complete the same mission', (await sendPhoto(ldr2)).data?.already === false && (await balance(tP2)) === 20);
-  const racePh = await Promise.all(Array.from({ length: 6 }, () => sendPhoto(ldr)));
-  check('parallel uploads never double-credit', racePh.every((x) => !x.error) && (await count('photo_submissions', { mission_id: mk1.id, team_id: tP, status: 'approved' })) === 1 && (await balance(tP)) === 20);
+  check('the leader can swap a still-pending photo (one row only)', ph.data?.replaced === true && (await count('photo_submissions', { mission_id: mk1.id, team_id: tP })) === 1 && (await balance(tP)) === 0);
+  const pend = await subOf(tP, mk1.id, 'pending');
+  let rv = await review(pend.id, true);
+  check('staff confirmation credits the team (+20)', !rv.error && rv.data.status === 'approved' && rv.data.tokens === 20 && (await balance(tP)) === 20);
+  check('confirming again changes nothing', (await review(pend.id, true)).data?.already === true && (await balance(tP)) === 20);
+  const races = await Promise.all(Array.from({ length: 6 }, () => review(pend.id, true)));
+  check('parallel confirmations never double-credit', races.every((x) => !x.error) && (await balance(tP)) === 20);
+  check('after confirmation the team cannot upload that mission again', (await sendPhoto(ldr)).data?.already === true && (await balance(tP)) === 20);
+  check('another team has its own pending photo', (await sendPhoto(ldr2)).data?.status === 'pending' && (await balance(tP2)) === 0);
+  // rejection: no tokens, leader may retry
+  await sendPhoto(ldr, mk2.id);
+  const pend2 = await subOf(tP, mk2.id, 'pending');
+  rv = await review(pend2.id, false, 'ไม่ตรงโจทย์');
+  check('rejecting a pending photo gives no tokens', !rv.error && rv.data.status === 'rejected' && (await balance(tP)) === 20);
+  check('after a rejection the leader can upload again', (await sendPhoto(ldr, mk2.id)).data?.status === 'pending');
+  const pend3 = await subOf(tP, mk2.id, 'pending');
+  check('...and a confirmation then pays (+30)', (await review(pend3.id, true)).data?.status === 'approved' && (await balance(tP)) === 50);
+  rv = await review(pend3.id, false, 'ตรวจพลาด');
+  check('taking back a confirmation returns the tokens', rv.data?.status === 'rejected' && (await balance(tP)) === 20);
   const off = (await sb.from('photo_missions').insert({ title: 'TEST off ' + uid(), active: false }).select().single()).data;
   created.photoMissions.push(off.id);
   check('an inactive mission cannot be submitted', !!(await sendPhoto(ldr, off.id)).error);
-  const sub1 = (await sb.from('photo_submissions').select('id').eq('team_id', tP).eq('status', 'approved').single()).data;
-  const rj = await rpc('reject_photo', { p_submission: sub1.id, p_reason: 'test', p_actor: 'test' });
-  check('rejecting a photo takes the tokens back', !rj.error && rj.data.already === false && (await balance(tP)) === 0);
-  check('rejecting twice does nothing more', (await rpc('reject_photo', { p_submission: sub1.id, p_reason: 'again', p_actor: 'test' })).data?.already === true && (await balance(tP)) === 0);
-  check('after a rejection the team can upload again (+20)', (await sendPhoto(ldr)).data?.already === false && (await balance(tP)) === 20);
   check('mission category is validated', !!(await sb.from('photo_missions').insert({ title: 'TEST bad', category: 'nope' })).error);
   await setSwitches({ puzzle_open: false });
 
@@ -303,7 +316,7 @@ try {
     const { data: still } = await sb.from('hunt_spots').select('tokens').eq('id', spotA.id).single();
     check('anon cannot change hunt spots', !!w.error || still.tokens !== 9999);
     check('anon cannot call claim_spot', !!(await anon.rpc('claim_spot', { p_participant: h1, p_secret: spotB.secret })).error);
-    check('anon cannot call submit_photo / reject_photo', !!(await anon.rpc('submit_photo', { p_participant: h1, p_mission: mk1.id, p_url: 'https://example.invalid/x.jpg' })).error && !!(await anon.rpc('reject_photo', { p_submission: sub1.id, p_reason: 'x', p_actor: 'anon' })).error);
+    check('anon cannot call submit_photo / review_photo', !!(await anon.rpc('submit_photo', { p_participant: h1, p_mission: mk1.id, p_url: 'https://example.invalid/x.jpg' })).error && !!(await anon.rpc('review_photo', { p_submission: pend.id, p_approve: true, p_reason: '', p_actor: 'anon' })).error);
     check('anon cannot call team_goal_met', !!(await anon.rpc('team_goal_met', { p_team: tG })).error);
   }
 } catch (e) {

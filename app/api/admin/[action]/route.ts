@@ -53,17 +53,19 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
 
   if (action === 'overview') {
     await requireRole('staff');
-    const [{ data: settings }, { data: teams }, { data: leaders }, { data: pend }] = await Promise.all([
+    const [{ data: settings }, { data: teams }, { data: leaders }, { data: pend }, { count: pendingPhotos }] = await Promise.all([
       sb.from('game_settings').select('*').eq('id', 1).single(),
       sb.from('team_summary').select('*').order('name'),
       sb.from('participants').select('team_id, name, nick_name').eq('is_leader', true),
       sb.from('redemptions').select('quantity').is('fulfilled_at', null),
+      sb.from('photo_submissions').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
     ]);
     const leaderOf = new Map((leaders ?? []).map((l: any) => [l.team_id, l.nick_name || l.name]));
     return ok({
       settings,
       teams: (teams ?? []).map((t: any) => ({ ...t, leader: leaderOf.get(t.team_id) ?? null })),
       pendingPickup: (pend ?? []).reduce((n: number, r: any) => n + r.quantity, 0),
+      pendingPhotos: pendingPhotos ?? 0,
     });
   }
 
@@ -90,18 +92,30 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     });
   }
 
+  if (action === 'badges') {
+    // small poll for the side menu: how many team photos are waiting for review
+    await requireRole('staff');
+    const { count } = await sb.from('photo_submissions').select('id', { count: 'exact', head: true }).eq('status', 'pending');
+    return ok({ pendingPhotos: count ?? 0 });
+  }
+
   if (action === 'missions') {
     await requireRole('staff');
     const [{ data: missions }, { data: subs }] = await Promise.all([
       sb.from('photo_missions').select('*').order('position').order('id'),
-      sb.from('photo_submissions').select('id, mission_id, image_url, status, tokens, rejected_reason, created_at, teams(name), participants(name, nick_name)').order('created_at', { ascending: false }).limit(400),
+      sb.from('photo_submissions').select('id, mission_id, image_url, status, tokens, rejected_reason, created_at, reviewed_at, reviewed_by, teams(name), participants(name, nick_name)').order('created_at', { ascending: false }).limit(400),
     ]);
     return ok({
-      missions: (missions ?? []).map((m: any) => ({ ...m, done: (subs ?? []).filter((x: any) => x.mission_id === m.id && x.status === 'approved').length })),
+      missions: (missions ?? []).map((m: any) => ({
+        ...m,
+        done: (subs ?? []).filter((x: any) => x.mission_id === m.id && x.status === 'approved').length,
+        pending: (subs ?? []).filter((x: any) => x.mission_id === m.id && x.status === 'pending').length,
+      })),
       submissions: (subs ?? []).map((x: any) => ({
         id: x.id, mission_id: x.mission_id, image_url: x.image_url, status: x.status, tokens: x.tokens, reason: x.rejected_reason,
-        at: x.created_at, team: x.teams?.name ?? '', by: x.participants?.nick_name || x.participants?.name || '',
+        at: x.created_at, reviewedAt: x.reviewed_at, reviewedBy: x.reviewed_by, team: x.teams?.name ?? '', by: x.participants?.nick_name || x.participants?.name || '',
       })),
+      pending: (subs ?? []).filter((x: any) => x.status === 'pending').length,
     });
   }
 
@@ -129,7 +143,7 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
         sb.from('token_ledger').select('team_id, kind, amount').in('kind', ['quiz', 'hunt', 'puzzle']),
         sb.from('redemptions').select('item_name, quantity, created_at, teams(name)').order('created_at', { ascending: false }).limit(10),
         sb.from('participants').select('completed_at, teams(name)').eq('status', 'completed').order('completed_at', { ascending: false }).limit(10),
-        sb.from('photo_submissions').select('created_at, teams(name), photo_missions(title)').eq('status', 'approved').order('created_at', { ascending: false }).limit(10),
+        sb.from('photo_submissions').select('reviewed_at, teams(name), photo_missions(title)').eq('status', 'approved').order('reviewed_at', { ascending: false }).limit(10),
       ]);
     const earned = new Map<string, { quiz: number; hunt: number; puzzle: number }>();
     for (const l of (ledger ?? []) as any[]) {
@@ -141,7 +155,7 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     for (const c of (claims ?? []) as any[]) found.set(c.team_id, (found.get(c.team_id) ?? 0) + 1);
     const feed = [
       ...((claims ?? []) as any[]).slice(0, 10).map((c) => ({ at: c.claimed_at, kind: 'hunt', team: c.teams?.name ?? '', text: `${c.squads?.name ? `(${c.squads.name}) ` : ''}เจอจุด “${c.hunt_spots?.title ?? ''}”` })),
-      ...((psolves ?? []) as any[]).map((x) => ({ at: x.created_at, kind: 'puzzle', team: x.teams?.name ?? '', text: `ส่งภาพภารกิจสำเร็จ “${String(x.photo_missions?.title ?? '').slice(0, 40)}”` })),
+      ...((psolves ?? []) as any[]).map((x) => ({ at: x.reviewed_at, kind: 'puzzle', team: x.teams?.name ?? '', text: `ภารกิจถ่ายภาพผ่าน “${String(x.photo_missions?.title ?? '').slice(0, 40)}”` })),
       ...((reds ?? []) as any[]).map((r) => ({ at: r.created_at, kind: 'redeem', team: r.teams?.name ?? '', text: `แลก ${r.item_name} ×${r.quantity}` })),
       ...((done ?? []) as any[]).map((p) => ({ at: p.completed_at, kind: 'quiz', team: p.teams?.name ?? '', text: 'สมาชิกเล่นควิซจบ' })),
     ].sort((a, b) => +new Date(b.at) - +new Date(a.at)).slice(0, 12);
@@ -250,9 +264,9 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
       rows = [['Time', 'Team', 'Squad', 'Spot', 'Found by', 'Tokens'],
         ...(data ?? []).map((r: any) => [r.claimed_at, r.teams?.name, r.squads?.name ?? '', r.hunt_spots?.title, r.participants?.name, r.tokens])];
     } else if (type === 'photos') {
-      const { data } = await sb.from('photo_submissions').select('created_at, status, tokens, image_url, rejected_reason, teams(name), participants(name), photo_missions(title)').order('created_at');
-      rows = [['Time', 'Team', 'Mission', 'Uploaded by (leader)', 'Status', 'Tokens', 'Photo URL', 'Reject reason'],
-        ...(data ?? []).map((r: any) => [r.created_at, r.teams?.name, r.photo_missions?.title, r.participants?.name, r.status, r.tokens, r.image_url, r.rejected_reason ?? ''])];
+      const { data } = await sb.from('photo_submissions').select('created_at, status, tokens, image_url, rejected_reason, reviewed_at, reviewed_by, teams(name), participants(name), photo_missions(title)').order('created_at');
+      rows = [['Uploaded at', 'Team', 'Mission', 'Uploaded by (leader)', 'Status', 'Tokens', 'Reviewed at', 'Reviewed by', 'Photo URL', 'Reject reason'],
+        ...(data ?? []).map((r: any) => [r.created_at, r.teams?.name, r.photo_missions?.title, r.participants?.name, r.status, r.status === 'approved' ? r.tokens : 0, r.reviewed_at ?? '', r.reviewed_by ?? '', r.image_url, r.rejected_reason ?? ''])];
     } else throw new HttpError(400, 'BAD_INPUT');
     await audit('admin', 'export', { type });
     return new NextResponse(csv(rows), {
@@ -315,6 +329,20 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       p_team: need(str(body.team_id)), p_item: need(str(body.item_id)),
       p_qty: int(body.quantity), p_key: need(str(body.key, 100)), p_actor: role,
     });
+    if (error) throw error;
+    return ok(data);
+  }
+
+  if (action === 'photo.review') {
+    // Staff/admin decide on a team photo: approve (tokens go to the team) or reject (no tokens, the leader can retry).
+    // Taking back an earlier approval is admin-only.
+    const r2 = await requireRole('staff');
+    const id = need(str(body.id));
+    const approve = body.approve === true;
+    const { data: cur } = await sb.from('photo_submissions').select('status').eq('id', id).maybeSingle();
+    if (!cur) throw new HttpError(404, 'NOT_FOUND');
+    if (cur.status === 'approved' && !approve && r2 !== 'admin') throw new HttpError(403, 'FORBIDDEN');
+    const { data, error } = await sb.rpc('review_photo', { p_submission: id, p_approve: approve, p_reason: str(body.reason, 200), p_actor: r2 });
     if (error) throw error;
     return ok(data);
   }
@@ -443,14 +471,6 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       }
       await audit(role, 'participant.save', { id: body.id ?? null, idChanged: !!loginId, leader: wantLeader });
       return ok();
-    }
-    case 'photo.reject': {
-      // A bad/irrelevant photo: tokens are taken back, the photo is deleted and the team can upload again.
-      const { data: sub } = await sb.from('photo_submissions').select('image_url').eq('id', body.id).maybeSingle();
-      const { data, error } = await sb.rpc('reject_photo', { p_submission: need(str(body.id)), p_reason: str(body.reason, 200), p_actor: role });
-      if (error) throw error;
-      await removePublicFile('mission-photos', sub?.image_url);
-      return ok(data);
     }
     case 'leader.set': {
       // Exactly one leader per team: demote the current one first, then promote the chosen player.

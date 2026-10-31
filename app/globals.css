@@ -147,7 +147,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 .gallery { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); margin-top: 8px; }
 .g-item { margin: 0; background: #fffaf0; border: 2px solid var(--cream-deep); border-radius: 16px; overflow: hidden; }
-.g-item.rej { opacity: .6; }
+.g-item.rejected { opacity: .65; }
+.g-item.pending { border-color: #f0c36a; box-shadow: 0 0 0 3px rgba(240,195,106,.35); }
+.g-item.approved { border-color: #9fcf9a; }
+.admin-nav button { position: relative; }
+.n-badge { position: absolute; top: 6px; right: 8px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 99px; background: #e0612b; color: #fff; font-size: 13px; font-weight: 700; display: grid; place-items: center; }
+.admin-nav button:not(.on):hover { background: #f3f7ee; }
 .g-item img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; cursor: zoom-in; }
 .g-item figcaption { padding: 10px 12px; font-size: 14.5px; }
 .admin h1 { font-size: 22px; margin: 0; }

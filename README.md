@@ -28,10 +28,11 @@ Other teams can find the same spot too. Tokens go into the same team wallet and 
   Before that they show 🔒 to players and the database refuses the redemption. 0 = goal off. Progress is shown to players (wallet / result / hunt screens) and on `/admin/live`.
 - **Co-op hunt spots:** in **Admin → ล่าสมบัติ** set "จุดร่วมมือ: ต้องสแกนกี่คน" (e.g. 3) and a time window (e.g. 180 s) on a spot. The squad only gets the tokens when that many
   *different* members scan it inside the window. Players see "สแกนแล้ว! รอเพื่อนอีก N คน" and a live counter. A squad smaller than the requirement is only asked for as many people as it has.
-- **Team photo missions (📸 ภารกิจทีม):** **Admin → ภารกิจทีม**: define photo challenges (person / object / food / place / special) with instructions, an optional example picture and tokens.
-  The **whole team** is in the photo with the subject and **only the team leader can upload it** (checked in the app, the API and the database); the mission succeeds on upload and the team wallet is credited once per mission.
-  The gallery in admin shows every photo; **ปฏิเสธภาพนี้** (admin) takes the tokens back, deletes the photo and lets the team upload again. A team without a leader can't submit. Photos live in the public `mission-photos` bucket (random file names) —
-  tell teams to take appropriate pictures and delete them after the event. Uses the same on/off switch as before (**ภารกิจทีม**, default closed). Run `supabase/photos.sql` on an existing database. (The older clue-splitting puzzle tables stay in the database unused.)
+- **Team photo missions (📸 ภารกิจทีม) with staff review:** **Admin → ภารกิจทีม**: define photo challenges (person / object / food / place / special) with instructions, an optional example picture and tokens.
+  The **whole team** is in the photo with the subject and **only the team leader can upload it** (checked in the app, the API and the database). The upload is **pending — no tokens yet**; the team sees “⏳ รอทีมงานตรวจสอบและยืนยัน”.
+  Staff or admin open **ตรวจภาพที่ทีมส่งมา** (a badge on the menu shows how many are waiting) and press **✅ ยืนยัน** (the team wallet is credited once) or **❌ ปฏิเสธ** with a reason (no tokens; the leader can upload a new photo).
+  Everyone on the team gets a pop-up when the decision arrives (“🎉 ภารกิจผ่านแล้ว +20” or “ภาพยังไม่ผ่าน: เหตุผล”), within ~15 s. Only admin can take back an earlier confirmation (tokens are returned). The leader may swap a photo while it is still pending.
+  Photos live in the public `mission-photos` bucket (random file names) — tell teams to take appropriate pictures and delete them after the event. Uses the on/off switch **ภารกิจทีม** (default closed). Run `supabase/photos.sql` on an existing database (it also upgrades the first version of this feature).
 - **Existing database?** run, in order, `supabase/hunt.sql`, `supabase/squads.sql`, `supabase/coop.sql`, `supabase/ids.sql`, `supabase/items.sql`, `supabase/leader.sql`, `supabase/avatars.sql`, `supabase/photos.sql` (all safe to re-run).
 - Hunt and puzzle history can be exported (**ส่งออก CSV → ล่าสมบัติ / ภารกิจทีม**).
 
