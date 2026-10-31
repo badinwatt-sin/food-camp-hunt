@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Coin, Hero, IconMission, IconShop, IconTeam, Pot } from '@/components/Icons';
 import { AVATAR_EMOJIS } from '@/lib/avatar-list';
+import jsQR from 'jsqr';
 
 type Question = { id: string; position: number; prompt: string; image_url: string | null; options: string[] };
 type Goal = { goalPct: number; completed: number; participants: number; met: boolean; need: number };
@@ -527,7 +528,6 @@ function CheckinView({ me, pendingCode, clearPending, onDone, onAuthLost }: {
   me: Me; pendingCode: string; clearPending: () => void; onDone: () => unknown; onAuthLost: (e: unknown) => void;
 }) {
   const [code, setCode] = useState(pendingCode);
-  const [typed, setTyped] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [justDone, setJustDone] = useState(false);
@@ -581,20 +581,93 @@ function CheckinView({ me, pendingCode, clearPending, onDone, onAuthLost }: {
       </div>
     );
   }
-  return (   // step 1: scan
+  return (   // step 1: the camera opens straight away; a QR code leads directly to the confirm screen
     <div className="card center stack">
-      <div style={{ fontSize: 56, lineHeight: 1 }}>📷</div>
-      <h2 style={{ margin: 0 }}>เช็กอินวันงาน</h2>
-      <ol style={{ textAlign: 'left', margin: 0, paddingLeft: 22 }}>
-        <li>ไปที่จุดลงทะเบียนของทีมงานหน้างาน</li>
-        <li>เปิด <strong>กล้องมือถือ</strong> แล้วสแกน <strong>QR Code เช็กอิน</strong> ของทีมงาน</li>
-        <li>เมื่อหน้านี้เปิดขึ้น ให้กด <strong>ยืนยันการเข้าร่วม</strong></li>
-      </ol>
+      <h2 style={{ margin: 0 }}>📷 สแกน QR Code เช็กอิน</h2>
+      <div className="muted">ส่องกล้องไปที่ QR Code ของทีมงานหน้างาน</div>
       {err && <div className="error">{err}</div>}
-      <div className="muted" style={{ marginTop: 6 }}>สแกนไม่ได้? พิมพ์รหัส 8 ตัวที่ทีมงานแจ้ง</div>
-      <input className="input" autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false} placeholder="รหัสเช็กอิน" value={typed} maxLength={12}
-        onChange={(e) => setTyped(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && typed.trim().length >= 4 && (setCode(typed.trim()), setErr(''))} />
-      <button className="btn" disabled={typed.replace(/[^a-zA-Z0-9]/g, '').length < 4} onClick={() => { setCode(typed.trim()); setErr(''); }}>ถัดไป</button>
+      <QrScanner onCode={(c) => { setErr(''); setCode(c); }} />
+    </div>
+  );
+}
+
+/** Pulls the check-in code out of what the QR contains (our link /?checkin=CODE, or the bare code). */
+function checkinCodeFrom(text: string): string | null {
+  const t = text.trim();
+  try { const c = new URL(t).searchParams.get('checkin'); if (c) return c; } catch { /* not a URL */ }
+  return /^[A-Za-z0-9]{6,12}$/.test(t) ? t : null;
+}
+
+/** In-app camera QR scanner (works on iPhone and Android browsers; needs the camera permission). */
+function QrScanner({ onCode }: { onCode: (code: string) => void }) {
+  const video = useRef<HTMLVideoElement>(null);
+  const [state, setState] = useState<'starting' | 'scanning' | 'denied' | 'unsupported'>('starting');
+  const [attempt, setAttempt] = useState(0);
+  const [wrong, setWrong] = useState(false);
+  const cb = useRef(onCode);
+  cb.current = onCode;
+
+  useEffect(() => {
+    let stream: MediaStream | null = null;
+    let raf = 0;
+    let stopped = false;
+    let last = 0;
+    const canvas = document.createElement('canvas');
+    async function start() {
+      if (!navigator.mediaDevices?.getUserMedia) { setState('unsupported'); return; }
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 } }, audio: false });
+      } catch { setState('denied'); return; }
+      if (stopped) { stream.getTracks().forEach((t) => t.stop()); return; }
+      const v = video.current!;
+      v.srcObject = stream;
+      v.setAttribute('playsinline', 'true');
+      await v.play().catch(() => {});
+      setState('scanning');
+      const tick = (now: number) => {
+        if (stopped) return;
+        raf = requestAnimationFrame(tick);
+        if (now - last < 120 || v.readyState < 2 || !v.videoWidth) return;   // ~8 looks per second is plenty
+        last = now;
+        const scale = Math.min(1, 640 / v.videoWidth);
+        canvas.width = Math.round(v.videoWidth * scale); canvas.height = Math.round(v.videoHeight * scale);
+        const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+        ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const hit = jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+        if (!hit) return;
+        const c = checkinCodeFrom(hit.data);
+        if (c) { stopped = true; navigator.vibrate?.(80); cb.current(c); }
+        else setWrong(true);   // some other QR code: keep looking
+      };
+      raf = requestAnimationFrame(tick);
+    }
+    start();
+    return () => { stopped = true; cancelAnimationFrame(raf); stream?.getTracks().forEach((t) => t.stop()); };
+  }, [attempt]);
+
+  if (state === 'denied' || state === 'unsupported') {
+    return (
+      <div className="stack" style={{ width: '100%' }}>
+        <div className="banner" style={{ margin: 0 }}>
+          {state === 'denied'
+            ? 'เปิดกล้องไม่ได้ กรุณากดอนุญาตการใช้กล้องของเบราว์เซอร์ (หรือไปที่การตั้งค่าของเบราว์เซอร์แล้วอนุญาตกล้อง)'
+            : 'เบราว์เซอร์นี้เปิดกล้องในแอปไม่ได้'}
+        </div>
+        <button className="btn" onClick={() => { setState('starting'); setAttempt((n) => n + 1); }}>📷 ลองเปิดกล้องอีกครั้ง</button>
+        <div className="muted" style={{ fontSize: 14 }}>หรือใช้ <strong>กล้องของมือถือ</strong> (แอปกล้อง) สแกน QR Code ของทีมงาน แล้วเปิดลิงก์ที่ขึ้นมา จะมาที่หน้ายืนยันการเข้าร่วมทันที</div>
+      </div>
+    );
+  }
+  return (
+    <div style={{ width: '100%' }}>
+      <div style={{ position: 'relative', width: '100%', aspectRatio: '1 / 1', borderRadius: 20, overflow: 'hidden', background: '#16301f' }}>
+        <video ref={video} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+        {state === 'starting' && <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', color: '#fff' }}>กำลังเปิดกล้อง…</div>}
+        {/* viewfinder corners */}
+        <div aria-hidden style={{ position: 'absolute', inset: '14%', border: '3px solid rgba(255,255,255,.9)', borderRadius: 18, boxShadow: '0 0 0 9999px rgba(0,0,0,.28)' }} />
+      </div>
+      {wrong && <div className="muted" style={{ marginTop: 8 }}>นี่ไม่ใช่ QR Code เช็กอินของงาน ลองสแกน QR ของทีมงานอีกครั้ง</div>}
     </div>
   );
 }
