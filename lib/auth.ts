@@ -61,10 +61,12 @@ export type AdminRole = 'admin' | 'staff';
 
 /** Returns the role if the password matches, else null. */
 export function checkAdminPassword(password: string): AdminRole | null {
-  const admin = process.env.ADMIN_PASSWORD;
-  const staff = process.env.STAFF_PASSWORD;
-  if (admin && safeEqual(password, admin)) return 'admin';
-  if (staff && safeEqual(password, staff)) return 'staff';
+  // Ignore stray spaces/newlines around either side (easy to paste into a dashboard by accident).
+  const given = String(password ?? '').trim();
+  const admin = process.env.ADMIN_PASSWORD?.trim();
+  const staff = process.env.STAFF_PASSWORD?.trim();
+  if (admin && safeEqual(given, admin)) return 'admin';
+  if (staff && safeEqual(given, staff)) return 'staff';
   return null;
 }
 export async function setAdminSession(role: AdminRole) {
