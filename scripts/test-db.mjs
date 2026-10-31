@@ -6,7 +6,7 @@
 // Requires the full schema (schema.sql, or hunt.sql + squads.sql + coop.sql on an older database) and at least one
 // ACTIVE question (the seed provides 5). The test briefly opens the quiz/hunt/puzzle switches and restores them at the end.
 //
-//   1 quiz  2 market  3 anon (quiz)  4 hunt  5 squads  6 co-op spots  7 team goal  8 team photo missions  10 leaders/hand-over  11 check-in  9 anon (new features)
+//   1 quiz  2 market  3 anon (quiz)  4 hunt  5 squads  6 co-op spots  7 team goal  8 team photo missions  10 leaders/hand-over  11 check-in  12 solo mini-games  9 anon (new features)
 import { createClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
 
@@ -315,6 +315,26 @@ try {
   const { data: ci1 } = await sb.from('participants').select('checked_in_at, checked_in_by').eq('id', k1).single();
   check('a second check-in keeps the first time', new Date(ci1.checked_in_at).toISOString() === t1 && ci1.checked_in_by === 'self');
 
+  console.log('\n12. Solo mini-games (best of 3, only the improvement is paid)');
+  const tM = await mkTeam('minigames');
+  const m1 = await mkMember(tM);
+  const bal0 = (await sb.rpc('team_balance', { p_team: tM })).data;
+  const mkAttempt = async (n) => (await sb.from('minigame_attempts').insert({ participant_id: m1, game: 'spot', n }).select('id').single()).data;
+  const ma = await mkAttempt(1);
+  const f1 = (await sb.rpc('mg_finish', { p_attempt: ma.id, p_tokens: 30, p_result: {} })).data;
+  check('first attempt pays its tokens', f1?.awarded === 30 && f1?.tokens === 30);
+  const f1b = (await sb.rpc('mg_finish', { p_attempt: ma.id, p_tokens: 30, p_result: {} })).data;
+  check('finishing the same attempt twice pays nothing more', f1b?.already === true && f1b?.awarded === 0);
+  const mb = await mkAttempt(2);
+  check('a worse attempt pays nothing', (await sb.rpc('mg_finish', { p_attempt: mb.id, p_tokens: 20, p_result: {} })).data?.awarded === 0);
+  const mc = await mkAttempt(3);
+  check('a better attempt pays only the improvement', (await sb.rpc('mg_finish', { p_attempt: mc.id, p_tokens: 45, p_result: {} })).data?.awarded === 15);
+  check('team wallet = best score (45)', (await sb.rpc('team_balance', { p_team: tM })).data - bal0 === 45);
+  check('a 4th attempt is refused by the database', !!(await sb.from('minigame_attempts').insert({ participant_id: m1, game: 'spot', n: 4 })).error);
+  check('another game has its own 3 attempts', !(await sb.from('minigame_attempts').insert({ participant_id: m1, game: 'memory', n: 1 })).error);
+  const { data: mgs } = await sb.from('game_settings').select('mg_spot_open, mg_memory_open, mg_mystery_open, mg_percent').eq('id', 1).single();
+  check('mini-game switches exist and are off by default / percent is 0..500', mgs && typeof mgs.mg_spot_open === 'boolean' && mgs.mg_percent >= 0);
+
   console.log('\n9. Public (anon) access to the new features is blocked');
   if (!process.env.SUPABASE_ANON_KEY) console.log('  SKIP  set SUPABASE_ANON_KEY to test that the public key reaches none of the new tables/functions');
   else {
@@ -337,6 +357,7 @@ try {
   const teamIds = [created.team, created.team2, ...created.teams].filter(Boolean);
   if (teamIds.length) {
     await sb.from('photo_submissions').delete().in('team_id', teamIds);
+    if (created.participants.length) await sb.from('minigame_attempts').delete().in('participant_id', created.participants);
     await sb.from('hunt_scans').delete().in('team_id', teamIds);
     await sb.from('hunt_claims').delete().in('team_id', teamIds);
     await sb.from('token_ledger').delete().in('team_id', teamIds);

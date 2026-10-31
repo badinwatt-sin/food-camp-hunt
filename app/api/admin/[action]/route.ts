@@ -56,6 +56,27 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     return ok({ role });
   }
 
+  if (action === 'minigames') {
+    const [{ data: s }, { data: rows }] = await Promise.all([
+      sb.from('game_settings').select('mg_spot_open, mg_memory_open, mg_mystery_open, mg_percent').eq('id', 1).single(),
+      sb.from('minigame_attempts').select('game, tokens, finished_at, participant_id, participants(name, nick_name, teams(name))'),
+    ]);
+    const out: Record<string, any> = {};
+    for (const g of ['spot', 'memory', 'mystery']) {
+      const r = ((rows ?? []) as any[]).filter((x) => x.game === g);
+      const best = new Map<string, any>();
+      for (const x of r.filter((y) => y.finished_at)) {
+        const cur = best.get(x.participant_id);
+        if (!cur || (x.tokens ?? 0) > cur.tokens) best.set(x.participant_id, { name: x.participants?.nick_name || x.participants?.name || '', team: x.participants?.teams?.name ?? '', tokens: x.tokens ?? 0 });
+      }
+      out[g] = {
+        open: !!(s as any)?.[`mg_${g}_open`], players: new Set(r.map((x) => x.participant_id)).size, attempts: r.length, finished: r.filter((x) => x.finished_at).length,
+        tokens: [...best.values()].reduce((a, b) => a + b.tokens, 0), top: [...best.values()].sort((a, b) => b.tokens - a.tokens).slice(0, 10),
+      };
+    }
+    return ok({ percent: (s as any)?.mg_percent ?? 100, games: out });
+  }
+
   if (action === 'overview') {
     await requireRole('staff');
     const [{ data: settings }, { data: teams }, { data: leaders }, { data: pend }, { count: pendingPhotos }, { count: checkedIn }] = await Promise.all([
@@ -163,15 +184,15 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
         sb.from('team_summary').select('*').order('name'),
         sb.from('hunt_spots').select('id').eq('active', true),
         sb.from('hunt_claims').select('team_id, squad_id, claimed_at, hunt_spots(title), teams(name), squads(name)').order('claimed_at', { ascending: false }),
-        sb.from('token_ledger').select('team_id, kind, amount').in('kind', ['quiz', 'hunt', 'puzzle']),
+        sb.from('token_ledger').select('team_id, kind, amount').in('kind', ['quiz', 'hunt', 'puzzle', 'minigame']),
         sb.from('redemptions').select('item_name, quantity, created_at, teams(name)').order('created_at', { ascending: false }).limit(10),
         sb.from('participants').select('completed_at, teams(name)').eq('status', 'completed').order('completed_at', { ascending: false }).limit(10),
         sb.from('photo_submissions').select('reviewed_at, teams(name), photo_missions(title)').eq('status', 'approved').order('reviewed_at', { ascending: false }).limit(10),
       ]);
-    const earned = new Map<string, { quiz: number; hunt: number; puzzle: number }>();
+    const earned = new Map<string, { quiz: number; hunt: number; puzzle: number; minigame: number }>();
     for (const l of (ledger ?? []) as any[]) {
-      const e = earned.get(l.team_id) ?? { quiz: 0, hunt: 0, puzzle: 0 };
-      e[l.kind as 'quiz' | 'hunt' | 'puzzle'] += l.amount;
+      const e = earned.get(l.team_id) ?? { quiz: 0, hunt: 0, puzzle: 0, minigame: 0 };
+      e[l.kind as 'quiz' | 'hunt' | 'puzzle' | 'minigame'] += l.amount;
       earned.set(l.team_id, e);
     }
     const found = new Map<string, number>();
@@ -192,7 +213,7 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
         goalNeed: goalStatus(settings?.team_goal_pct ?? 0, t.completed, t.participants).need,
         goalMet: goalStatus(settings?.team_goal_pct ?? 0, t.completed, t.participants).met,
         quizTokens: earned.get(t.team_id)?.quiz ?? 0, huntTokens: earned.get(t.team_id)?.hunt ?? 0,
-        puzzleTokens: earned.get(t.team_id)?.puzzle ?? 0,
+        puzzleTokens: earned.get(t.team_id)?.puzzle ?? 0, miniTokens: earned.get(t.team_id)?.minigame ?? 0,
       })),
       feed,
     });
@@ -433,6 +454,12 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       if (typeof body.hunt_open === 'boolean') patch.hunt_open = body.hunt_open;
       if (typeof body.puzzle_open === 'boolean') patch.puzzle_open = body.puzzle_open;
       if (typeof body.market_open === 'boolean') patch.market_open = body.market_open;
+      for (const k of ['mg_spot_open', 'mg_memory_open', 'mg_mystery_open'] as const) if (typeof body[k] === 'boolean') patch[k] = body[k];
+      if (body.mg_percent !== undefined) {
+        const n = int(body.mg_percent);
+        if (n < 0 || n > 500) throw new HttpError(400, 'BAD_INPUT');
+        patch.mg_percent = n;
+      }
       if (body.team_goal_pct !== undefined) {
         const n = int(body.team_goal_pct);
         if (n < 0 || n > 100) throw new HttpError(400, 'BAD_INPUT');
@@ -551,7 +578,7 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
         if (error) throw error;
       }
       if (plan.switchesOff) {
-        const { error } = await sb.from('game_settings').update({ is_open: false, hunt_open: false, puzzle_open: false, market_open: false, checkin_open: false }).eq('id', 1);
+        const { error } = await sb.from('game_settings').update({ is_open: false, hunt_open: false, puzzle_open: false, market_open: false, checkin_open: false, mg_spot_open: false, mg_memory_open: false, mg_mystery_open: false }).eq('id', 1);
         if (error) throw error;
       }
       for (const f of files) await removePublicFile(f.bucket, f.url);

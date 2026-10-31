@@ -4,11 +4,13 @@
  */
 export type BulkStep = { table: string; eq?: [string, string] };
 export type BulkPlan = { steps: BulkStep[]; resetPlayers?: boolean; switchesOff?: boolean };
-export type BulkTarget = 'missions' | 'items' | 'teams' | 'questions' | 'spots' | 'playdata';
+export type BulkTarget = 'minigames' | 'missions' | 'items' | 'teams' | 'questions' | 'spots' | 'playdata';
 
 export const BULK_CONFIRM = 'ลบทั้งหมด';
 
 export const BULK_PLANS: Record<BulkTarget, BulkPlan> = {
+  // every solo mini-game attempt and the tokens they gave (the wallet goes back down by that amount)
+  minigames: { steps: [{ table: 'token_ledger', eq: ['kind', 'minigame'] }, { table: 'minigame_attempts' }] },
   // photo missions and every photo the teams sent (tokens already earned stay in the ledger)
   missions: { steps: [{ table: 'photo_submissions' }, { table: 'photo_missions' }] },
   // market items, their redemption history and the token spending (tokens spent on redemptions are given back)
@@ -21,13 +23,13 @@ export const BULK_PLANS: Record<BulkTarget, BulkPlan> = {
   teams: {
     steps: [
       { table: 'photo_submissions' }, { table: 'hunt_scans' }, { table: 'hunt_claims' }, { table: 'puzzle_attempts' }, { table: 'puzzle_solves' },
-      { table: 'token_ledger' }, { table: 'redemptions' }, { table: 'answers' }, { table: 'participants' }, { table: 'squads' }, { table: 'teams' },
+      { table: 'minigame_attempts' }, { table: 'token_ledger' }, { table: 'redemptions' }, { table: 'answers' }, { table: 'participants' }, { table: 'squads' }, { table: 'teams' },
     ],
   },
   // wipe the results of a test run but keep everything that was set up (teams, players + IDs, questions, items, missions, spots)
   playdata: {
     steps: [
-      { table: 'answers' }, { table: 'hunt_scans' }, { table: 'hunt_claims' }, { table: 'photo_submissions' }, { table: 'puzzle_attempts' }, { table: 'puzzle_solves' },
+      { table: 'answers' }, { table: 'hunt_scans' }, { table: 'hunt_claims' }, { table: 'photo_submissions' }, { table: 'puzzle_attempts' }, { table: 'puzzle_solves' }, { table: 'minigame_attempts' },
       { table: 'token_ledger' }, { table: 'redemptions' }, { table: 'audit_log' },
     ],
     resetPlayers: true,   // also clears event-day check-ins

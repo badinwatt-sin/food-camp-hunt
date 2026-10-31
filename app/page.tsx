@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from '
 import { Coin, Hero, IconMission, IconShop, IconTeam, Pot } from '@/components/Icons';
 import { AVATAR_EMOJIS } from '@/lib/avatar-list';
 import jsQR from 'jsqr';
+import { ApiError, api } from '@/lib/client-api';
+import MiniGames from '@/components/MiniGames';
 import { MARKET_CATS, marketCat } from '@/lib/market-cats';
 
 type Question = { id: string; position: number; prompt: string; image_url: string | null; options: string[] };
@@ -48,33 +50,6 @@ type HuntData = {
 };
 type Feedback = { selected: number; correctIndex: number; isCorrect: boolean; answered: number };
 
-class ApiError extends Error {
-  constructor(public status: number, message: string) { super(message); }
-}
-
-/** fetch with automatic retry on network errors / 5xx. Safe because the server is idempotent. */
-async function api<T = any>(path: string, body?: unknown, tries = 3): Promise<T> {
-  for (let i = 0; i < tries; i++) {
-    try {
-      const res = await fetch(path, {
-        method: body === undefined ? 'GET' : 'POST',
-        headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
-        body: body === undefined ? undefined : JSON.stringify(body),
-        cache: 'no-store',
-        signal: AbortSignal.timeout(20000),   // never spin forever if the network hangs
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok) return data as T;
-      if (res.status >= 500 && i < tries - 1) { await new Promise((r) => setTimeout(r, 600 * (i + 1))); continue; }
-      throw new ApiError(res.status, data.message ?? 'เกิดข้อผิดพลาด');
-    } catch (e) {
-      if (e instanceof ApiError) throw e;
-      await new Promise((r) => setTimeout(r, 600 * (i + 1)));
-    }
-  }
-  throw new ApiError(0, 'เชื่อมต่อไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่ (ข้อมูลของคุณไม่หาย)');
-}
-
 const LETTERS = ['ก', 'ข', 'ค', 'ง'];
 const fmtTime = (iso: string) =>
   new Date(iso).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -87,7 +62,7 @@ export default function Page() {
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
-  const [view, setView] = useState<'home' | 'missions' | 'quiz' | 'hunt' | 'team' | 'market' | 'checkin'>('home');
+  const [view, setView] = useState<'home' | 'missions' | 'quiz' | 'hunt' | 'team' | 'market' | 'checkin' | 'games'>('home');
   const [pendingCheckin, setPendingCheckin] = useState('');
   const [huntTab, setHuntTab] = useState<'hunt' | 'puzzle'>('hunt');
   const [editAvatar, setEditAvatar] = useState(false);
@@ -261,6 +236,16 @@ export default function Page() {
   const goHome = () => setView('home');
   const QuizBack = ({ label = 'กลับไปภารกิจ' }: { label?: string }) => <button className="btn ghost" onClick={() => setView('missions')}>{label}</button>;
 
+  // ---- Solo mini-games
+  if (view === 'games') {
+    return (
+      <Shell subtitle={subtitle} onHome={goHome}>
+        <MiniGames onBalance={() => load()} onAuthLost={fail} />
+        <QuizBack />
+      </Shell>
+    );
+  }
+
   // ---- Treasure hunt + team puzzles
   if (view === 'hunt') {
     return (
@@ -331,6 +316,13 @@ export default function Page() {
           <button className="btn" style={{ marginTop: 12 }} disabled={st !== 'completed' && !me.game.open} onClick={() => setView('quiz')}>
             {st === 'completed' ? 'ดูผลคะแนน' : st === 'in_progress' ? 'เล่นต่อ' : 'เริ่มเล่นควิซ'}
           </button>
+        </div>
+        <div className="card">
+          <div className="mission">
+            <div className="m-ic" style={{ background: '#d9efd8' }}>🎮</div>
+            <div className="m-body"><h2>เกมย่อย</h2><div className="muted">จับผิดภาพ · จับคู่การ์ด · ทายวัตถุดิบ — เล่นคนเดียว สะสมโทเคนให้ทีม</div></div>
+          </div>
+          <button className="btn green" style={{ marginTop: 12 }} onClick={() => setView('games')}>เล่นเกมย่อย</button>
         </div>
         <div className="card">
           <div className="mission">

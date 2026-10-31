@@ -58,7 +58,7 @@ function Login({ onDone }: { onDone: (r: Role) => void }) {
   );
 }
 
-type Tab = 'overview' | 'checkin' | 'market' | 'people' | 'questions' | 'hunt' | 'puzzles' | 'history' | 'export';
+type Tab = 'overview' | 'checkin' | 'market' | 'people' | 'questions' | 'games' | 'hunt' | 'puzzles' | 'history' | 'export';
 
 /** Bottom toast: always visible wherever you are on the page (the old banner sat at the top, out of sight). */
 function Toast({ msg, onClose }: { msg: string; onClose: () => void }) {
@@ -91,7 +91,7 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
   }, []);
   const tabs: [Tab, string, string, boolean][] = [
     ['overview', '📊', 'ภาพรวม', true], ['checkin', '📍', 'เช็กอินวันงาน', true], ['market', '🛒', 'ตลาดสินค้า', true],
-    ['people', '👥', 'ทีมและผู้เล่น', role === 'admin'], ['questions', '🍜', 'คำถามควิซ', role === 'admin'],
+    ['people', '👥', 'ทีมและผู้เล่น', role === 'admin'], ['questions', '🍜', 'คำถามควิซ', role === 'admin'], ['games', '🎮', 'เกมย่อย', role === 'admin'],
     ['hunt', '🧭', 'ล่าสมบัติ', role === 'admin'], ['puzzles', '📸', 'ภารกิจทีม', true],
     ['history', '📜', 'ประวัติ', role === 'admin'], ['export', '⬇️', 'ส่งออก CSV', role === 'admin'],
   ];
@@ -117,6 +117,7 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
         {tab === 'market' && <Market key={rk} role={role} setMsg={setMsg} />}
         {tab === 'people' && <People key={rk} setMsg={setMsg} />}
         {tab === 'questions' && <Questions key={rk} setMsg={setMsg} />}
+        {tab === 'games' && <MiniGames key={rk} setMsg={setMsg} />}
         {tab === 'hunt' && <Hunt key={rk} setMsg={setMsg} />}
         {tab === 'puzzles' && <Missions key={rk} role={role} setMsg={setMsg} />}
         {tab === 'history' && <History />}
@@ -129,11 +130,79 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
   );
 }
 
+// ------------------------------------------------------------------ solo mini-games
+const MG_META: Record<string, { icon: string; title: string; en: string; rule: string; max: number }> = {
+  spot: { icon: '🔍', title: 'จับผิดภาพ Food Camp', en: 'Spot the Difference', max: 60, rule: 'หา 5 จุดใน 3 นาที · จุดละ 6 + โบนัสความเร็วสูงสุด 30 (หาครบใน 1 นาที = 50) · กดพลาด +3 วินาที' },
+  memory: { icon: '🃏', title: 'Camp Memory Flip', en: 'Memory Match', max: 60, rule: 'จับคู่ 6 คู่ · 6 ครั้ง = 60 · ทุกครั้งที่เพิ่มหัก 4 (ขั้นต่ำ 10)' },
+  mystery: { icon: '🥬', title: 'Mystery Ingredient', en: 'Guess the Ingredient', max: 50, rule: '5 ข้อ ข้อละ 10 → 2 ตามเวลา (ภายใน 20 วินาที) · ตอบผิด = 0' },
+};
+function MiniGames({ setMsg }: { setMsg: (m: string) => void }) {
+  const [d, setD] = useState<any | null>(null);
+  const [pct, setPct] = useState('100');
+  const load = useCallback(async () => {
+    try { const r = await call('minigames'); setD(r); setPct(String(r.percent)); } catch (e) { setMsg((e as Error).message); }
+  }, [setMsg]);
+  useEffect(() => { load(); const t = setInterval(load, 20000); return () => clearInterval(t); }, [load]);
+  if (!d) return <div className="spinner" />;
+  async function toggle(g: string) {
+    const key = `mg_${g}_open`;
+    try { await call('game.set', { [key]: !d.games[g].open }); await load(); setMsg(!d.games[g].open ? `เปิดเกม ${MG_META[g].title} แล้ว` : `ปิดเกม ${MG_META[g].title} แล้ว`); }
+    catch (e) { setMsg((e as Error).message); }
+  }
+  async function savePct() {
+    try { await call('game.set', { mg_percent: Number(pct) }); await load(); setMsg(`ตั้งตัวคูณโทเคนเกมย่อยเป็น ${pct}% แล้ว`); }
+    catch (e) { setMsg((e as Error).message); }
+  }
+  return (
+    <>
+      <div className="card">
+        <h2 style={{ marginTop: 0 }}>🎮 เกมย่อย (เล่นคนเดียว สะสมโทเคนก่อนวันงาน)</h2>
+        <p className="muted" style={{ margin: '0 0 10px' }}>ผู้เล่นเข้าได้ที่ <strong>เริ่มภารกิจ → เกมย่อย</strong> · เล่นได้เกมละ <strong>3 ครั้ง</strong> และนับ<strong>ครั้งที่ดีที่สุด</strong> (โทเคนเข้ากระเป๋าทีมเฉพาะส่วนที่เพิ่มขึ้น) · เปิดให้เล่นเมื่อไหร่ก็ได้ และปิดสวิตช์ตอนถึงวันงาน</p>
+        <div className="row">
+          <div><label className="lbl">ตัวคูณโทเคนของเกมย่อยทั้งหมด (%)</label>
+            <input className="field" style={{ width: 120 }} type="number" min={0} max={500} value={pct} onChange={(e) => setPct(e.target.value)} /></div>
+          <button className="btn small" onClick={savePct}>บันทึก</button>
+          <div className="muted" style={{ fontSize: 14, flex: 1, minWidth: 220 }}>100% = เต็มสูงสุด จับผิดภาพ 60 / จับคู่ 60 / ทายวัตถุดิบ 50 โทเคนต่อคน (รวม 170) ถ้าเศรษฐกิจโทเคนเยอะไป ลดเหลือ 30–50% ได้เลย</div>
+        </div>
+      </div>
+      {(['spot', 'memory', 'mystery'] as const).map((g) => {
+        const m = MG_META[g], x = d.games[g];
+        return (
+          <div className="card" key={g}>
+            <div className="row" style={{ justifyContent: 'space-between' }}>
+              <div><h2 style={{ margin: 0 }}>{m.icon} {m.title} <span className="muted" style={{ fontWeight: 400, fontSize: 15 }}>/ {m.en}</span></h2>
+                <div className="muted" style={{ fontSize: 14 }}>{m.rule}</div></div>
+              <button className={`btn small ${x.open ? 'green' : 'ghost'}`} onClick={() => toggle(g)}>{x.open ? '🟢 เปิดอยู่ (กดเพื่อปิด)' : '⚪ ปิดอยู่ (กดเพื่อเปิด)'}</button>
+            </div>
+            <div className="stats" style={{ marginTop: 10 }}>
+              <div className="stat"><b>{x.players}</b><span>คนที่เคยเล่น</span></div>
+              <div className="stat"><b>{x.finished}</b><span>รอบที่เล่นจบ</span></div>
+              <div className="stat"><b>🪙 {x.tokens}</b><span>โทเคนที่แจกไปแล้ว</span></div>
+              <div className="stat"><b>{Math.round(m.max * Number(d.percent) / 100)}</b><span>สูงสุดต่อคน</span></div>
+            </div>
+            {x.top.length > 0 ? (
+              <div className="table-wrap"><table>
+                <thead><tr><th>#</th><th>ผู้เล่น</th><th>ทีม</th><th>โทเคนที่ดีที่สุด</th></tr></thead>
+                <tbody>{x.top.map((t: any, i: number) => <tr key={i}><td>{i + 1}</td><td>{t.name}</td><td>{t.team}</td><td className="num">{t.tokens}</td></tr>)}</tbody>
+              </table></div>
+            ) : <p className="muted" style={{ margin: '10px 0 0' }}>ยังไม่มีใครเล่นจบ</p>}
+          </div>
+        );
+      })}
+    </>
+  );
+}
+
 // ------------------------------------------------------------------ danger zone (clear test data)
-const BULK_FOR_TAB: Partial<Record<Tab, 'playdata' | 'items' | 'teams' | 'questions' | 'spots' | 'missions'>> = {
-  overview: 'playdata', market: 'items', people: 'teams', questions: 'questions', hunt: 'spots', puzzles: 'missions',
+const BULK_FOR_TAB: Partial<Record<Tab, 'minigames' | 'playdata' | 'items' | 'teams' | 'questions' | 'spots' | 'missions'>> = {
+  overview: 'playdata', market: 'items', people: 'teams', questions: 'questions', games: 'minigames', hunt: 'spots', puzzles: 'missions',
 };
 const BULK_INFO: Record<string, { button: string; what: string; keeps: string }> = {
+  minigames: {
+    button: '🗑️ ล้างผลเกมย่อยทั้งหมด',
+    what: 'ลบประวัติการเล่นเกมย่อยของทุกคน (สิทธิ์เล่น 3 ครั้งกลับมาใหม่) และหักโทเคนที่ทุกทีมเคยได้จากเกมย่อยออก',
+    keeps: 'ทีม ผู้เล่น โทเคนจากควิซ/ล่าสมบัติ/ภารกิจทีม และสวิตช์เปิดปิดเกมยังอยู่ครบ',
+  },
   playdata: {
     button: '🧹 รีเซ็ตผลการเล่นทั้งหมด (เริ่มรอบทดสอบใหม่)',
     what: 'ล้างคำตอบควิซ คะแนน โทเคนทุกประเภท ประวัติแลกของ/ล่าสมบัติ/ภาพภารกิจ และประวัติใช้งาน แล้วรีเซ็ตผู้เล่นให้เริ่มใหม่ ปิดสวิตช์ทั้งหมด',
