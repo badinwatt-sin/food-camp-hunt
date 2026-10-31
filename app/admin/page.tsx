@@ -1,0 +1,821 @@
+'use client';
+
+import { useCallback, useEffect, useState } from 'react';
+import QRCode from 'qrcode';
+
+type Role = 'admin' | 'staff';
+
+async function call<T = any>(action: string, body?: unknown): Promise<T> {
+  const res = await fetch(`/api/admin/${action}`, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    cache: 'no-store',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message ?? 'เกิดข้อผิดพลาด');
+  return data as T;
+}
+const uuid = () => crypto.randomUUID();
+const fmt = (iso?: string | null) =>
+  iso ? new Date(iso).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+
+export default function AdminPage() {
+  const [role, setRole] = useState<Role | null | undefined>(undefined);
+  useEffect(() => { call<{ role: Role | null }>('session').then((r) => setRole(r.role)).catch(() => setRole(null)); }, []);
+
+  if (role === undefined) return <div className="spinner" />;
+  if (!role) return <Login onDone={setRole} />;
+  return <Dashboard role={role} onLogout={async () => { await call('logout', {}); setRole(null); }} />;
+}
+
+function Login({ onDone }: { onDone: (r: Role) => void }) {
+  const [pw, setPw] = useState('');
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  async function go() {
+    setBusy(true); setErr('');
+    try { const r = await call<{ role: Role }>('login', { password: pw }); onDone(r.role); }
+    catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  }
+  return (
+    <div className="app">
+      <header className="hero"><h1>Food Camp — ผู้จัด</h1><p>เข้าสู่ระบบผู้จัดงาน</p></header>
+      <main className="main">
+        <div className="card stack">
+          <input className="field" type="password" placeholder="รหัสผ่านผู้จัด" value={pw}
+            onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && go()} autoComplete="current-password" />
+          {err && <div className="error">{err}</div>}
+          <button className="btn" disabled={busy || !pw} onClick={go}>เข้าสู่ระบบ</button>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+type Tab = 'overview' | 'market' | 'people' | 'questions' | 'hunt' | 'puzzles' | 'history' | 'export';
+
+function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
+  const [tab, setTab] = useState<Tab>('overview');
+  const [msg, setMsg] = useState('');
+  const tabs: [Tab, string, boolean][] = [
+    ['overview', 'ภาพรวม', true], ['market', 'ตลาด / แลกของ', true],
+    ['people', 'ทีมและผู้เล่น', role === 'admin'], ['questions', 'คำถาม', role === 'admin'], ['hunt', 'ล่าสมบัติ', role === 'admin'], ['puzzles', 'ภารกิจทีม', role === 'admin'],
+    ['history', 'ประวัติ', role === 'admin'], ['export', 'ส่งออก CSV', role === 'admin'],
+  ];
+  return (
+    <div className="admin">
+      <div className="bar">
+        <h1>Food Camp — แดชบอร์ดผู้จัด <span className="pill">{role === 'admin' ? 'Admin' : 'Staff'}</span></h1>
+        <span className="row">
+          <a className="btn small ghost" style={{ textDecoration: 'none' }} href="/admin/live" target="_blank" rel="noreferrer">📺 หน้าจอใหญ่ (Live)</a>
+          <button className="btn small ghost" onClick={onLogout}>ออกจากระบบ</button>
+        </span>
+      </div>
+      <div className="tabs">
+        {tabs.filter((t) => t[2]).map(([k, label]) => (
+          <button key={k} className={tab === k ? 'on' : ''} onClick={() => { setTab(k); setMsg(''); }}>{label}</button>
+        ))}
+      </div>
+      {msg && <div className="banner">{msg}</div>}
+      {tab === 'overview' && <Overview role={role} setMsg={setMsg} />}
+      {tab === 'market' && <Market role={role} setMsg={setMsg} />}
+      {tab === 'people' && <People setMsg={setMsg} />}
+      {tab === 'questions' && <Questions setMsg={setMsg} />}
+      {tab === 'hunt' && <Hunt setMsg={setMsg} />}
+      {tab === 'puzzles' && <Puzzles setMsg={setMsg} />}
+      {tab === 'history' && <History />}
+      {tab === 'export' && <Export />}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ overview
+function Overview({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
+  const [d, setD] = useState<any>(null);
+  const [goal, setGoal] = useState('');
+  const [adj, setAdj] = useState<{ team_id: string; amount: string; reason: string; key: string } | null>(null);
+  const load = useCallback(() => call('overview').then(setD).catch((e) => setMsg(e.message)), [setMsg]);
+  useEffect(() => { load(); const t = setInterval(load, 15000); return () => clearInterval(t); }, [load]);
+  useEffect(() => { if (d && goal === '') setGoal(String(d.settings.team_goal_pct ?? 0)); }, [d, goal]);
+  if (!d) return <div className="spinner" />;
+  const totalP = d.teams.reduce((s: number, t: any) => s + t.participants, 0);
+  const totalC = d.teams.reduce((s: number, t: any) => s + t.completed, 0);
+
+  async function toggle() {
+    try { await call('game.set', { is_open: !d.settings.is_open }); await load(); setMsg(d.settings.is_open ? 'ปิดเกมแล้ว' : 'เปิดเกมแล้ว'); }
+    catch (e) { setMsg((e as Error).message); }
+  }
+  async function togglePuzzle() {
+    try { await call('game.set', { puzzle_open: !d.settings.puzzle_open }); await load(); setMsg(d.settings.puzzle_open ? 'ปิดภารกิจทีมแล้ว' : 'เปิดภารกิจทีมแล้ว'); }
+    catch (e) { setMsg((e as Error).message); }
+  }
+  async function saveGoal() {
+    try { await call('game.set', { team_goal_pct: Number(goal) }); await load(); setMsg(Number(goal) ? `ตั้งเป้าหมายทีม ${goal}% แล้ว` : 'ปิดเป้าหมายทีมแล้ว'); }
+    catch (e) { setMsg((e as Error).message); }
+  }
+  async function toggleHunt() {
+    try { await call('game.set', { hunt_open: !d.settings.hunt_open }); await load(); setMsg(d.settings.hunt_open ? 'ปิดล่าสมบัติแล้ว' : 'เปิดล่าสมบัติแล้ว'); }
+    catch (e) { setMsg((e as Error).message); }
+  }
+  async function saveAdj() {
+    if (!adj) return;
+    try {
+      await call('adjust', { team_id: adj.team_id, amount: Number(adj.amount), reason: adj.reason, key: adj.key });
+      setAdj(null); await load(); setMsg('บันทึกการปรับโทเคนแล้ว');
+    } catch (e) { setMsg((e as Error).message); }
+  }
+
+  return (
+    <>
+      <div className="card row" style={{ justifyContent: 'space-between' }}>
+        <div>
+          <h2 style={{ margin: 0 }}>สถานะเกม: {d.settings.is_open ? '🟢 เปิดอยู่' : '🔴 ปิดอยู่'}</h2>
+          <div className="muted">เล่นจบแล้ว {totalC} / {totalP} คน · {d.settings.tokens_per_correct} โทเคนต่อข้อที่ถูก</div>
+        </div>
+        {role === 'admin' && <button className={`btn small ${d.settings.is_open ? 'danger' : ''}`} onClick={toggle}>{d.settings.is_open ? 'ปิดเกม' : 'เปิดเกม'}</button>}
+      </div>
+      <div className="card row" style={{ justifyContent: 'space-between' }}>
+        <div>
+          <h2 style={{ margin: 0 }}>ล่าสมบัติ: {d.settings.hunt_open ? '🟢 เปิดอยู่' : '🔴 ปิดอยู่'}</h2>
+          <div className="muted">สแกน QR / กรอกรหัสตามจุดต่าง ๆ เพื่อสะสมโทเคน (เปิด-ปิดแยกจากควิซและภารกิจทีม)</div>
+        </div>
+        {role === 'admin' && <button className={`btn small ${d.settings.hunt_open ? 'danger' : ''}`} onClick={toggleHunt}>{d.settings.hunt_open ? 'ปิดล่าสมบัติ' : 'เปิดล่าสมบัติ'}</button>}
+      </div>
+      <div className="card row" style={{ justifyContent: 'space-between' }}>
+        <div>
+          <h2 style={{ margin: 0 }}>🧩 ภารกิจทีม: {d.settings.puzzle_open ? '🟢 เปิดอยู่' : '🔴 ปิดอยู่'}</h2>
+          <div className="muted">สมาชิกแต่ละคนถือเบาะแสคนละส่วน ต้องคุยกันเพื่อตอบ (เปิด-ปิดแยกจากล่าสมบัติ)</div>
+        </div>
+        {role === 'admin' && <button className={`btn small ${d.settings.puzzle_open ? 'danger' : ''}`} onClick={togglePuzzle}>{d.settings.puzzle_open ? 'ปิดภารกิจทีม' : 'เปิดภารกิจทีม'}</button>}
+      </div>
+      <div className="card">
+        <h2 style={{ margin: 0 }}>🎯 เป้าหมายร่วมของทีม: {d.settings.team_goal_pct ? `${d.settings.team_goal_pct}% ของสมาชิกต้องเล่นควิซจบ` : 'ปิดอยู่'}</h2>
+        <div className="muted">เมื่อทีมถึงเป้า จะปลดล็อกสินค้าที่ติดป้าย “ต้องถึงเป้าหมาย” ในตลาด (ตั้งป้ายที่แท็บตลาด)</div>
+        {role === 'admin' && (
+          <div className="row" style={{ marginTop: 8 }}>
+            <input className="field" style={{ width: 110 }} type="number" min={0} max={100} value={goal} onChange={(e) => setGoal(e.target.value)} />
+            <span>% (0 = ปิด)</span>
+            <button className="btn small" onClick={saveGoal}>บันทึก</button>
+          </div>
+        )}
+      </div>
+      <div className="grid">
+        {d.teams.map((t: any) => (
+          <div className="card" key={t.team_id}>
+            <h2>{t.name}</h2>
+            <div className="num" style={{ fontSize: 34, fontWeight: 700 }}>🪙 {t.balance}</div>
+            <div className="muted">จบแล้ว {t.completed}/{t.participants} · กำลังเล่น {t.in_progress}</div>
+            <div className="progress" style={{ position: 'relative' }}>
+              <i style={{ width: `${t.participants ? (t.completed / t.participants) * 100 : 0}%` }} />
+              {d.settings.team_goal_pct > 0 && <b title="เป้าหมาย" style={{ position: 'absolute', left: `${d.settings.team_goal_pct}%`, top: -3, height: 16, width: 3, background: 'var(--navy)' }} />}
+            </div>
+            {d.settings.team_goal_pct > 0 && (
+              <div className="muted">{t.participants && t.completed * 100 >= d.settings.team_goal_pct * t.participants ? '🔓 ถึงเป้าแล้ว' : `🔒 ยังไม่ถึงเป้า ${d.settings.team_goal_pct}%`}</div>
+            )}
+            <div className="muted">ใช้ไปแล้ว {t.spent}</div>
+            {role === 'admin' && (
+              <button className="btn small ghost" style={{ marginTop: 8 }}
+                onClick={() => setAdj({ team_id: t.team_id, amount: '', reason: '', key: uuid() })}>ปรับโทเคนด้วยมือ</button>
+            )}
+          </div>
+        ))}
+      </div>
+      {adj && (
+        <div className="card">
+          <h2>ปรับโทเคน: {d.teams.find((t: any) => t.team_id === adj.team_id)?.name}</h2>
+          <label className="lbl">จำนวน (ใส่ − เพื่อลด เช่น -10)</label>
+          <input className="field" type="number" value={adj.amount} onChange={(e) => setAdj({ ...adj, amount: e.target.value })} />
+          <label className="lbl">เหตุผล (จำเป็น)</label>
+          <input className="field" value={adj.reason} onChange={(e) => setAdj({ ...adj, reason: e.target.value })} />
+          <div className="row" style={{ marginTop: 12 }}>
+            <button className="btn small" disabled={!adj.amount || adj.reason.trim().length < 3} onClick={saveAdj}>บันทึก</button>
+            <button className="btn small ghost" onClick={() => setAdj(null)}>ยกเลิก</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// -------------------------------------------------------------------- market
+function Market({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
+  const [items, setItems] = useState<any[]>([]);
+  const [teams, setTeams] = useState<any[]>([]);
+  const [rd, setRd] = useState({ team_id: '', item_id: '', quantity: '1', key: uuid() });
+  const [edit, setEdit] = useState<any | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const [m, t] = await Promise.all([call('market'), call('teams')]);
+      setItems(m.items); setTeams(t.teams);
+    } catch (e) { setMsg((e as Error).message); }
+  }, [setMsg]);
+  useEffect(() => { load(); }, [load]);
+
+  const item = items.find((i) => i.id === rd.item_id);
+  const team = teams.find((t) => t.team_id === rd.team_id);
+  const qty = Math.max(1, parseInt(rd.quantity) || 1);
+  const cost = item ? item.price * qty : 0;
+
+  async function redeem() {
+    setBusy(true);
+    try {
+      // Same key is reused if the request is retried, so it can never be applied twice.
+      const r = await call('redeem', { team_id: rd.team_id, item_id: rd.item_id, quantity: qty, key: rd.key });
+      setMsg(r.already ? 'รายการนี้ถูกบันทึกไปแล้ว (ไม่หักซ้ำ)' : `แลกสำเร็จ หักไป ${r.total_cost} โทเคน เหลือ ${r.balance}`);
+      setRd({ ...rd, item_id: '', quantity: '1', key: uuid() });
+      await load();
+    } catch (e) { setMsg((e as Error).message + ' (ถ้าไม่แน่ใจว่าบันทึกหรือยัง กดยืนยันซ้ำได้อย่างปลอดภัย)'); await load(); }
+    finally { setBusy(false); }
+  }
+  async function saveItem() {
+    try { await call('item.save', edit); setEdit(null); await load(); setMsg('บันทึกสินค้าแล้ว'); }
+    catch (e) { setMsg((e as Error).message); }
+  }
+
+  return (
+    <>
+      <div className="card">
+        <h2>ยืนยันการแลกของ</h2>
+        <div className="row">
+          <select className="field grow" value={rd.team_id} onChange={(e) => setRd({ ...rd, team_id: e.target.value, key: uuid() })}>
+            <option value="">เลือกทีม</option>
+            {teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name} (🪙 {t.balance})</option>)}
+          </select>
+          <select className="field grow" value={rd.item_id} onChange={(e) => setRd({ ...rd, item_id: e.target.value, key: uuid() })}>
+            <option value="">เลือกสินค้า</option>
+            {items.filter((i) => i.active).map((i) => <option key={i.id} value={i.id}>{i.name} — {i.price} โทเคน (เหลือ {i.stock})</option>)}
+          </select>
+          <input className="field" style={{ width: 90 }} type="number" min={1} value={rd.quantity}
+            onChange={(e) => setRd({ ...rd, quantity: e.target.value, key: uuid() })} />
+        </div>
+        {item && team && (
+          <p className="muted">
+            ราคารวม <strong>{cost}</strong> โทเคน · ทีมมี {team.balance} → เหลือ {team.balance - cost}
+            {team.balance < cost && <span style={{ color: 'var(--bad)' }}> (โทเคนไม่พอ)</span>}
+          </p>
+        )}
+        <button className="btn small" disabled={busy || !rd.team_id || !rd.item_id} onClick={redeem}>
+          {busy ? 'กำลังบันทึก…' : 'ยืนยันการแลก'}
+        </button>
+      </div>
+
+      <div className="card">
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <h2 style={{ margin: 0 }}>รายการสินค้า</h2>
+          {role === 'admin' && <button className="btn small green" onClick={() => setEdit({ name: '', category: 'ingredient', price: 10, stock: 10, active: true, requires_goal: false })}>+ เพิ่มสินค้า</button>}
+        </div>
+        <div className="table-wrap">
+          <table>
+            <thead><tr><th>ชื่อ</th><th>หมวด</th><th>ราคา</th><th>คงเหลือ</th><th>ล็อกด้วยเป้าหมาย</th><th>สถานะ</th>{role === 'admin' && <th />}</tr></thead>
+            <tbody>
+              {items.map((i) => (
+                <tr key={i.id}>
+                  <td>{i.name}</td><td>{i.category}</td><td className="num">{i.price}</td><td className="num">{i.stock}</td>
+                  <td>{i.requires_goal ? '🎯 ต้องถึงเป้า' : '—'}</td>
+                  <td>{i.active ? 'เปิดขาย' : 'ปิด'}</td>
+                  {role === 'admin' && <td className="row">
+                    <button className="btn small ghost" onClick={() => setEdit(i)}>แก้ไข</button>
+                    <button className="btn small ghost" onClick={async () => { if (confirm(`ลบ ${i.name}?`)) { await call('item.delete', { id: i.id }); load(); } }}>ลบ</button>
+                  </td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {edit && (
+        <div className="card">
+          <h2>{edit.id ? 'แก้ไขสินค้า' : 'เพิ่มสินค้า'}</h2>
+          <div className="row">
+            <div className="grow"><label className="lbl">ชื่อ</label><input className="field" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></div>
+            <div className="grow"><label className="lbl">หมวด (ingredient / sauce / topping / decoration)</label><input className="field" value={edit.category} onChange={(e) => setEdit({ ...edit, category: e.target.value })} /></div>
+            <div><label className="lbl">ราคา (โทเคน)</label><input className="field" style={{ width: 110 }} type="number" min={1} value={edit.price} onChange={(e) => setEdit({ ...edit, price: Number(e.target.value) })} /></div>
+            <div><label className="lbl">จำนวนคงเหลือ</label><input className="field" style={{ width: 110 }} type="number" min={0} value={edit.stock} onChange={(e) => setEdit({ ...edit, stock: Number(e.target.value) })} /></div>
+          </div>
+          <label className="lbl"><input type="checkbox" checked={edit.active} onChange={(e) => setEdit({ ...edit, active: e.target.checked })} /> เปิดขาย</label>
+          <label className="lbl"><input type="checkbox" checked={!!edit.requires_goal} onChange={(e) => setEdit({ ...edit, requires_goal: e.target.checked })} /> 🎯 สินค้าพิเศษ: ทีมต้องถึงเป้าหมายการเล่นควิซก่อนจึงแลกได้</label>
+          <div className="row" style={{ marginTop: 10 }}>
+            <button className="btn small" onClick={saveItem}>บันทึก</button>
+            <button className="btn small ghost" onClick={() => setEdit(null)}>ยกเลิก</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+// -------------------------------------------------------------------- people
+function People({ setMsg }: { setMsg: (m: string) => void }) {
+  const [teams, setTeams] = useState<any[]>([]);
+  const [people, setPeople] = useState<any[]>([]);
+  const [teamName, setTeamName] = useState('');
+  const [editTeam, setEditTeam] = useState<any | null>(null);
+  const [form, setForm] = useState({ id: '', name: '', team_id: '', squad_id: '' });
+  const [squads, setSquads] = useState<any[]>([]);
+  const [sizes, setSizes] = useState<Record<string, string>>({});
+  const [editSquad, setEditSquad] = useState<{ id: string; name: string } | null>(null);
+  const [bulk, setBulk] = useState('');
+  const [codes, setCodes] = useState<{ name: string; team: string; code: string }[] | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const [t, p, sq] = await Promise.all([call('teams'), call('participants'), call('squads')]);
+      setTeams(t.teams); setPeople(p.participants); setSquads(sq.squads);
+    } catch (e) { setMsg((e as Error).message); }
+  }, [setMsg]);
+  useEffect(() => { load(); }, [load]);
+
+  const run = async (fn: () => Promise<any>, ok?: string) => {
+    try { const r = await fn(); await load(); if (ok) setMsg(ok); return r; } catch (e) { setMsg((e as Error).message); }
+  };
+
+  function downloadCodes() {
+    if (!codes) return;
+    const esc = (s: string) => `"${s.replace(/"/g, '""')}"`;
+    const csv = '﻿' + ['Name,Team,Code', ...codes.map((c) => [esc(c.name), esc(c.team), c.code].join(','))].join('\r\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'foodcamp-access-codes.csv';
+    a.click();
+  }
+
+  return (
+    <>
+      {codes && (
+        <div className="card">
+          <h2>รหัสที่เพิ่งสร้าง ({codes.length})</h2>
+          <div className="error" style={{ background: '#fff3d6', color: '#6a4b00' }}>
+            รหัสจะแสดงครั้งเดียวเท่านั้น (ระบบเก็บเฉพาะค่าแฮช) — ดาวน์โหลดและเก็บไว้ในที่ปลอดภัย แจกให้เจ้าของรหัสโดยตรง
+          </div>
+          <div className="row noprint" style={{ margin: '10px 0' }}>
+            <button className="btn small" onClick={downloadCodes}>ดาวน์โหลด CSV</button>
+            <button className="btn small ghost" onClick={() => window.print()}>พิมพ์</button>
+            <button className="btn small ghost" onClick={() => setCodes(null)}>ปิด (ลบจากหน้าจอ)</button>
+          </div>
+          <div className="table-wrap"><table>
+            <thead><tr><th>ชื่อ</th><th>ทีม</th><th>รหัส</th></tr></thead>
+            <tbody>{codes.map((c, i) => <tr key={i}><td>{c.name}</td><td>{c.team}</td><td className="codebox">{c.code}</td></tr>)}</tbody>
+          </table></div>
+        </div>
+      )}
+
+      <div className="card">
+        <h2>ทีม</h2>
+        <ul className="list">
+          {teams.map((t) => (
+            <li key={t.team_id}>
+              {editTeam?.id === t.team_id ? (
+                <span className="row grow">
+                  <input className="field grow" value={editTeam.name} onChange={(e) => setEditTeam({ ...editTeam, name: e.target.value })} />
+                  <button className="btn small" onClick={() => run(async () => { await call('team.save', editTeam); setEditTeam(null); }, 'บันทึกชื่อทีมแล้ว')}>บันทึก</button>
+                </span>
+              ) : (
+                <>
+                  <span>{t.name} <span className="muted">({t.participants} คน)</span></span>
+                  <span className="row">
+                    <button className="btn small ghost" onClick={() => setEditTeam({ id: t.team_id, name: t.name })}>แก้ชื่อ</button>
+                    <button className="btn small ghost" onClick={() => confirm(`ลบทีม ${t.name}?`) && run(() => call('team.delete', { id: t.team_id }), 'ลบทีมแล้ว')}>ลบ</button>
+                  </span>
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+        <div className="row" style={{ marginTop: 8 }}>
+          <input className="field grow" placeholder="ชื่อทีมใหม่" value={teamName} onChange={(e) => setTeamName(e.target.value)} />
+          <button className="btn small green" disabled={!teamName.trim()} onClick={() => run(async () => { await call('team.save', { name: teamName }); setTeamName(''); }, 'เพิ่มทีมแล้ว')}>+ เพิ่มทีม</button>
+        </div>
+      </div>
+
+      <div className="card">
+        <h2>สควอด (กลุ่มย่อยในทีม)</h2>
+        <p className="muted">ทีมละ ~20 คน แนะนำแบ่งเป็นสควอดละ 4–5 คน: ล่าสมบัติจะนับ <strong>แยกตามสควอด</strong> (แต่ละสควอดเก็บแต่ละจุดได้ 1 ครั้ง) โทเคนยังเข้ากระเป๋าทีมรวม · คนที่ไม่มีสควอดจะนับเป็นกลุ่มเดียวทั้งทีม · อย่าลืมปรับโทเคนต่อจุดให้เหมาะกับจำนวนสควอด</p>
+        <ul className="list">
+          {teams.map((t) => {
+            const mine = squads.filter((q) => q.team_id === t.team_id);
+            const count = (qid: string) => people.filter((p) => p.squad_id === qid).length;
+            const none = people.filter((p) => p.team_id === t.team_id && !p.squad_id).length;
+            return (
+              <li key={t.team_id} style={{ display: 'block' }}>
+                <div className="row" style={{ justifyContent: 'space-between' }}>
+                  <strong>{t.name} <span className="muted">({t.participants} คน · {mine.length} สควอด · ไม่มีสควอด {none})</span></strong>
+                  <span className="row">
+                    <input className="field" style={{ width: 80 }} type="number" min={2} max={30} title="ขนาดสควอด (คน)"
+                      value={sizes[t.team_id] ?? '5'} onChange={(e) => setSizes({ ...sizes, [t.team_id]: e.target.value })} />
+                    <button className="btn small" disabled={!t.participants}
+                      onClick={() => (!mine.length || confirm(`แบ่งสควอดใหม่ให้ ${t.name}? สควอดเดิมจะถูกแทนที่`)) && run(async () => { const r = await call('squads.auto', { team_id: t.team_id, size: Number(sizes[t.team_id] ?? 5) }); setMsg(`แบ่ง ${r.people} คน เป็น ${r.squads} สควอดแล้ว`); })}>
+                      สุ่มแบ่งสควอดอัตโนมัติ
+                    </button>
+                  </span>
+                </div>
+                <div className="row" style={{ marginTop: 6 }}>
+                  {mine.map((q) => editSquad?.id === q.id ? (
+                    <span key={q.id} className="row">
+                      <input className="field" value={editSquad?.name ?? ""} onChange={(e) => setEditSquad({ id: q.id, name: e.target.value })} />
+                      <button className="btn small" onClick={() => run(async () => { await call('squad.save', editSquad); setEditSquad(null); }, 'บันทึกแล้ว')}>บันทึก</button>
+                    </span>
+                  ) : (
+                    <span key={q.id} className="pill">
+                      {q.name} · {count(q.id)} คน{' '}
+                      <a href="#" onClick={(e) => { e.preventDefault(); setEditSquad({ id: q.id, name: q.name }); }}>แก้ชื่อ</a>{' · '}
+                      <a href="#" onClick={(e) => { e.preventDefault(); confirm(`ลบ ${q.name}? สมาชิกจะกลายเป็น “ไม่มีสควอด”`) && run(() => call('squad.delete', { id: q.id }), 'ลบสควอดแล้ว'); }}>ลบ</a>
+                    </span>
+                  ))}
+                  <button className="btn small ghost" onClick={() => { const n = prompt('ชื่อสควอดใหม่ของ ' + t.name); if (n?.trim()) run(() => call('squad.save', { team_id: t.team_id, name: n }), 'เพิ่มสควอดแล้ว'); }}>+ สควอด</button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+
+      <div className="card">
+        <h2>เพิ่ม / นำเข้าผู้เล่น</h2>
+        <div className="row">
+          <input className="field grow" placeholder="ชื่อผู้เล่น" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <select className="field grow" value={form.team_id} onChange={(e) => setForm({ ...form, team_id: e.target.value, squad_id: '' })}>
+            <option value="">เลือกทีม</option>{teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}</option>)}
+          </select>
+          <select className="field grow" value={form.squad_id} disabled={!form.team_id} onChange={(e) => setForm({ ...form, squad_id: e.target.value })}>
+            <option value="">ไม่มีสควอด</option>{squads.filter((q) => q.team_id === form.team_id).map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}
+          </select>
+          <button className="btn small" disabled={!form.name.trim() || !form.team_id}
+            onClick={() => run(async () => { await call('participant.save', form); setForm({ id: '', name: '', team_id: form.team_id, squad_id: form.squad_id }); }, form.id ? 'บันทึกแล้ว' : 'เพิ่มผู้เล่นแล้ว')}>
+            {form.id ? 'บันทึกการแก้ไข' : '+ เพิ่ม'}
+          </button>
+        </div>
+        <label className="lbl">นำเข้าหลายคน: 1 บรรทัดต่อ 1 คน รูปแบบ  ชื่อ, ชื่อทีม, ชื่อสควอด(ไม่บังคับ)  (วางจาก Excel ได้ · สควอดที่ยังไม่มีจะถูกสร้างให้)</label>
+        <textarea className="field" rows={4} value={bulk} onChange={(e) => setBulk(e.target.value)} placeholder={'สมชาย ใจดี, ทีมสนเขียว (ตัวอย่าง), สควอด 1'} />
+        <div className="row" style={{ marginTop: 8 }}>
+          <button className="btn small" disabled={!bulk.trim()} onClick={() => run(async () => { const r = await call('participants.import', { text: bulk }); setBulk(''); setMsg(`นำเข้า ${r.imported} คน`); })}>นำเข้า</button>
+          <button className="btn small ghost" onClick={() => confirm('ลบผู้เล่นทั้งหมดที่ยังไม่เริ่มเล่น (รวมข้อมูลตัวอย่าง)?') && run(async () => { const r = await call('participants.deleteUnstarted', {}); setMsg(`ลบแล้ว ${r.deleted} คน`); })}>ลบผู้เล่นที่ยังไม่เริ่มเล่นทั้งหมด (ล้างข้อมูลตัวอย่าง)</button>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <h2 style={{ margin: 0 }}>ผู้เล่น ({people.length})</h2>
+          <button className="btn small green" onClick={async () => { const r = await run(() => call('codes.generate', {})); if (r) { setCodes(r.codes); if (!r.codes.length) setMsg('ทุกคนมีรหัสแล้ว'); } }}>สร้างรหัสให้คนที่ยังไม่มี</button>
+        </div>
+        <div className="table-wrap"><table>
+          <thead><tr><th>ชื่อ</th><th>ทีม</th><th>สควอด</th><th>สถานะ</th><th>คะแนน</th><th>รหัส</th><th /></tr></thead>
+          <tbody>
+            {people.map((p) => (
+              <tr key={p.id}>
+                <td>{p.name}</td><td>{p.team_name}</td><td>{p.squad_name || '—'}</td>
+                <td>{{ not_started: 'ยังไม่เริ่ม', in_progress: 'กำลังเล่น', completed: 'จบแล้ว' }[p.status as 'completed']}</td>
+                <td className="num">{p.status === 'completed' ? `${p.correct_count} (${p.tokens_earned})` : ''}</td>
+                <td>{p.has_code ? '✔ มีรหัส' : '—'}</td>
+                <td className="row">
+                  <button className="btn small ghost" onClick={() => setForm({ id: p.id, name: p.name, team_id: p.team_id, squad_id: p.squad_id ?? '' })}>แก้ไข</button>
+                  <button className="btn small ghost" onClick={() => confirm(`สร้างรหัสใหม่ให้ ${p.name}? รหัสเดิมจะใช้ไม่ได้`) && run(async () => { const r = await call('codes.generate', { ids: [p.id] }); setCodes(r.codes); })}>{p.has_code ? 'สร้างรหัสใหม่' : 'สร้างรหัส'}</button>
+                  {p.has_code && <button className="btn small ghost" onClick={() => confirm(`ยกเลิกรหัสของ ${p.name}?`) && run(() => call('code.revoke', { id: p.id }), 'ยกเลิกรหัสแล้ว')}>ยกเลิกรหัส</button>}
+                  {p.status === 'not_started' && <button className="btn small ghost" onClick={() => confirm(`ลบ ${p.name}?`) && run(() => call('participant.delete', { id: p.id }), 'ลบแล้ว')}>ลบ</button>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table></div>
+      </div>
+    </>
+  );
+}
+
+// ----------------------------------------------------------------- questions
+function Questions({ setMsg }: { setMsg: (m: string) => void }) {
+  const [qs, setQs] = useState<any[]>([]);
+  const [edit, setEdit] = useState<any | null>(null);
+  const [up, setUp] = useState(false);
+  const load = useCallback(() => call('questions').then((r) => setQs(r.questions)).catch((e) => setMsg(e.message)), [setMsg]);
+  useEffect(() => { load(); }, [load]);
+
+  async function save() {
+    try { await call('question.save', edit); setEdit(null); await load(); setMsg('บันทึกคำถามแล้ว'); }
+    catch (e) { setMsg((e as Error).message); }
+  }
+  async function upload(file: File) {
+    setUp(true);
+    try {
+      const fd = new FormData(); fd.append('file', file);
+      const res = await fetch('/api/admin/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message);
+      setEdit((e: any) => ({ ...e, image_url: data.url }));
+    } catch (e) { setMsg((e as Error).message); } finally { setUp(false); }
+  }
+
+  return (
+    <>
+      <div className="banner">⚠️ แก้ไขคำถามให้เสร็จก่อนเปิดเกม หลังมีคนเริ่มตอบแล้วไม่ควรเปลี่ยนคำตอบที่ถูกหรือลำดับ</div>
+      <div className="card">
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <h2 style={{ margin: 0 }}>คำถาม ({qs.filter((q) => q.active).length} ข้อที่ใช้งาน)</h2>
+          <button className="btn small green" onClick={() => setEdit({ position: qs.length + 1, prompt: '', image_url: '', options: ['', '', '', ''], correct_index: 0, active: true })}>+ เพิ่มคำถาม</button>
+        </div>
+        <div className="table-wrap"><table>
+          <thead><tr><th>#</th><th>รูป</th><th>คำถาม</th><th>ตัวเลือก (✔ = ถูก)</th><th>ใช้งาน</th><th /></tr></thead>
+          <tbody>
+            {qs.map((q) => (
+              <tr key={q.id}>
+                <td className="num">{q.position}</td>
+                <td>{q.image_url && <img src={q.image_url} alt="" style={{ width: 64, height: 48, objectFit: 'cover', borderRadius: 8 }} />}</td>
+                <td>{q.prompt}</td>
+                <td>{q.options.map((o: string, i: number) => <div key={i}>{i === q.correct_index ? '✔ ' : '• '}{o}</div>)}</td>
+                <td>{q.active ? 'ใช่' : 'ไม่'}</td>
+                <td className="row">
+                  <button className="btn small ghost" onClick={() => setEdit({ ...q, image_url: q.image_url ?? '' })}>แก้ไข</button>
+                  <button className="btn small ghost" onClick={async () => { if (confirm('ลบคำถามนี้?')) { try { const r = await call('question.delete', { id: q.id }); setMsg(r.deactivated ? 'มีคนตอบแล้ว จึงปิดการใช้งานแทนการลบ' : 'ลบแล้ว'); load(); } catch (e) { setMsg((e as Error).message); } } }}>ลบ</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table></div>
+      </div>
+
+      {edit && (
+        <div className="card">
+          <h2>{edit.id ? 'แก้ไขคำถาม' : 'เพิ่มคำถาม'}</h2>
+          <label className="lbl">คำถาม</label>
+          <input className="field" value={edit.prompt} onChange={(e) => setEdit({ ...edit, prompt: e.target.value })} />
+          <label className="lbl">รูปภาพ — วางลิงก์ https://… หรืออัปโหลด (PNG/JPG/WebP ≤ 2MB) ใช้เฉพาะรูปที่คุณมีสิทธิ์ใช้งาน</label>
+          <div className="row">
+            <input className="field grow" value={edit.image_url} onChange={(e) => setEdit({ ...edit, image_url: e.target.value })} placeholder="https://… หรือ /placeholders/q1.svg" />
+            <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
+            {up && <span className="muted">กำลังอัปโหลด…</span>}
+          </div>
+          {edit.image_url && <img src={edit.image_url} alt="" style={{ width: 160, marginTop: 8, borderRadius: 10 }} />}
+          <label className="lbl">ตัวเลือก 4 ข้อ (เลือกวงกลมที่เป็นคำตอบที่ถูก)</label>
+          {edit.options.map((o: string, i: number) => (
+            <div className="row" key={i} style={{ marginBottom: 6 }}>
+              <input type="radio" name="correct" checked={edit.correct_index === i} onChange={() => setEdit({ ...edit, correct_index: i })} />
+              <input className="field grow" value={o} onChange={(e) => { const opts = [...edit.options]; opts[i] = e.target.value; setEdit({ ...edit, options: opts }); }} />
+            </div>
+          ))}
+          <div className="row">
+            <div><label className="lbl">ลำดับ</label><input className="field" style={{ width: 90 }} type="number" value={edit.position} onChange={(e) => setEdit({ ...edit, position: Number(e.target.value) })} /></div>
+            <label className="lbl" style={{ marginTop: 28 }}><input type="checkbox" checked={edit.active} onChange={(e) => setEdit({ ...edit, active: e.target.checked })} /> ใช้งาน</label>
+          </div>
+          <div className="row" style={{ marginTop: 10 }}>
+            <button className="btn small" onClick={save}>บันทึก</button>
+            <button className="btn small ghost" onClick={() => setEdit(null)}>ยกเลิก</button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+
+// ---------------------------------------------------------------------- hunt
+const SECRET_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+const randomSecret = () => {
+  const a = new Uint32Array(8); crypto.getRandomValues(a);
+  return Array.from(a, (n) => SECRET_CHARS[n % SECRET_CHARS.length]).join('');
+};
+
+function Qr({ text, size = 160 }: { text: string; size?: number }) {
+  const [src, setSrc] = useState('');
+  useEffect(() => { QRCode.toDataURL(text, { margin: 1, width: size * 2 }).then(setSrc).catch(() => setSrc('')); }, [text, size]);
+  return src ? <img src={src} alt="QR" width={size} height={size} /> : <div style={{ width: size, height: size }} />;
+}
+
+function Hunt({ setMsg }: { setMsg: (m: string) => void }) {
+  const blank = { id: '', position: '1', title: '', hint: '', secret: '', tokens: '10', active: true, min_players: '1', window_sec: '180' };
+  const [d, setD] = useState<{ spots: any[]; claims: any[] }>({ spots: [], claims: [] });
+  const [f, setF] = useState<typeof blank | null>(null);
+  const [cards, setCards] = useState(false);
+  const load = useCallback(() => call('hunt').then(setD).catch((e) => setMsg(e.message)), [setMsg]);
+  useEffect(() => { load(); }, [load]);
+  const link = (secret: string) => `${window.location.origin}/?spot=${secret}`;
+  const count = (id: string) => d.claims.filter((c) => c.spot_id === id).length;
+
+  async function save() {
+    if (!f) return;
+    try {
+      await call('spot.save', { ...f, id: f.id || undefined, position: Number(f.position), tokens: Number(f.tokens), min_players: Number(f.min_players), window_sec: Number(f.window_sec) });
+      setF(null); await load(); setMsg('บันทึกจุดแล้ว');
+    } catch (e) { setMsg((e as Error).message); }
+  }
+
+  if (cards) {
+    const act = d.spots.filter((s) => s.active);
+    return (
+      <>
+        <div className="row noprint" style={{ marginBottom: 12 }}>
+          <button className="btn small" onClick={() => window.print()}>พิมพ์</button>
+          <button className="btn small ghost" onClick={() => setCards(false)}>กลับ</button>
+          <span className="muted">พิมพ์แล้ววางที่จุดจริง อย่าโพสต์ในกลุ่มแชท (ใครสแกนก็ได้โทเคน)</span>
+        </div>
+        <div className="grid">
+          {act.map((s) => (
+            <div className="card center" key={s.id} style={{ breakInside: 'avoid' }}>
+              <h2>{s.title}</h2>
+              <Qr text={link(s.secret)} size={180} />
+              <div className="codebox" style={{ fontSize: 22 }}>{s.secret}</div>
+              <div className="muted">สแกน หรือกรอกรหัสในเกม · {s.tokens} โทเคน</div>
+            </div>
+          ))}
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <div className="card">
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <h2 style={{ margin: 0 }}>จุดล่าสมบัติ ({d.spots.length})</h2>
+          <span className="row">
+            <button className="btn small" onClick={() => setF({ ...blank, position: String(d.spots.length + 1), secret: randomSecret() })}>เพิ่มจุด</button>
+            <button className="btn small ghost" disabled={!d.spots.length} onClick={() => setCards(true)}>พิมพ์ QR ทุกจุด</button>
+          </span>
+        </div>
+        <p className="muted">แต่ละ <strong>สควอด</strong> (ถ้าไม่มีสควอด = ทั้งทีม) ได้โทเคนจากแต่ละจุด <strong>ครั้งเดียว</strong> (คนแรกในกลุ่มที่เจอ) โทเคนเข้ากระเป๋าทีม · แก้ไขรหัสจุดหลังเริ่มเกมแล้ว QR ที่พิมพ์ไว้จะใช้ไม่ได้</p>
+        <div className="table-wrap"><table>
+          <thead><tr><th>#</th><th>ชื่อจุด</th><th>รหัส</th><th>โทเคน</th><th>สควอด/ทีมที่เจอ</th><th>สถานะ</th><th></th></tr></thead>
+          <tbody>{d.spots.map((s) => (
+            <tr key={s.id}>
+              <td className="num">{s.position}</td><td>{s.title}{s.min_players > 1 && <span className="pill" style={{ marginLeft: 6 }}>👥 ต้อง {s.min_players} คน/{Math.round(s.window_sec / 60 * 10) / 10} นาที</span>}<div className="muted">{s.hint}</div></td>
+              <td className="codebox">{s.secret}</td><td className="num">{s.tokens}</td><td className="num">{count(s.id)}</td>
+              <td>{s.active ? 'ใช้งาน' : 'ปิด'}</td>
+              <td className="row">
+                <button className="btn small ghost" onClick={() => setF({ id: s.id, position: String(s.position), title: s.title, hint: s.hint, secret: s.secret, tokens: String(s.tokens), active: s.active, min_players: String(s.min_players ?? 1), window_sec: String(s.window_sec ?? 180) })}>แก้ไข</button>
+                <button className="btn small ghost" onClick={() => confirm(`ลบจุด ${s.title}?`) && call('spot.delete', { id: s.id }).then((r) => { load(); setMsg(r.deactivated ? 'มีทีมเจอแล้ว จึงปิดจุดแทนการลบ' : 'ลบแล้ว'); }).catch((e) => setMsg(e.message))}>ลบ</button>
+              </td>
+            </tr>))}</tbody>
+        </table></div>
+      </div>
+
+      {f && (
+        <div className="card">
+          <h2>{f.id ? 'แก้ไขจุด' : 'เพิ่มจุด'}</h2>
+          <label className="lbl">ชื่อจุด (ผู้เล่นเห็น)</label>
+          <input className="field" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
+          <label className="lbl">คำใบ้ (ผู้เล่นเห็นจนกว่าทีมจะเจอ)</label>
+          <input className="field" value={f.hint} onChange={(e) => setF({ ...f, hint: e.target.value })} />
+          <label className="lbl">รหัสจุด (4–40 ตัว A-Z 0-9 · ซ่อนจากผู้เล่น)</label>
+          <div className="row">
+            <input className="field grow codebox" value={f.secret} onChange={(e) => setF({ ...f, secret: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })} />
+            <button className="btn small ghost" onClick={() => setF({ ...f, secret: randomSecret() })}>สุ่มใหม่</button>
+          </div>
+          {f.secret.length >= 4 && <div style={{ margin: '10px 0' }}><Qr text={link(f.secret)} size={120} /></div>}
+          <div className="row">
+            <div><label className="lbl">โทเคน</label><input className="field" type="number" min={0} value={f.tokens} onChange={(e) => setF({ ...f, tokens: e.target.value })} /></div>
+            <div><label className="lbl">ลำดับ</label><input className="field" type="number" value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })} /></div>
+            <div><label className="lbl">จุดร่วมมือ: ต้องสแกนกี่คน (1 = ปกติ)</label><input className="field" style={{ width: 130 }} type="number" min={1} max={10} value={f.min_players} onChange={(e) => setF({ ...f, min_players: e.target.value })} /></div>
+            <div><label className="lbl">ภายในกี่วินาที</label><input className="field" style={{ width: 110 }} type="number" min={30} max={1800} step={30} value={f.window_sec} onChange={(e) => setF({ ...f, window_sec: e.target.value })} /></div>
+            <label className="row" style={{ marginTop: 22 }}><input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} /> ใช้งาน</label>
+          </div>
+          <div className="row" style={{ marginTop: 12 }}>
+            <button className="btn small" disabled={!f.title.trim() || f.secret.length < 4} onClick={save}>บันทึก</button>
+            <button className="btn small ghost" onClick={() => setF(null)}>ยกเลิก</button>
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        <h2>ความคืบหน้าล่าสุด</h2>
+        <div className="table-wrap"><table>
+          <thead><tr><th>เวลา</th><th>ทีม</th><th>สควอด</th><th>จุด</th><th>ผู้พบ</th></tr></thead>
+          <tbody>{d.claims.map((c, i) => <tr key={i}><td>{fmt(c.at)}</td><td>{c.team}</td><td>{c.squad || '—'}</td><td>{d.spots.find((s) => s.id === c.spot_id)?.title}</td><td>{c.by}</td></tr>)}</tbody>
+        </table></div>
+      </div>
+    </>
+  );
+}
+
+
+// ------------------------------------------------------------------- puzzles
+function Puzzles({ setMsg }: { setMsg: (m: string) => void }) {
+  const blank = { id: '', position: '1', prompt: '', clues: '', options: ['', '', '', ''], correct_index: 0, tokens: '20', max_attempts: '2', active: true };
+  const [d, setD] = useState<{ puzzles: any[]; solves: any[] }>({ puzzles: [], solves: [] });
+  const [f, setF] = useState<typeof blank | null>(null);
+  const load = useCallback(() => call('puzzles').then(setD).catch((e) => setMsg(e.message)), [setMsg]);
+  useEffect(() => { load(); }, [load]);
+  const clueList = (f?.clues ?? '').split('\n').map((x) => x.trim()).filter(Boolean);
+
+  async function save() {
+    if (!f) return;
+    try {
+      await call('puzzle.save', { ...f, id: f.id || undefined, position: Number(f.position), tokens: Number(f.tokens), max_attempts: Number(f.max_attempts), clues: clueList });
+      setF(null); await load(); setMsg('บันทึกภารกิจแล้ว');
+    } catch (e) { setMsg((e as Error).message); }
+  }
+
+  return (
+    <>
+      <div className="card">
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <h2 style={{ margin: 0 }}>🧩 ภารกิจทีม ({d.puzzles.length})</h2>
+          <button className="btn small" onClick={() => setF({ ...blank, position: String(d.puzzles.length + 1) })}>เพิ่มภารกิจ</button>
+        </div>
+        <p className="muted">
+          <strong>เบาะแสถูกแบ่งให้สมาชิกในสควอด</strong> แต่ละคนเห็นเฉพาะส่วนของตัวเอง ต้องคุยกันเพื่อรวมเบาะแสแล้วเลือกคำตอบร่วมกัน (ใครก็ส่งแทนสควอดได้ จำกัดจำนวนครั้ง ใช้ร่วมกันทั้งสควอด) ·
+          ควรมีเบาะแสอย่างน้อยเท่าจำนวนสมาชิกในสควอด (4–5 ชิ้น) ถ้าสมาชิกมากกว่าเบาะแส บางคนจะได้เบาะแสซ้ำกัน · มีสวิตช์เปิด/ปิดของตัวเองที่แท็บภาพรวม (แยกจากล่าสมบัติ)
+        </p>
+        <div className="table-wrap"><table>
+          <thead><tr><th>#</th><th>คำถาม</th><th>เบาะแส</th><th>โทเคน</th><th>ครั้งที่ตอบได้</th><th>ไขได้/ตอบทั้งหมด</th><th>สถานะ</th><th /></tr></thead>
+          <tbody>{d.puzzles.map((z) => (
+            <tr key={z.id}>
+              <td className="num">{z.position}</td><td>{z.prompt}<div className="muted">เฉลย: {z.options[z.correct_index]}</div></td>
+              <td className="num">{z.clues.length}</td><td className="num">{z.tokens}</td><td className="num">{z.max_attempts}</td>
+              <td className="num">{z.solves}/{z.attempts}</td><td>{z.active ? 'ใช้งาน' : 'ปิด'}</td>
+              <td className="row">
+                <button className="btn small ghost" onClick={() => setF({ id: z.id, position: String(z.position), prompt: z.prompt, clues: z.clues.join('\n'), options: z.options, correct_index: z.correct_index, tokens: String(z.tokens), max_attempts: String(z.max_attempts), active: z.active })}>แก้ไข</button>
+                <button className="btn small ghost" onClick={() => confirm(`ลบภารกิจ “${z.prompt}”?`) && call('puzzle.delete', { id: z.id }).then((r) => { load(); setMsg(r.deactivated ? 'มีการตอบแล้ว จึงปิดภารกิจแทนการลบ' : 'ลบแล้ว'); }).catch((e) => setMsg(e.message))}>ลบ</button>
+              </td>
+            </tr>))}</tbody>
+        </table></div>
+      </div>
+
+      {f && (
+        <div className="card">
+          <h2>{f.id ? 'แก้ไขภารกิจ' : 'เพิ่มภารกิจ'}</h2>
+          <label className="lbl">คำถาม (ทุกคนเห็น)</label>
+          <input className="field" value={f.prompt} onChange={(e) => setF({ ...f, prompt: e.target.value })} />
+          <label className="lbl">เบาะแส — 1 บรรทัดต่อ 1 ชิ้น (2–8 ชิ้น, ตอนนี้ {clueList.length} ชิ้น) · แต่ละชิ้นจะถูกแจกให้สมาชิกคนละส่วน</label>
+          <textarea className="field" rows={5} value={f.clues} onChange={(e) => setF({ ...f, clues: e.target.value })} />
+          <label className="lbl">ตัวเลือก 4 ข้อ (เลือกข้อที่ถูกด้วยวงกลม)</label>
+          {f.options.map((o, i) => (
+            <div className="row" key={i} style={{ marginBottom: 6 }}>
+              <input type="radio" name="pz-correct" checked={f.correct_index === i} onChange={() => setF({ ...f, correct_index: i })} />
+              <input className="field grow" value={o} onChange={(e) => setF({ ...f, options: f.options.map((x, j) => (j === i ? e.target.value : x)) })} />
+            </div>
+          ))}
+          <div className="row">
+            <div><label className="lbl">โทเคนเมื่อไขได้</label><input className="field" style={{ width: 110 }} type="number" min={0} value={f.tokens} onChange={(e) => setF({ ...f, tokens: e.target.value })} /></div>
+            <div><label className="lbl">ตอบได้กี่ครั้ง/สควอด</label><input className="field" style={{ width: 130 }} type="number" min={1} max={4} value={f.max_attempts} onChange={(e) => setF({ ...f, max_attempts: e.target.value })} /></div>
+            <div><label className="lbl">ลำดับ</label><input className="field" style={{ width: 90 }} type="number" value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })} /></div>
+            <label className="row" style={{ marginTop: 22 }}><input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} /> ใช้งาน</label>
+          </div>
+          <div className="row" style={{ marginTop: 12 }}>
+            <button className="btn small" disabled={!f.prompt.trim() || clueList.length < 2 || f.options.some((o) => !o.trim())} onClick={save}>บันทึก</button>
+            <button className="btn small ghost" onClick={() => setF(null)}>ยกเลิก</button>
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        <h2>ภารกิจที่ไขได้แล้ว (ล่าสุด)</h2>
+        <div className="table-wrap"><table>
+          <thead><tr><th>เวลา</th><th>ทีม</th><th>สควอด</th><th>ภารกิจ</th><th>ผู้ส่งคำตอบ</th><th>โทเคน</th></tr></thead>
+          <tbody>{d.solves.map((x, i) => <tr key={i}><td>{fmt(x.at)}</td><td>{x.team}</td><td>{x.squad || '—'}</td><td>{d.puzzles.find((z) => z.id === x.puzzle_id)?.prompt}</td><td>{x.by}</td><td className="num">{x.tokens}</td></tr>)}</tbody>
+        </table></div>
+      </div>
+    </>
+  );
+}
+
+// ------------------------------------------------------------------- history
+function History() {
+  const [r, setR] = useState<any[]>([]);
+  const [l, setL] = useState<any>({ ledger: [], audit: [] });
+  useEffect(() => { call('redemptions').then((d) => setR(d.redemptions)); call('ledger').then(setL); }, []);
+  return (
+    <>
+      <div className="card">
+        <h2>ประวัติการแลกของ</h2>
+        <div className="table-wrap"><table>
+          <thead><tr><th>เวลา</th><th>ทีม</th><th>สินค้า</th><th>จำนวน</th><th>โทเคน</th><th>ยืนยันโดย</th></tr></thead>
+          <tbody>{r.map((x) => <tr key={x.id}><td>{fmt(x.created_at)}</td><td>{x.team_name}</td><td>{x.item_name}</td><td className="num">{x.quantity}</td><td className="num">{x.total_cost}</td><td>{x.confirmed_by}</td></tr>)}</tbody>
+        </table></div>
+      </div>
+      <div className="card">
+        <h2>การปรับโทเคนด้วยมือ</h2>
+        <div className="table-wrap"><table>
+          <thead><tr><th>เวลา</th><th>ทีม</th><th>จำนวน</th><th>เหตุผล</th><th>โดย</th></tr></thead>
+          <tbody>{l.ledger.filter((x: any) => x.kind === 'adjustment').map((x: any) => <tr key={x.id}><td>{fmt(x.created_at)}</td><td>{x.team_name}</td><td className="num">{x.amount > 0 ? '+' : ''}{x.amount}</td><td>{x.reason}</td><td>{x.created_by}</td></tr>)}</tbody>
+        </table></div>
+      </div>
+      <div className="card">
+        <h2>Audit log (ล่าสุด)</h2>
+        <div className="table-wrap"><table>
+          <thead><tr><th>เวลา</th><th>ผู้ทำ</th><th>การกระทำ</th><th>รายละเอียด</th></tr></thead>
+          <tbody>{l.audit.map((x: any) => <tr key={x.id}><td>{fmt(x.created_at)}</td><td>{x.actor}</td><td>{x.action}</td><td style={{ fontSize: 13 }}>{JSON.stringify(x.details)}</td></tr>)}</tbody>
+        </table></div>
+      </div>
+    </>
+  );
+}
+
+function Export() {
+  const items: [string, string][] = [
+    ['summary', 'สรุปทีม: การเข้าร่วม ยอดโทเคนคงเหลือ'],
+    ['participants', 'ผลของผู้เล่นแต่ละคน (ไม่มีรหัสเข้าเกม)'],
+    ['redemptions', 'ประวัติการแลกของ'],
+    ['adjustments', 'ประวัติการปรับโทเคนด้วยมือ'],
+    ['hunt', 'ประวัติการล่าสมบัติ (ทีมไหนเจอจุดไหน)'],
+    ['puzzles', 'ประวัติการตอบภารกิจทีม (ทุกครั้งที่ตอบ)'],
+  ];
+  return (
+    <div className="card stack">
+      <h2>ส่งออก CSV</h2>
+      <p className="muted">ไฟล์มีข้อมูลส่วนบุคคล (ชื่อผู้เล่น) โปรดเก็บและแชร์เท่าที่จำเป็น</p>
+      {items.map(([k, label]) => <a key={k} className="btn small ghost" style={{ textDecoration: 'none', textAlign: 'center' }} href={`/api/admin/export?type=${k}`}>{label}</a>)}
+    </div>
+  );
+}

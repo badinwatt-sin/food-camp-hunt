@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="400" height="300">
+  <rect width="400" height="300" fill="#bfe3c8"/>
+  <path d="M0 240 Q100 190 200 235 T400 220 V300 H0 Z" fill="#7fbf93"/>
+  <circle cx="320" cy="70" r="34" fill="#f2c46d"/>
+  <rect x="120" y="90" width="160" height="110" rx="14" fill="#fbf6e9" stroke="#1b2a4a" stroke-width="4" stroke-dasharray="10 8"/>
+  <text x="200" y="138" font-family="sans-serif" font-size="20" font-weight="700" fill="#1b2a4a" text-anchor="middle">PLACEHOLDER 5</text>
+  <text x="200" y="166" font-family="sans-serif" font-size="14" fill="#1b2a4a" text-anchor="middle">Replace with your own photo</text>
+  <text x="200" y="186" font-family="sans-serif" font-size="14" fill="#1b2a4a" text-anchor="middle">(Admin &gt; Questions)</text>
+</svg>
