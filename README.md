@@ -177,6 +177,8 @@ Expect every line `PASS` and `0 failed`. A `FAIL` means: do not use that databas
 
 Any host that runs Next.js 15 on Node 20+ works (set the same env vars).
 
+`vercel.json` pins the serverless functions to Singapore (`sin1`) to sit next to a Singapore Supabase project; change `regions` if your Supabase project is elsewhere.
+
 ## 8. Services, accounts, costs and limits to check
 
 - **Accounts:** GitHub, Supabase, Vercel (or alternative host). Check the **current** free-tier limits and terms on each provider's pricing page — including whether Vercel's free tier permits your use (its non-commercial terms may require a paid plan for company events) and Supabase free projects pausing after inactivity (open the project a few days before the event; consider a paid plan for the event week).
