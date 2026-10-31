@@ -13,7 +13,8 @@ create table if not exists public.game_settings (
   id                int primary key default 1 check (id = 1),
   is_open           boolean not null default false,
   tokens_per_correct int not null default 10 check (tokens_per_correct >= 0),
-  hunt_open         boolean not null default false
+  hunt_open         boolean not null default false,
+  market_open       boolean not null default false   -- lets team leaders redeem from their phones
 );
 insert into public.game_settings (id) values (1) on conflict do nothing;
 
@@ -30,6 +31,7 @@ create table if not exists public.participants (
   nick_name       text check (nick_name is null or length(trim(nick_name)) between 1 and 60),
   -- The player's login ID is set by the organiser; only a keyed hash of it is stored. NULL = no active ID.
   code_hash       text unique,
+  is_leader       boolean not null default false,   -- team leader: may redeem for the team (max one per team)
   session_version int not null default 1,
   status          text not null default 'not_started'
                   check (status in ('not_started','in_progress','completed')),
@@ -40,6 +42,7 @@ create table if not exists public.participants (
   created_at      timestamptz not null default now()
 );
 create index if not exists participants_team_idx on public.participants(team_id);
+create unique index if not exists participants_one_leader_per_team on public.participants(team_id) where is_leader;
 
 create table if not exists public.questions (
   id            uuid primary key default gen_random_uuid(),
@@ -83,6 +86,8 @@ create table if not exists public.redemptions (
   total_cost      int  not null check (total_cost > 0),
   idempotency_key text not null unique,
   confirmed_by    text not null,
+  fulfilled_at    timestamptz,                -- set when staff hand the goods over
+  fulfilled_by    text,
   created_at      timestamptz not null default now()
 );
 

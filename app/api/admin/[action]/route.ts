@@ -69,12 +69,12 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     await requireRole('admin');
     const { data, error } = await sb
       .from('participants')
-      .select('id, name, nick_name, team_id, squad_id, status, code_hash, correct_count, tokens_earned, completed_at, teams(name), squads(name)')
+      .select('id, name, nick_name, is_leader, team_id, squad_id, status, code_hash, correct_count, tokens_earned, completed_at, teams(name), squads(name)')
       .order('name');
     if (error) throw error;
     return ok({
       participants: (data ?? []).map((p: any) => ({
-        id: p.id, name: p.name, nick_name: p.nick_name ?? '', team_id: p.team_id, team_name: p.teams?.name ?? '',
+        id: p.id, name: p.name, nick_name: p.nick_name ?? '', is_leader: !!p.is_leader, team_id: p.team_id, team_name: p.teams?.name ?? '',
         squad_id: p.squad_id ?? null, squad_name: p.squads?.name ?? '',
         status: p.status, has_code: !!p.code_hash, correct_count: p.correct_count,
         tokens_earned: p.tokens_earned, completed_at: p.completed_at,
@@ -177,9 +177,34 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     await requireRole('staff');
     const { data } = await sb
       .from('redemptions')
-      .select('id, item_name, quantity, total_cost, confirmed_by, created_at, teams(name)')
-      .order('created_at', { ascending: false }).limit(300);
+      .select('id, item_id, item_name, quantity, total_cost, confirmed_by, created_at, fulfilled_at, fulfilled_by, teams(name)')
+      .order('created_at', { ascending: false }).limit(500);
     return ok({ redemptions: (data ?? []).map((r: any) => ({ ...r, team_name: r.teams?.name ?? '' })) });
+  }
+
+  if (action === 'inventory') {
+    // What teams have bought and what is still to be handed over, per item and per team.
+    await requireRole('staff');
+    const { data } = await sb
+      .from('redemptions')
+      .select('id, item_id, item_name, quantity, fulfilled_at, created_at, team_id, teams(name)')
+      .order('created_at', { ascending: true });
+    const byItem = new Map<string, any>();
+    const byTeam = new Map<string, any>();
+    for (const r of (data ?? []) as any[]) {
+      const done = !!r.fulfilled_at;
+      const it = byItem.get(r.item_name) ?? { item: r.item_name, ordered: 0, handed: 0, pending: 0, teamsPending: new Set<string>() };
+      it.ordered += r.quantity; if (done) it.handed += r.quantity; else { it.pending += r.quantity; it.teamsPending.add(r.teams?.name ?? ''); }
+      byItem.set(r.item_name, it);
+      const tk = `${r.team_id}|${r.item_name}`;
+      const tt = byTeam.get(tk) ?? { team: r.teams?.name ?? '', item: r.item_name, ordered: 0, handed: 0, pending: 0, pendingIds: [] as string[] };
+      tt.ordered += r.quantity; if (done) tt.handed += r.quantity; else { tt.pending += r.quantity; tt.pendingIds.push(r.id); }
+      byTeam.set(tk, tt);
+    }
+    return ok({
+      items: Array.from(byItem.values()).map((i) => ({ ...i, teamsPending: Array.from(i.teamsPending) })).sort((a, b) => b.pending - a.pending),
+      teams: Array.from(byTeam.values()).sort((a, b) => a.team.localeCompare(b.team) || a.item.localeCompare(b.item)),
+    });
   }
 
   if (action === 'ledger') {
@@ -207,9 +232,9 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
       rows = [['Full name', 'Nick name', 'Team', 'Squad', 'Status', 'Correct', 'Tokens earned', 'Completed at'],
         ...(data ?? []).map((p: any) => [p.name, p.nick_name ?? '', p.teams?.name, p.squads?.name ?? '', p.status, p.correct_count, p.tokens_earned, p.completed_at])];
     } else if (type === 'redemptions') {
-      const { data } = await sb.from('redemptions').select('item_name, unit_price, quantity, total_cost, confirmed_by, created_at, teams(name)').order('created_at');
-      rows = [['Time', 'Team', 'Item', 'Unit price', 'Quantity', 'Total cost', 'Confirmed by'],
-        ...(data ?? []).map((r: any) => [r.created_at, r.teams?.name, r.item_name, r.unit_price, r.quantity, r.total_cost, r.confirmed_by])];
+      const { data } = await sb.from('redemptions').select('item_name, unit_price, quantity, total_cost, confirmed_by, created_at, fulfilled_at, teams(name)').order('created_at');
+      rows = [['Time', 'Team', 'Item', 'Unit price', 'Quantity', 'Total cost', 'Redeemed by', 'Handed over at'],
+        ...(data ?? []).map((r: any) => [r.created_at, r.teams?.name, r.item_name, r.unit_price, r.quantity, r.total_cost, r.confirmed_by, r.fulfilled_at ?? ''])];
     } else if (type === 'adjustments') {
       const { data } = await sb.from('token_ledger').select('amount, reason, created_by, created_at, teams(name)').eq('kind', 'adjustment').order('created_at');
       rows = [['Time', 'Team', 'Amount', 'Reason', 'By'],
@@ -288,6 +313,20 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
     return ok(data);
   }
 
+  if (action === 'redemption.fulfill') {
+    // Staff (and admins) mark goods as handed over / take it back. Applies to the given redemption ids.
+    const role2 = await requireRole('staff');
+    const ids: string[] = (Array.isArray(body.ids) ? body.ids : [body.id]).filter(Boolean).map(String).slice(0, 200);
+    if (ids.length === 0) throw new HttpError(400, 'BAD_INPUT');
+    const done = body.fulfilled !== false;
+    const { error } = await sb.from('redemptions')
+      .update(done ? { fulfilled_at: new Date().toISOString(), fulfilled_by: role2 } : { fulfilled_at: null, fulfilled_by: null })
+      .in('id', ids);
+    if (error) throw error;
+    await audit(role2, done ? 'redemption.fulfill' : 'redemption.unfulfill', { ids });
+    return ok({ updated: ids.length });
+  }
+
   // ---- everything below: administrators only ----
   const role = await requireRole('admin');
 
@@ -306,6 +345,7 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       if (typeof body.is_open === 'boolean') patch.is_open = body.is_open;
       if (typeof body.hunt_open === 'boolean') patch.hunt_open = body.hunt_open;
       if (typeof body.puzzle_open === 'boolean') patch.puzzle_open = body.puzzle_open;
+      if (typeof body.market_open === 'boolean') patch.market_open = body.market_open;
       if (body.team_goal_pct !== undefined) {
         const n = int(body.team_goal_pct);
         if (n < 0 || n > 100) throw new HttpError(400, 'BAD_INPUT');
@@ -355,6 +395,10 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
         }
       }
       const row: Record<string, unknown> = { name, nick_name, team_id, squad_id };
+      if (body.id) {
+        const { data: cur0 } = await sb.from('participants').select('team_id').eq('id', body.id).maybeSingle();
+        if (cur0 && cur0.team_id !== team_id) row.is_leader = false; // a leader who changes team is no longer leader
+      }
       // The player's login ID: required for a new player; optional when editing (blank = keep the current ID).
       const loginId = normalizeId(body.login_id);
       if (!body.id && !loginId) {
@@ -365,13 +409,39 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
         const { data: cur } = await sb.from('participants').select('session_version').eq('id', body.id).single();
         row.session_version = (cur?.session_version ?? 1) + 1; // anyone logged in with the old ID is signed out
       }
+      // Leader tick-box: at most one leader per team, so promoting someone demotes the current leader first.
+      const wantLeader = body.is_leader === true;
+      if (wantLeader) {
+        const { error: de } = await sb.from('participants').update({ is_leader: false }).eq('team_id', team_id).eq('is_leader', true);
+        if (de) throw de;
+        row.is_leader = true;
+      } else if (body.id && body.is_leader === false) row.is_leader = false;
       const q = body.id ? sb.from('participants').update(row).eq('id', body.id) : sb.from('participants').insert(row);
-      const { error } = await q;
+      const { data: saved, error } = await q.select('id').maybeSingle();
+      void saved;
       if (error) {
+        if (String(error.message).includes('duplicate key') && String(error.message).includes('one_leader')) throw new HttpError(409, 'BAD_INPUT');
         if (String(error.message).includes('duplicate')) throw new HttpError(409, 'DUPLICATE_ID');
         throw error;
       }
-      await audit(role, 'participant.save', { id: body.id ?? null, idChanged: !!loginId });
+      await audit(role, 'participant.save', { id: body.id ?? null, idChanged: !!loginId, leader: wantLeader });
+      return ok();
+    }
+    case 'leader.set': {
+      // Exactly one leader per team: demote the current one first, then promote the chosen player.
+      const { data: p } = await sb.from('participants').select('team_id, name').eq('id', body.id).maybeSingle();
+      if (!p) throw new HttpError(404, 'NOT_FOUND');
+      const { error: e1 } = await sb.from('participants').update({ is_leader: false }).eq('team_id', p.team_id).eq('is_leader', true);
+      if (e1) throw e1;
+      const { error: e2 } = await sb.from('participants').update({ is_leader: true }).eq('id', body.id);
+      if (e2) throw e2;
+      await audit(role, 'leader.set', { id: body.id, team_id: p.team_id });
+      return ok();
+    }
+    case 'leader.clear': {
+      const { error } = await sb.from('participants').update({ is_leader: false }).eq('id', body.id);
+      if (error) throw error;
+      await audit(role, 'leader.clear', { id: body.id });
       return ok();
     }
     case 'participant.delete': {
@@ -397,7 +467,7 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       const input: any[] = Array.isArray(body.rows) ? body.rows : [];
       if (input.length === 0 || input.length > 600) throw new HttpError(400, 'BAD_INPUT');
       const problems: string[] = [];
-      type Row = { n: number; id: string; name: string; nick: string | null; team: string; squad: string };
+      type Row = { n: number; id: string; name: string; nick: string | null; team: string; squad: string; leader: boolean };
       const rows: Row[] = [];
       const seen = new Map<string, number>();
       input.forEach((r, k) => {
@@ -408,8 +478,17 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
         if (!id || !name || !team) { problems.push(`แถว ${n}: ต้องมี ID, Full name และ Team ครบ (${str(r?.full_name, 20)})`); return; }
         if (seen.has(id)) { problems.push(`แถว ${n}: ID ซ้ำกับแถว ${seen.get(id)} (${name})`); return; }
         seen.set(id, n);
-        rows.push({ n, id, name, nick: str(r?.nick_name, 60) || null, team, squad: str(r?.squad, 60) });
+        rows.push({ n, id, name, nick: str(r?.nick_name, 60) || null, team, squad: str(r?.squad, 60), leader: r?.leader === true });
       });
+      if (problems.length) {
+        return NextResponse.json({ error: 'BAD_INPUT', message: 'นำเข้าไม่ได้ กรุณาแก้ไฟล์ก่อน:\n' + problems.slice(0, 12).join('\n') }, { status: 400 });
+      }
+
+      const leaders = new Map<string, string>();
+      for (const r of rows) if (r.leader) {
+        const k = r.team.toLowerCase();
+        if (leaders.has(k)) problems.push(`แถว ${r.n}: ทีม ${r.team} มีหัวหน้ามากกว่า 1 คน`); else leaders.set(k, r.name);
+      }
       if (problems.length) {
         return NextResponse.json({ error: 'BAD_INPUT', message: 'นำเข้าไม่ได้ กรุณาแก้ไฟล์ก่อน:\n' + problems.slice(0, 12).join('\n') }, { status: 400 });
       }
@@ -476,8 +555,18 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
         if (error) throw error;
         inserted += Math.min(100, toInsert.length - k);
       }
-      await audit(role, 'participants.import', { inserted, updated, teamsCreated, skipped: skipped.length });
-      return ok({ inserted, updated, teamsCreated, skipped });
+      // leaders flagged in the sheet (one per team): look people up by ID hash again and promote them
+      let leadersSet = 0;
+      for (const r of rows.filter((x) => x.leader)) {
+        const { data: lp } = await sb.from('participants').select('id, team_id').eq('code_hash', hashCode(r.id)).maybeSingle();
+        if (!lp || lp.team_id !== teamIds.get(r.team.toLowerCase())) { skipped.push(`แถว ${r.n}: ตั้ง ${r.name} เป็นหัวหน้าไม่ได้ (ไม่ได้อยู่ในทีมนี้)`); continue; }
+        await sb.from('participants').update({ is_leader: false }).eq('team_id', lp.team_id).eq('is_leader', true);
+        const { error: le } = await sb.from('participants').update({ is_leader: true }).eq('id', lp.id);
+        if (le) throw le;
+        leadersSet++;
+      }
+      await audit(role, 'participants.import', { inserted, updated, teamsCreated, leadersSet, skipped: skipped.length });
+      return ok({ inserted, updated, teamsCreated, leadersSet, skipped });
     }
 
     case 'squad.save': {

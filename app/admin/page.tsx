@@ -110,6 +110,10 @@ function Overview({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
     try { await call('game.set', { puzzle_open: !d.settings.puzzle_open }); await load(); setMsg(d.settings.puzzle_open ? 'ปิดภารกิจทีมแล้ว' : 'เปิดภารกิจทีมแล้ว'); }
     catch (e) { setMsg((e as Error).message); }
   }
+  async function toggleMarket() {
+    try { await call('game.set', { market_open: !d.settings.market_open }); await load(); setMsg(d.settings.market_open ? 'ปิดการแลกของโดยหัวหน้าทีมแล้ว' : 'เปิดให้หัวหน้าทีมแลกของแล้ว'); }
+    catch (e) { setMsg((e as Error).message); }
+  }
   async function saveGoal() {
     try { await call('game.set', { team_goal_pct: Number(goal) }); await load(); setMsg(Number(goal) ? `ตั้งเป้าหมายทีม ${goal}% แล้ว` : 'ปิดเป้าหมายทีมแล้ว'); }
     catch (e) { setMsg((e as Error).message); }
@@ -148,6 +152,13 @@ function Overview({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
           <div className="muted">สมาชิกแต่ละคนถือเบาะแสคนละส่วน ต้องคุยกันเพื่อตอบ (เปิด-ปิดแยกจากล่าสมบัติ)</div>
         </div>
         {role === 'admin' && <button className={`btn small ${d.settings.puzzle_open ? 'danger' : ''}`} onClick={togglePuzzle}>{d.settings.puzzle_open ? 'ปิดภารกิจทีม' : 'เปิดภารกิจทีม'}</button>}
+      </div>
+      <div className="card row" style={{ justifyContent: 'space-between' }}>
+        <div>
+          <h2 style={{ margin: 0 }}>🛒 ตลาด: หัวหน้าทีมแลกเอง {d.settings.market_open ? '🟢 เปิดอยู่' : '🔴 ปิดอยู่'}</h2>
+          <div className="muted">เปิดเมื่อพร้อมให้หัวหน้าทีมกดแลกสินค้าจากมือถือ (ทีมงานยังแลกแทนทีมได้เสมอที่แท็บตลาด)</div>
+        </div>
+        {role === 'admin' && <button className={`btn small ${d.settings.market_open ? 'danger' : ''}`} onClick={toggleMarket}>{d.settings.market_open ? 'ปิดตลาด' : 'เปิดตลาด'}</button>}
       </div>
       <div className="card">
         <h2 style={{ margin: 0 }}>🎯 เป้าหมายร่วมของทีม: {d.settings.team_goal_pct ? `${d.settings.team_goal_pct}% ของสมาชิกต้องเล่นควิซจบ` : 'ปิดอยู่'}</h2>
@@ -293,6 +304,8 @@ function Market({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
         </button>
       </div>
 
+      <Pickup setMsg={setMsg} reloadKey={items.length} />
+
       <div className="card">
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0 }}>รายการสินค้า</h2>
@@ -354,7 +367,7 @@ function Market({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
 
 
 // ---------------------------------------------------------- player import helpers
-type ImportRow = { id: string; full_name: string; nick_name: string; team: string; squad: string };
+type ImportRow = { id: string; full_name: string; nick_name: string; team: string; squad: string; leader: boolean };
 
 /** Parses pasted Excel cells (tab separated) or a CSV file (comma separated, quotes supported). */
 function parseDelimited(text: string): string[][] {
@@ -382,15 +395,16 @@ function toImportRows(table: unknown[][]): ImportRow[] {
   const head = (clean[0] ?? []).map(norm);
   const idx = (names: string[]) => head.findIndex((h) => names.includes(h));
   const hasHeader = idx(['id', 'รหัส']) >= 0 || idx(['team', 'ทีม']) >= 0;
-  let col = { id: 0, full: 1, nick: 2, team: 3, squad: 4 };
+  let col = { id: 0, full: 1, nick: 2, team: 3, squad: 4, leader: -1 };
   let data = clean;
   if (hasHeader) {
-    col = { id: idx(['id', 'รหัส']), full: idx(['fullname', 'name', 'ชื่อ', 'ชื่อนามสกุล']), nick: idx(['nickname', 'nick', 'ชื่อเล่น']), team: idx(['team', 'ทีม']), squad: idx(['squad', 'สควอด']) };
+    col = { id: idx(['id', 'รหัส']), full: idx(['fullname', 'name', 'ชื่อ', 'ชื่อนามสกุล']), nick: idx(['nickname', 'nick', 'ชื่อเล่น']), team: idx(['team', 'ทีม']), squad: idx(['squad', 'สควอด']), leader: idx(['leader', 'teamleader', 'หัวหน้า', 'หัวหน้าทีม']) };
     data = clean.slice(1);
   }
   const at = (r: string[], i: number) => (i >= 0 ? r[i] ?? '' : '');
   return data.filter((r) => r.some(Boolean)).map((r) => ({
     id: at(r, col.id), full_name: at(r, col.full), nick_name: at(r, col.nick), team: at(r, col.team), squad: at(r, col.squad),
+    leader: /^(1|y|yes|true|x|✓|✔|leader|หัวหน้า|หัวหน้าทีม|ใช่)$/i.test(at(r, col.leader).trim()),
   }));
 }
 
@@ -407,13 +421,54 @@ function importProblems(rows: ImportRow[]): string[] {
   return out;
 }
 
+
+// ------------------------------------------------------- pickup (prepare & hand over goods)
+function Pickup({ setMsg, reloadKey }: { setMsg: (m: string) => void; reloadKey: number }) {
+  const [d, setD] = useState<{ items: any[]; teams: any[] } | null>(null);
+  const load = useCallback(() => call('inventory').then(setD).catch((e) => setMsg(e.message)), [setMsg]);
+  useEffect(() => { load(); const t = setInterval(load, 20000); return () => clearInterval(t); }, [load, reloadKey]);
+  async function handOver(ids: string[], fulfilled = true) {
+    try { await call('redemption.fulfill', { ids, fulfilled }); await load(); setMsg(fulfilled ? 'บันทึกว่าจ่ายของแล้ว' : 'ยกเลิกการจ่ายของแล้ว'); }
+    catch (e) { setMsg((e as Error).message); }
+  }
+  if (!d) return null;
+  const pendingTeams = d.teams.filter((t) => t.pending > 0);
+  return (
+    <div className="card">
+      <h2>📦 เตรียมของ / เบิกของ</h2>
+      <p className="muted">สรุปสิ่งที่ทีมแลกไว้แล้วและยังรอรับ เพื่อเตรียมสินค้าให้ทันเวลาเบิกจริง เมื่อจ่ายของให้ทีมแล้วกด “จ่ายแล้ว”</p>
+      {d.items.length === 0 ? <p className="muted center" style={{ margin: 0 }}>ยังไม่มีการแลกสินค้า</p> : (
+        <>
+          <div className="table-wrap"><table>
+            <thead><tr><th>สินค้า</th><th>แลกแล้วรวม</th><th>จ่ายแล้ว</th><th>รอเตรียมจ่าย</th><th>ทีมที่รอรับ</th></tr></thead>
+            <tbody>{d.items.map((i) => (
+              <tr key={i.item}><td>{i.item}</td><td className="num">{i.ordered}</td><td className="num">{i.handed}</td>
+                <td className="num"><strong>{i.pending}</strong></td><td>{i.teamsPending.join(', ') || '—'}</td></tr>
+            ))}</tbody>
+          </table></div>
+          <h2 style={{ fontSize: 17, marginTop: 14 }}>แยกตามทีม</h2>
+          <div className="table-wrap"><table>
+            <thead><tr><th>ทีม</th><th>สินค้า</th><th>แลกแล้ว</th><th>จ่ายแล้ว</th><th>รอรับ</th><th /></tr></thead>
+            <tbody>{d.teams.map((t, k) => (
+              <tr key={k}><td>{t.team}</td><td>{t.item}</td><td className="num">{t.ordered}</td><td className="num">{t.handed}</td>
+                <td className="num">{t.pending ? <strong>{t.pending}</strong> : '—'}</td>
+                <td>{t.pending > 0 && <button className="btn small" onClick={() => confirm(`จ่าย ${t.item} ×${t.pending} ให้ ${t.team} แล้วใช่ไหม?`) && handOver(t.pendingIds)}>จ่ายแล้ว ({t.pending})</button>}</td></tr>
+            ))}</tbody>
+          </table></div>
+          {pendingTeams.length === 0 && <div className="muted" style={{ marginTop: 8 }}>✅ จ่ายของครบทุกรายการแล้ว</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
 // -------------------------------------------------------------------- people
 function People({ setMsg }: { setMsg: (m: string) => void }) {
   const [teams, setTeams] = useState<any[]>([]);
   const [people, setPeople] = useState<any[]>([]);
   const [teamName, setTeamName] = useState('');
   const [editTeam, setEditTeam] = useState<any | null>(null);
-  const blankForm = { id: '', login_id: '', name: '', nick_name: '', team_id: '', squad_id: '' };
+  const blankForm = { id: '', login_id: '', name: '', nick_name: '', team_id: '', squad_id: '', is_leader: false };
   const [form, setForm] = useState(blankForm);
   const [squads, setSquads] = useState<any[]>([]);
   const [sizes, setSizes] = useState<Record<string, string>>({});
@@ -457,7 +512,7 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
     try {
       const r = await call('participants.import', { rows: imp.rows });
       setImp(null); setBulk(''); await load();
-      setMsg(`นำเข้าสำเร็จ: เพิ่มใหม่ ${r.inserted} คน · อัปเดต ${r.updated} คน` + (r.teamsCreated ? ` · สร้างทีมใหม่ ${r.teamsCreated} ทีม` : '') + (r.skipped?.length ? `\n${r.skipped.join('\n')}` : ''));
+      setMsg(`นำเข้าสำเร็จ: เพิ่มใหม่ ${r.inserted} คน · อัปเดต ${r.updated} คน` + (r.teamsCreated ? ` · สร้างทีมใหม่ ${r.teamsCreated} ทีม` : '') + (r.leadersSet ? ` · ตั้งหัวหน้าทีม ${r.leadersSet} ทีม` : '') + (r.skipped?.length ? `\n${r.skipped.join('\n')}` : ''));
     } catch (e) { setMsg((e as Error).message); }
     finally { setBusy(false); }
   }
@@ -476,7 +531,7 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
                 </span>
               ) : (
                 <>
-                  <span>{t.name} <span className="muted">({t.participants} คน)</span></span>
+                  <span>{t.name} <span className="muted">({t.participants} คน)</span>{(() => { const l = people.find((x) => x.team_id === t.team_id && x.is_leader); return l ? <span className="pill" style={{ marginLeft: 8 }}>⭐ หัวหน้า: {l.nick_name || l.name}</span> : <span className="muted" style={{ marginLeft: 8 }}>ยังไม่มีหัวหน้าทีม</span>; })()}</span>
                   <span className="row">
                     <button className="btn small ghost" onClick={() => setEditTeam({ id: t.team_id, name: t.name })}>แก้ชื่อ</button>
                     <button className="btn small ghost" onClick={() => confirm(`ลบทีม ${t.name}?`) && run(() => call('team.delete', { id: t.team_id }), 'ลบทีมแล้ว')}>ลบ</button>
@@ -537,7 +592,7 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
       <div className="card">
         <h2>นำเข้าผู้เล่นจาก Excel</h2>
         <p className="muted">
-          ไฟล์ต้องมีคอลัมน์ <strong>ID, Full name, Nick name, Team</strong> (เพิ่ม <strong>Squad</strong> ได้ ไม่บังคับ) · <strong>ID</strong> คือรหัสที่ผู้เล่นใช้เข้าเกม คุณเป็นคนกำหนดเอง ·
+          ไฟล์ต้องมีคอลัมน์ <strong>ID, Full name, Nick name, Team</strong> (เพิ่ม <strong>Squad</strong> และ <strong>Leader</strong> = ใส่ 1/yes/หัวหน้า ให้คนที่เป็นหัวหน้าทีม ได้ ไม่บังคับ ทีมละ 1 คน) · <strong>ID</strong> คือรหัสที่ผู้เล่นใช้เข้าเกม คุณเป็นคนกำหนดเอง ·
           ทีมที่ยังไม่มีในระบบจะถูกสร้างให้ · นำเข้าซ้ำได้: ID เดิมจะอัปเดตชื่อ/ทีม ไม่สร้างซ้ำ ·
           ใน Excel ควรตั้งคอลัมน์ ID เป็นชนิด <strong>ข้อความ (Text)</strong> ไม่งั้นเลขนำหน้า 0 อาจหาย
         </p>
@@ -559,8 +614,8 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
               <h2 style={{ fontSize: 17 }}>ตัวอย่างจาก {imp.source}: {imp.rows.length} คน · {teamsInFile.length} ทีม</h2>
               {problems.length > 0 && <div className="error" style={{ marginBottom: 10 }}>{problems.slice(0, 10).join('\n')}{problems.length > 10 ? `\n… และอีก ${problems.length - 10} รายการ` : ''}</div>}
               <div className="table-wrap"><table>
-                <thead><tr><th>#</th><th>ID</th><th>Full name</th><th>Nick name</th><th>Team</th><th>Squad</th></tr></thead>
-                <tbody>{imp.rows.slice(0, 8).map((r, k) => <tr key={k}><td className="num">{k + 1}</td><td className="codebox">{r.id}</td><td>{r.full_name}</td><td>{r.nick_name}</td><td>{r.team}</td><td>{r.squad || '—'}</td></tr>)}</tbody>
+                <thead><tr><th>#</th><th>ID</th><th>Full name</th><th>Nick name</th><th>Team</th><th>Squad</th><th>หัวหน้า</th></tr></thead>
+                <tbody>{imp.rows.slice(0, 8).map((r, k) => <tr key={k}><td className="num">{k + 1}</td><td className="codebox">{r.id}</td><td>{r.full_name}</td><td>{r.nick_name}</td><td>{r.team}</td><td>{r.squad || '—'}</td><td>{r.leader ? '⭐' : ''}</td></tr>)}</tbody>
               </table></div>
               {imp.rows.length > 8 && <div className="muted">แสดง 8 แถวแรก จากทั้งหมด {imp.rows.length}</div>}
               <div className="row" style={{ marginTop: 10 }}>
@@ -592,6 +647,7 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
           </button>
           {form.id && <button className="btn small ghost" onClick={() => setForm(blankForm)}>ยกเลิก</button>}
         </div>
+        <label className="lbl"><input type="checkbox" checked={form.is_leader} onChange={(e) => setForm({ ...form, is_leader: e.target.checked })} /> ⭐ เป็นหัวหน้าทีม (มีสิทธิ์แลกสินค้าให้ทีม · ทีมละ 1 คน ถ้าติ๊กจะแทนที่หัวหน้าคนเดิม)</label>
       </div>
 
       <div className="card">
@@ -599,16 +655,19 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
           <h2 style={{ margin: 0 }}>ผู้เล่น ({people.length})</h2>
         </div>
         <div className="table-wrap"><table>
-          <thead><tr><th>Full name</th><th>Nick name</th><th>ทีม</th><th>สควอด</th><th>สถานะ</th><th>คะแนน</th><th>ID</th><th /></tr></thead>
+          <thead><tr><th>Full name</th><th>Nick name</th><th>ทีม</th><th>สควอด</th><th>หัวหน้า</th><th>สถานะ</th><th>คะแนน</th><th>ID</th><th /></tr></thead>
           <tbody>
             {people.map((p) => (
               <tr key={p.id}>
-                <td>{p.name}</td><td>{p.nick_name || '—'}</td><td>{p.team_name}</td><td>{p.squad_name || '—'}</td>
+                <td>{p.name}</td><td>{p.nick_name || '—'}</td><td>{p.team_name}</td><td>{p.squad_name || '—'}</td><td>{p.is_leader ? '⭐ หัวหน้าทีม' : ''}</td>
                 <td>{{ not_started: 'ยังไม่เริ่ม', in_progress: 'กำลังเล่น', completed: 'จบแล้ว' }[p.status as 'completed']}</td>
                 <td className="num">{p.status === 'completed' ? `${p.correct_count} (${p.tokens_earned})` : ''}</td>
                 <td>{p.has_code ? '✔ มี ID' : '— ไม่มี ID'}</td>
                 <td className="row">
-                  <button className="btn small ghost" onClick={() => setForm({ id: p.id, login_id: '', name: p.name, nick_name: p.nick_name ?? '', team_id: p.team_id, squad_id: p.squad_id ?? '' })}>แก้ไข</button>
+                  <button className="btn small ghost" onClick={() => setForm({ id: p.id, login_id: '', name: p.name, nick_name: p.nick_name ?? '', team_id: p.team_id, squad_id: p.squad_id ?? '', is_leader: !!p.is_leader })}>แก้ไข</button>
+                  {p.is_leader
+                    ? <button className="btn small ghost" onClick={() => run(() => call('leader.clear', { id: p.id }), 'ยกเลิกหัวหน้าทีมแล้ว')}>ยกเลิกหัวหน้า</button>
+                    : <button className="btn small ghost" onClick={() => confirm(`ตั้ง ${p.name} เป็นหัวหน้าทีม ${p.team_name}? (หัวหน้าคนเดิมจะถูกแทนที่)`) && run(() => call('leader.set', { id: p.id }), 'ตั้งหัวหน้าทีมแล้ว')}>ตั้งเป็นหัวหน้า</button>}
                   <button className="btn small ghost" onClick={() => { const v = prompt(`ID ใหม่ของ ${p.name} (ID เดิมจะใช้ไม่ได้ทันที)`); if (v?.trim()) run(() => call('participant.save', { id: p.id, login_id: v, name: p.name, nick_name: p.nick_name ?? '', team_id: p.team_id, squad_id: p.squad_id ?? '' }), 'เปลี่ยน ID แล้ว'); }}>เปลี่ยน ID</button>
                   {p.has_code && <button className="btn small ghost" onClick={() => confirm(`ยกเลิก ID ของ ${p.name}? จะเข้าเกมไม่ได้จนกว่าจะตั้ง ID ใหม่`) && run(() => call('code.revoke', { id: p.id }), 'ยกเลิก ID แล้ว')}>ยกเลิก ID</button>}
                   {p.status === 'not_started' && <button className="btn small ghost" onClick={() => confirm(`ลบ ${p.name}?`) && run(() => call('participant.delete', { id: p.id }), 'ลบแล้ว')}>ลบ</button>}
@@ -917,8 +976,8 @@ function History() {
       <div className="card">
         <h2>ประวัติการแลกของ</h2>
         <div className="table-wrap"><table>
-          <thead><tr><th>เวลา</th><th>ทีม</th><th>สินค้า</th><th>จำนวน</th><th>โทเคน</th><th>ยืนยันโดย</th></tr></thead>
-          <tbody>{r.map((x) => <tr key={x.id}><td>{fmt(x.created_at)}</td><td>{x.team_name}</td><td>{x.item_name}</td><td className="num">{x.quantity}</td><td className="num">{x.total_cost}</td><td>{x.confirmed_by}</td></tr>)}</tbody>
+          <thead><tr><th>เวลา</th><th>ทีม</th><th>สินค้า</th><th>จำนวน</th><th>โทเคน</th><th>แลกโดย</th><th>การจ่ายของ</th></tr></thead>
+          <tbody>{r.map((x) => <tr key={x.id}><td>{fmt(x.created_at)}</td><td>{x.team_name}</td><td>{x.item_name}</td><td className="num">{x.quantity}</td><td className="num">{x.total_cost}</td><td>{x.confirmed_by}</td><td>{x.fulfilled_at ? `✅ จ่ายแล้ว ${fmt(x.fulfilled_at)}` : '⏳ รอจ่าย'}</td></tr>)}</tbody>
         </table></div>
       </div>
       <div className="card">
