@@ -537,22 +537,23 @@ function PlayerPage() {
         </div>
       )}
       {editAvatar && <AvatarSheet me={me} onClose={() => setEditAvatar(false)} onSaved={() => load()} onAuthLost={fail} />}
-      <div className="card">
+      <div className="card profile-card">
         <div className="profile">
           <button className="avatar" onClick={() => setEditAvatar(true)} aria-label="เปลี่ยนรูปโปรไฟล์" title="เปลี่ยนรูปโปรไฟล์">
             <Avatar url={me.avatar.url} emoji={me.avatar.emoji} name={participant.name} />
             <span className="edit" aria-hidden><AppIcon name="edit" size={14} /></span>
           </button>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div className="profile-name" style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.25 }}>สวัสดี {participant.name}</div>
-            {participant.fullName && participant.fullName !== participant.name && <div className="muted" style={{ fontSize: 14 }}>{participant.fullName}</div>}
-            <div className="row profile-meta" style={{ marginTop: 8, gap: 6 }}>
-              <span className={`role ${me.isLeader && !me.isObserver ? 'leader' : 'member'}`}>{me.isObserver ? '👁 คณะทำงาน' : me.isLeader ? '⭐ หัวหน้าทีม' : '🏕️ สมาชิกทีม'}</span>
-              <span className="pill">ทีม {team.name}</span>
-              {me.squad && <span className="pill" style={{ background: '#f9dca0' }}>{me.squad}</span>}
-              {me.checkin.done && <span className="pill" style={{ background: '#cfe9c9' }}>✅ เช็กอินแล้ว{me.checkin.at ? ` ${new Date(me.checkin.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : ''}</span>}
-            </div>
+          <div className="profile-welcome">
+            <div className="muted profile-greeting">สวัสดี</div>
+            <span className={`role ${me.isLeader && !me.isObserver ? 'leader' : 'member'}`}>{me.isObserver ? '👁 คณะทำงาน' : me.isLeader ? '⭐ หัวหน้าทีม' : '🏕️ สมาชิกทีม'}</span>
           </div>
+        </div>
+        <h2 className="profile-name">{participant.name.split(/(\s+)/).map((part, index) => /\s/.test(part) ? part : <span className="profile-name-part" key={index}>{part}</span>)}</h2>
+        {participant.fullName && participant.fullName !== participant.name && <div className="muted profile-full-name">{participant.fullName}</div>}
+        <div className="row profile-meta">
+          <span className="pill">ทีม {team.name}</span>
+          {me.squad && <span className="pill" style={{ background: '#f9dca0' }}>{me.squad}</span>}
+          {me.checkin.done && <span className="pill" style={{ background: '#cfe9c9' }}>✅ เช็กอินแล้ว{me.checkin.at ? ` ${new Date(me.checkin.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : ''}</span>}
         </div>
         {!me.avatar.url && !me.avatar.emoji && <div className="muted" style={{ marginTop: 10, fontSize: 14 }}>👆 แตะที่วงกลมเพื่อเลือกรูปโปรไฟล์ของคุณ</div>}
         <div className="row profile-wallet" style={{ marginTop: 12, justifyContent: 'space-between' }}>
