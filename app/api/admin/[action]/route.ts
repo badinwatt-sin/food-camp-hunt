@@ -215,22 +215,31 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
   if (action === 'live') {
     // Aggregated, name-free summary for the big screen (staff or admin).
     await requireRole('staff');
-    const [{ data: settings }, { data: teams }, { data: spots }] =
+    const [settingsResult, summaryResult, identitiesResult, spotsResult] =
       await Promise.all([
         sb.from('game_settings').select('is_open, hunt_open, puzzle_open, team_goal_pct').eq('id', 1).single(),
         sb.from('team_summary').select('*').order('name'),
+        sb.from('teams').select('id, name, line_group_code'),
         sb.from('hunt_spots').select('id').eq('active', true),
       ]);
-    const competing = (teams ?? []).filter((team: any) => isLiveTeam(team.name));
+    for (const result of [settingsResult, summaryResult, identitiesResult, spotsResult]) if (result.error) throw result.error;
+    const settings = settingsResult.data;
+    const identities = new Map<string, any>((identitiesResult.data ?? []).map((team: any) => [team.id, team]));
+    const competing = (summaryResult.data ?? []).flatMap((team: any) => {
+      const identity = identities.get(team.team_id);
+      return identity && isLiveTeam(identity.line_group_code)
+        ? [{ ...team, name: identity.name, lineGroupCode: identity.line_group_code }] : [];
+    });
     const teamIds = competing.map((team: any) => team.team_id);
+    const teamName = (id: string) => identities.get(id)?.name ?? '';
     // Scope activity queries before their limits so staff activity cannot crowd out team updates.
     const [{ data: claims }, { data: ledger }, { data: reds }, { data: done }, { data: psolves }] = teamIds.length
       ? await Promise.all([
         sb.from('hunt_claims').select('team_id, squad_id, claimed_at, hunt_spots(title), teams(name), squads(name)').in('team_id', teamIds).order('claimed_at', { ascending: false }),
         sb.from('token_ledger').select('team_id, kind, amount').in('team_id', teamIds).in('kind', ['quiz', 'hunt', 'puzzle', 'minigame']),
-        sb.from('redemptions').select('item_name, quantity, created_at, teams(name)').in('team_id', teamIds).order('created_at', { ascending: false }).limit(10),
-        sb.from('participants').select('completed_at, teams(name)').in('team_id', teamIds).eq('is_observer', false).eq('status', 'completed').order('completed_at', { ascending: false }).limit(10),
-        sb.from('photo_submissions').select('reviewed_at, teams(name), photo_missions(title)').in('team_id', teamIds).eq('status', 'approved').order('reviewed_at', { ascending: false }).limit(10),
+        sb.from('redemptions').select('team_id, item_name, quantity, created_at, teams(name)').in('team_id', teamIds).order('created_at', { ascending: false }).limit(10),
+        sb.from('participants').select('team_id, completed_at, teams(name)').in('team_id', teamIds).eq('is_observer', false).eq('status', 'completed').order('completed_at', { ascending: false }).limit(10),
+        sb.from('photo_submissions').select('team_id, reviewed_at, teams(name), photo_missions(title)').in('team_id', teamIds).eq('status', 'approved').order('reviewed_at', { ascending: false }).limit(10),
       ]) : Array.from({ length: 5 }, () => ({ data: [] }));
     const earned = new Map<string, { quiz: number; hunt: number; puzzle: number; minigame: number }>();
     for (const l of (ledger ?? []) as any[]) {
@@ -241,16 +250,16 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     const found = new Map<string, number>();
     for (const c of (claims ?? []) as any[]) found.set(c.team_id, (found.get(c.team_id) ?? 0) + 1);
     const feed = [
-      ...((claims ?? []) as any[]).slice(0, 10).map((c) => ({ at: c.claimed_at, kind: 'hunt', team: c.teams?.name ?? '', text: `${c.squads?.name ? `(${c.squads.name}) ` : ''}เจอจุด “${c.hunt_spots?.title ?? ''}”` })),
-      ...((psolves ?? []) as any[]).map((x) => ({ at: x.reviewed_at, kind: 'puzzle', team: x.teams?.name ?? '', text: `ภารกิจถ่ายภาพผ่าน “${String(x.photo_missions?.title ?? '').slice(0, 40)}”` })),
-      ...((reds ?? []) as any[]).map((r) => ({ at: r.created_at, kind: 'redeem', team: r.teams?.name ?? '', text: `แลก ${r.item_name} ×${r.quantity}` })),
-      ...((done ?? []) as any[]).map((p) => ({ at: p.completed_at, kind: 'quiz', team: p.teams?.name ?? '', text: 'สมาชิกเล่นควิซจบ' })),
+      ...((claims ?? []) as any[]).slice(0, 10).map((c) => ({ at: c.claimed_at, kind: 'hunt', teamId: c.team_id, team: teamName(c.team_id), text: `${c.squads?.name ? `(${c.squads.name}) ` : ''}เจอจุด “${c.hunt_spots?.title ?? ''}”` })),
+      ...((psolves ?? []) as any[]).map((x) => ({ at: x.reviewed_at, kind: 'puzzle', teamId: x.team_id, team: teamName(x.team_id), text: `ภารกิจถ่ายภาพผ่าน “${String(x.photo_missions?.title ?? '').slice(0, 40)}”` })),
+      ...((reds ?? []) as any[]).map((r) => ({ at: r.created_at, kind: 'redeem', teamId: r.team_id, team: teamName(r.team_id), text: `แลก ${r.item_name} ×${r.quantity}` })),
+      ...((done ?? []) as any[]).map((p) => ({ at: p.completed_at, kind: 'quiz', teamId: p.team_id, team: teamName(p.team_id), text: 'สมาชิกเล่นควิซจบ' })),
     ].sort((a, b) => +new Date(b.at) - +new Date(a.at)).slice(0, 12);
     return ok({
-      open: !!settings?.is_open, huntOpen: !!settings?.hunt_open, puzzleOpen: !!settings?.puzzle_open, totalSpots: (spots ?? []).length,
+      open: !!settings?.is_open, huntOpen: !!settings?.hunt_open, puzzleOpen: !!settings?.puzzle_open, totalSpots: (spotsResult.data ?? []).length,
       goalPct: settings?.team_goal_pct ?? 0,
       teams: competing.map((t: any) => ({
-        id: t.team_id, name: t.name, balance: t.balance, spent: t.spent,
+        id: t.team_id, name: t.name, lineGroupCode: t.lineGroupCode, balance: t.balance, spent: t.spent,
         participants: t.participants, completed: t.completed, inProgress: t.in_progress,
         huntFound: found.get(t.team_id) ?? 0, // spot finds by squads (a spot can count once per squad)
         goalNeed: goalStatus(settings?.team_goal_pct ?? 0, t.completed, t.participants).need,

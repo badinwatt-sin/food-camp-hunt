@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/client-api';
+import { useVisibleRefresh } from '@/lib/use-visible-refresh';
 import AppIcon from '@/components/AppIcon';
 import { MG_INFO, MG_SUCCESS_RULES, MYSTERY, SPOT, type MgGame } from '@/lib/minigames/config';
 
@@ -22,6 +23,7 @@ export default function MiniGames({ onBalance, onAuthLost, isObserver = false }:
     try { setSt(await api<Status>('/api/minigames')); setErr(''); } catch (e) { authLost.current(e); setErr((e as Error).message); }
   }, []);
   useEffect(() => { load(); }, [load]);
+  useVisibleRefresh(load, play === null);
   useEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); }, [play]);
 
   const readOnly = isObserver || !!st?.isObserver;

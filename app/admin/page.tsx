@@ -7,6 +7,7 @@ import WeeklyMissions from '@/components/admin/WeeklyMissions';
 import LineLogo from '@/components/LineLogo';
 import { BULK_CONFIRM } from '@/lib/bulk';
 import { MARKET_CATS, marketCat } from '@/lib/market-cats';
+import { useVisibleRefresh } from '@/lib/use-visible-refresh';
 
 type Role = 'admin' | 'staff';
 
@@ -652,6 +653,7 @@ function Market({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
     } catch (e) { setMsg((e as Error).message); }
   }, [setMsg]);
   useEffect(() => { load(); }, [load]);
+  useVisibleRefresh(load);
 
   const item = items.find((i) => i.id === rd.item_id);
   const team = teams.find((t) => t.team_id === rd.team_id);
@@ -900,6 +902,7 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
     } catch (e) { setMsg((e as Error).message); }
   }, [setMsg]);
   useEffect(() => { load(); }, [load]);
+  useVisibleRefresh(load);
 
   const run = async (fn: () => Promise<any>, ok?: string) => {
     try { const r = await fn(); await load(); if (ok) setMsg(ok); return r; } catch (e) { setMsg((e as Error).message); }
@@ -1219,6 +1222,7 @@ function Hunt({ setMsg }: { setMsg: (m: string) => void }) {
   const [cards, setCards] = useState(false);
   const load = useCallback(() => call('hunt').then(setD).catch((e) => setMsg(e.message)), [setMsg]);
   useEffect(() => { load(); }, [load]);
+  useVisibleRefresh(load);
   const link = (secret: string) => `${window.location.origin}/?spot=${secret}`;
   const count = (id: string) => d.claims.filter((c) => c.spot_id === id).length;
 
@@ -1479,9 +1483,18 @@ function Missions({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
 function History() {
   const [r, setR] = useState<any[]>([]);
   const [l, setL] = useState<any>({ ledger: [], audit: [] });
-  useEffect(() => { call('redemptions').then((d) => setR(d.redemptions)); call('ledger').then(setL); }, []);
+  const [error, setError] = useState('');
+  const load = useCallback(async () => {
+    try {
+      const [redemptions, ledger] = await Promise.all([call('redemptions'), call('ledger')]);
+      setR(redemptions.redemptions); setL(ledger); setError('');
+    } catch (e) { setError((e as Error).message); }
+  }, []);
+  useEffect(() => { load(); }, [load]);
+  useVisibleRefresh(load);
   return (
     <>
+      {error && <div className="error">{error}</div>}
       <div className="card">
         <h2>ประวัติการแลกของ</h2>
         <div className="table-wrap"><table>
