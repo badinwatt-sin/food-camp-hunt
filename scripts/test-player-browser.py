@@ -139,7 +139,7 @@ class PlayerBrowser(unittest.TestCase):
 
     def visit(self, suffix=""):
         self.page.goto(BASE_URL + "/" + suffix)
-        expect(self.page.get_by_text("สวัสดี มะลิ", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("heading", name="มะลิ", exact=True)).to_be_visible()
 
     def test_first_login_prompts_then_can_defer(self):
         self.authenticated = False
@@ -231,7 +231,7 @@ class PlayerBrowser(unittest.TestCase):
             expect(button).to_be_disabled()
             expect(button).to_have_css("background-color", "rgb(225, 228, 232)")
             button.evaluate("button => button.click()")
-            expect(self.page.get_by_text("สวัสดี มะลิ", exact=True)).to_be_visible()
+            expect(self.page.get_by_role("heading", name="มะลิ", exact=True)).to_be_visible()
         self.page.screenshot(path=str(SCREENSHOTS / "food-camp-home.png"), full_page=True)
 
     def test_mission_buttons_respect_individual_flags_including_finished_quiz(self):
@@ -249,7 +249,7 @@ class PlayerBrowser(unittest.TestCase):
 
     def test_hunt_qr_cannot_bypass_closed_switch(self):
         self.visit("?spot=CLOSED-SPOT")
-        expect(self.page.get_by_text("สวัสดี มะลิ", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("heading", name="มะลิ", exact=True)).to_be_visible()
         self.assertNotIn(("GET", "/api/hunt"), self.requests)
         self.assertNotIn(("POST", "/api/hunt/claim"), self.requests)
 

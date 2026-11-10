@@ -144,14 +144,14 @@ def home(page):
     buttons=page.get_by_role('button',name='กลับหน้าหลัก',exact=True)
     if buttons.count(): buttons.last.click()
     else: page.get_by_role('button',name='กลับหน้าหลัก').first.click()
-    expect(page.get_by_text('สวัสดี '+NAME,exact=True)).to_be_visible()
+    expect(page.get_by_role('heading',name=NAME,exact=True)).to_be_visible()
     assert page.evaluate('window.scrollY') <= 1, 'Opening home must reset its scroll position'
 
 
 def player_flow(browser,audit,width):
     ctx=browser.new_context(viewport=dict(width=width,height=900),is_mobile=width<=430,has_touch=width<=430)
     page=ctx.new_page();page.set_default_timeout(20000);page.set_default_navigation_timeout(60000);f=Fixture(page)
-    page.goto(BASE);expect(page.get_by_text('สวัสดี '+NAME,exact=True)).to_be_visible()
+    page.goto(BASE);expect(page.get_by_role('heading',name=NAME,exact=True)).to_be_visible()
     audit.snapshot(page,'user-home',width,shot=width in [320,390,1440])
     click(page,'สมาชิกในทีม');expect(page.get_by_role('heading',name='สมาชิกทีม '+TEAM,exact=True)).to_be_visible()
     audit.snapshot(page,'user-team',width,shot=width in [320,390])
@@ -163,7 +163,7 @@ def player_flow(browser,audit,width):
     if width in [320,390,1440]:
         page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
         page.get_by_role('button',name='กลับหน้าหลัก',exact=True).first.dispatch_event('click')
-        expect(page.get_by_text('สวัสดี '+NAME,exact=True)).to_be_visible()
+        expect(page.get_by_role('heading',name=NAME,exact=True)).to_be_visible()
         assert page.evaluate('window.scrollY') <= 1, 'Navigating from a long team screen must open home at the top'
     else: home(page)
     click(page,'เริ่มภารกิจ');expect(page.get_by_role('button',name=re.compile('เริ่มเล่นควิซ'))).to_be_visible();audit.snapshot(page,'user-missions',width)
@@ -257,7 +257,7 @@ def invitation_flow(browser,audit,width):
 def observer_flow(browser,audit,width):
     ctx=browser.new_context(viewport=dict(width=width,height=900),is_mobile=width<=430,has_touch=width<=430);page=ctx.new_page();f=Fixture(page)
     f.me.update(isLeader=False,isObserver=True);f.me['line']['isObserver']=True;f.team['canManageSquads']=False
-    page.goto(BASE);expect(page.get_by_text('สวัสดี '+NAME,exact=True)).to_be_visible();click(page,'สมาชิกในทีม');expect(page.get_by_role('heading',name='สมาชิกทีม '+TEAM,exact=True)).to_be_visible()
+    page.goto(BASE);expect(page.get_by_role('heading',name=NAME,exact=True)).to_be_visible();click(page,'สมาชิกในทีม');expect(page.get_by_role('heading',name='สมาชิกทีม '+TEAM,exact=True)).to_be_visible()
     assert not page.get_by_label('ชื่อ Squad ใหม่',exact=True).count()
     audit.snapshot(page,'observer-team',width)
     home(page);click(page,'ตลาดของ');expect(page.get_by_role('heading',name='ตลาด / แลกของ',exact=True)).to_be_visible();audit.snapshot(page,'observer-market',width)

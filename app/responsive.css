@@ -34,9 +34,14 @@
 :where(.player-experience) .stack > * + * { margin-top: 13px; }
 :where(.player-experience) .banner, :where(.player-experience) .error { line-height: 1.6; }
 :where(.player-experience) .pill, :where(.player-experience) .role { max-width: 100%; font-size: 13px; }
-:where(.player-experience) .profile { align-items: flex-start; gap: 14px; }
-:where(.player-experience) .profile-name { overflow-wrap: anywhere; }
-:where(.player-experience) .profile-meta { gap: 6px; }
+:where(.player-experience) .profile { align-items: center; gap: 12px; margin-bottom: 12px; }
+:where(.player-experience) .profile-card .avatar { width: 64px; height: 64px; font-size: 32px; }
+:where(.player-experience) .profile-welcome { display: flex; flex: 1; min-width: 0; flex-direction: column; align-items: flex-start; gap: 5px; }
+:where(.player-experience) .profile-greeting { font-size: 14px; }
+:where(.player-experience) .profile-card .profile-name { margin: 0; font-size: clamp(20px, 5.5vw, 22px); font-weight: 700; line-height: 1.5; overflow-wrap: normal; word-break: normal; }
+:where(.player-experience) .profile-name-part { display: inline-block; max-width: 100%; overflow-wrap: anywhere; vertical-align: top; }
+:where(.player-experience) .profile-full-name { margin-top: 4px; font-size: 14px; overflow-wrap: anywhere; }
+:where(.player-experience) .profile-meta { margin-top: 10px; gap: 6px; }
 :where(.player-experience) .profile-wallet { align-items: center; gap: 10px; }
 :where(.player-experience) .profile-wallet .muted { flex: 1; min-width: 0; }
 :where(.player-experience) .profile-wallet .coin-row { flex: none; }
