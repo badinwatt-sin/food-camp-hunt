@@ -122,10 +122,10 @@ function JoinPrompt({ group, status, busy, error, onJoin, onClose }: {
   }, []);
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(31,47,77,.65)', display: 'grid', placeItems: 'center', padding: 18, zIndex: 120 }}>
+    <div className="player-dialog-overlay line-invitation-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(31,47,77,.65)', display: 'grid', placeItems: 'center', zIndex: 120 }}>
       <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId}
-        tabIndex={-1} className="card center stack"
-        style={{ width: '100%', maxWidth: 420, margin: 0, border: '3px solid #8ac49c', maxHeight: 'calc(100dvh - 36px)', overflowY: 'auto', overflowWrap: 'anywhere' }}
+        tabIndex={-1} className="card center stack player-dialog-panel line-invitation-dialog"
+        style={{ width: '100%', maxWidth: 420, margin: 0, border: '3px solid #8ac49c', overflowWrap: 'anywhere' }}
         onKeyDown={(event) => {
           if (event.key === 'Escape') { event.preventDefault(); onClose(); }
           if (event.key !== 'Tab') return;
@@ -155,7 +155,7 @@ function JoinPrompt({ group, status, busy, error, onJoin, onClose }: {
           <p style={{ margin: '8px 0 0', fontSize: 13 }}>ให้คะแนนเข้ากระเป๋าทีมครั้งเดียว ไม่ใช่คะแนนรายคน · ไม่รวมคณะทำงานในการนับจำนวน</p>
         </div>}
         {error && <div className="error" role="alert">{error}</div>}
-        <button ref={firstButton} className="btn" disabled={busy} onClick={() => void onJoin()}>
+        <button ref={firstButton} className="btn line-invitation-action" disabled={busy} onClick={() => void onJoin()}>
           {busy ? 'กำลังเชื่อมต่อ…' : `เชื่อมต่อ LINE กลุ่ม ${group}`}
         </button>
         <button className="btn ghost" onClick={onClose}>ไว้ทีหลัง</button>

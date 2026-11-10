@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { CampTent, Coin, Pot } from '@/components/Icons';
+import AppIcon from '@/components/AppIcon';
 
 type Team = {
   id: string; name: string; balance: number; spent: number; participants: number; completed: number;
@@ -12,8 +13,7 @@ type Live = {
   feed: { at: string; kind: 'hunt' | 'redeem' | 'quiz' | 'puzzle'; team: string; text: string }[];
 };
 
-const ICON = { hunt: '🧭', redeem: '🛒', quiz: '✅', puzzle: '🧩' } as const;
-const MEDAL = ['🥇', '🥈', '🥉'];
+const ICON = { hunt: 'hunt', redeem: 'shop', quiz: 'check', puzzle: 'camera' } as const;
 const clock = (iso: string) => new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 
 export default function LivePage() {
@@ -68,14 +68,14 @@ export default function LivePage() {
           <div><b>{totalTokens}</b><span>โทเคนคงเหลือรวม</span></div>
           <div className="live-clock">{now}</div>
         </div>
-        <button className="live-fs" onClick={() => document.documentElement.requestFullscreen?.().catch(() => {})}>เต็มจอ</button>
+        <button className="live-fs" onClick={() => document.documentElement.requestFullscreen?.().catch(() => {})}><AppIcon name="overview" size={18} /> เต็มจอ</button>
       </header>
 
       <main className="live-main">
         <section className="live-board">
           {ranked.map((t, i) => (
             <div className="live-row" key={t.id}>
-              <div className="live-rank">{MEDAL[i] ?? i + 1}</div>
+              <div className={`live-rank${i < 3 ? ` place-${i + 1}` : ''}`}><span className="live-rank-icon" aria-hidden>{i < 3 ? <AppIcon name="trophy" size={26} /> : null}</span><span>{i + 1}</span></div>
               <div className="live-body">
                 <div className="live-name"><span>{t.name}</span><span className="live-coins"><Coin size={40} /> {t.balance}</span></div>
                 <div className="live-bar"><i style={{ width: `${(t.balance / max) * 100}%` }} /></div>
@@ -105,7 +105,7 @@ export default function LivePage() {
           <ul>
             {d.feed.map((f, i) => (
               <li key={i}>
-                <span className="live-ic">{ICON[f.kind]}</span>
+                <span className="live-ic"><AppIcon name={ICON[f.kind]} size={22} /></span>
                 <span><b>{f.team}</b> {f.text}</span>
                 <time>{clock(f.at)}</time>
               </li>
@@ -134,7 +134,6 @@ function Style() {
     .live-stats div{text-align:center}.live-stats b{display:block;font-size:2em;line-height:1;color:#1f2f4d}.live-stats span{color:#4a5a74;font-size:.8em}
     .live-clock{font-size:2.2em;font-weight:700;font-variant-numeric:tabular-nums}
     .live-fs{background:#fff;border:2px solid rgba(31,47,77,.2);color:#1f2f4d;border-radius:12px;padding:.4em 1em;cursor:pointer;font-size:.8em}
-    @media(display-mode:fullscreen){.live-fs{display:none}}
     .live-main{flex:1;display:grid;grid-template-columns:2.2fr 1fr;gap:2.4vw;min-height:0}
     @media(max-width:900px){.live-main{grid-template-columns:1fr}}
     .live-board{display:flex;flex-direction:column;gap:1.6vh;min-height:0}
@@ -157,6 +156,54 @@ function Style() {
     .live-feed li time{margin-left:auto;color:#4a5a74;font-variant-numeric:tabular-nums}
     .live-empty{color:#4a5a74}
     .live-deco{position:absolute;right:1vw;bottom:0;opacity:.9;display:flex;align-items:flex-end}
+    .live-fs{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px}
+    .live-rank{display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1.15;gap:.12em}
+    .live-rank-icon{display:flex;align-items:center;justify-content:center}
+    .live-rank.place-1{color:#a36a13}.live-rank.place-2{color:#69758a}.live-rank.place-3{color:#a65d36}
+    .live-top>div,.live-row,.live-feed li>span{min-width:0}
+    .live-sub{display:flex;align-items:center;flex-wrap:wrap;gap:.3em}
+    .live-name>span:first-child,.live-feed li>span,.live-msg{overflow-wrap:anywhere}
+    @media(min-width:901px){
+      .live-board{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;padding:2px 4px 8px 2px}
+      .live-row{flex:1 0 auto}
+    }
+    @media(max-width:1100px){
+      .live{font-size:clamp(14px,1.55vw,20px)}
+      .live-top h1{font-size:2.15em}
+      .live-stats{gap:1.2vw}
+    }
+    @media(min-width:901px) and (max-height:850px){
+      .live{font-size:clamp(13px,1.8vh,18px)}
+    }
+    @media(max-width:900px){
+      .live{height:auto;min-height:100dvh;overflow:visible}
+      .live-main{flex:none;min-height:0}
+      .live-row{min-height:140px}
+      .live-feed{min-height:220px}
+    }
+    @media(max-width:767px){
+      .live{height:auto;min-height:100dvh;overflow:visible;padding:20px 14px 28px;gap:18px;font-size:16px}
+      .live-top{gap:14px;align-items:flex-start}
+      .live-top>div:first-child{flex:1 1 100%}
+      .live-top h1{font-size:clamp(26px,7vw,36px);line-height:1.15}
+      .live-kicker{font-size:11px;letter-spacing:.2em}
+      .live-sub{font-size:13px;line-height:1.8}
+      .live-sub .dot{margin-left:10px!important;margin-right:0}
+      .live-sub .dot:first-child{margin-left:0!important}
+      .live-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;width:100%;text-align:left}
+      .live-stats>div{min-width:0}.live-stats b{font-size:24px}.live-stats span{font-size:12px;line-height:1.4;display:block}
+      .live-clock{grid-column:1/-1;font-size:17px;text-align:right}
+      .live-fs{width:100%;font-size:15px}
+      .live-main{display:grid;grid-template-columns:minmax(0,1fr);flex:none;gap:18px;min-height:0}
+      .live-board{gap:12px}.live-row{min-height:0;gap:10px}.live-rank{font-size:20px;width:32px;flex:none}
+      .live-rank-icon svg{width:22px;height:22px}.live-row{padding:14px;border-radius:18px;min-width:0}
+      .live-name{font-size:21px;gap:10px;flex-wrap:wrap;line-height:1.35}.live-coins{font-size:24px}.live-coins svg{width:30px;height:30px}
+      .live-meta{font-size:12px;line-height:1.7;gap:3px 12px}.live-goal{font-size:12px;line-height:1.6;flex-wrap:wrap;gap:7px}.live-gbar{flex-basis:100%}
+      .live-feed{padding:16px;border-radius:18px;min-height:200px}.live-feed h2{font-size:20px}
+      .live-feed li{font-size:14px;gap:8px}.live-feed time{font-size:12px}.live-ic{width:24px;flex:none}
+      .live-deco{opacity:.25;pointer-events:none}
+    }
+    @media(display-mode:fullscreen){.live-fs{display:none}}
     `}</style>
   );
 }

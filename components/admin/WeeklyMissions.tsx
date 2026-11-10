@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import AppIcon from '@/components/AppIcon';
 import { MG_GAMES, MG_INFO, MG_SUCCESS_RULES, MG_DEFAULT_REWARD, type MgGame } from '@/lib/minigames/config';
 
 type Mission = {
@@ -41,8 +42,8 @@ export default function WeeklyMissions({ setMsg }: { setMsg: (message: string) =
   }, [load]);
   return (
     <>
-      <div className="card stack">
-        <h2 style={{ margin: 0 }}>🎮 ภารกิจประจำสัปดาห์</h2>
+      <div className="card stack admin-weekly-intro">
+        <h2 className="admin-section-heading" style={{ margin: 0 }}><AppIcon name="weekly" size={24} /> ภารกิจประจำสัปดาห์</h2>
         <p style={{ margin: 0 }}>กำหนดโทเคนของแต่ละภารกิจ สมาชิกต้องทำตามเงื่อนไขสำเร็จจึงได้รับรางวัลเข้ากระเป๋าทีม <strong>ครั้งเดียวต่อคนต่อภารกิจ</strong> ลองได้ภารกิจละ 3 ครั้ง</p>
         <p className="muted" style={{ margin: 0 }}>การแก้จำนวนโทเคนใช้กับผู้ที่ยังไม่ได้รับรางวัล คะแนนที่ได้รับไปแล้วคงเดิม · คณะทำงานดูรายละเอียดได้ แต่ไม่เข้าร่วมเล่นหรือรับรางวัล</p>
         {error && <div className="error" role="alert">{error}<button className="btn small ghost" onClick={() => void load()}>ลองอีกครั้ง</button></div>}
@@ -71,25 +72,25 @@ function MissionCard({ game, mission, reload, setMsg }: {
   }
   const info = MG_INFO[game];
   return (
-    <section className="card stack" aria-label={`ตั้งค่าภารกิจ ${info.title}`}>
-      <div className="row" style={{ justifyContent: 'space-between', gap: 12 }}>
-        <div><h2 style={{ margin: 0 }}>{info.icon} {info.title}</h2><div className="muted">{MG_SUCCESS_RULES[game]}</div></div>
+    <section className="card stack admin-weekly-card" aria-label={`ตั้งค่าภารกิจ ${info.title}`}>
+      <div className="row admin-toolbar" style={{ justifyContent: 'space-between', gap: 12 }}>
+        <div className="admin-mission-title"><h2 className="admin-section-heading" style={{ margin: 0 }}><span className="admin-mission-icon" aria-hidden>{info.icon}</span> {info.title}</h2><div className="muted">{MG_SUCCESS_RULES[game]}</div></div>
         <button className={`btn small ${mission.open ? 'green' : 'ghost'}`} disabled={busy}
           onClick={() => void save({ [`mg_${game}_open`]: !mission.open }, `${mission.open ? 'ปิด' : 'เปิด'}ภารกิจ ${info.title} แล้ว`)}>
           {mission.open ? '🟢 เปิดอยู่ (กดเพื่อปิด)' : '⚪ ปิดอยู่ (กดเพื่อเปิด)'}
         </button>
       </div>
-      <form onSubmit={(event) => { event.preventDefault(); if (valid) void save({ [`mg_${game}_tokens`]: number }, `บันทึกรางวัล ${info.title} เป็น ${number} Tokens แล้ว`); }}>
-        <div className="row">
-          <div>
+      <form className="weekly-reward-form" onSubmit={(event) => { event.preventDefault(); if (valid) void save({ [`mg_${game}_tokens`]: number }, `บันทึกรางวัล ${info.title} เป็น ${number} Tokens แล้ว`); }}>
+        <div className="row admin-form-row weekly-reward-row">
+          <div className="admin-form-field">
             <label className="lbl" htmlFor={`weekly-tokens-${game}`}>Tokens เมื่อทำสำเร็จ</label>
-            <input id={`weekly-tokens-${game}`} className="field" type="number" inputMode="numeric" min={0} max={100000} step={1}
-              value={tokens} disabled={busy} onChange={(event) => setTokens(event.target.value)} style={{ width: 170 }} />
+            <input id={`weekly-tokens-${game}`} className="field weekly-token-input" type="number" inputMode="numeric" min={0} max={100000} step={1}
+              value={tokens} disabled={busy} onChange={(event) => setTokens(event.target.value)} />
           </div>
           <button className="btn small" type="submit" style={{ alignSelf: 'flex-end' }} disabled={busy || !valid || number === reward}>
             {busy ? 'กำลังบันทึก…' : 'บันทึก Tokens'}
           </button>
-          <span className="muted" style={{ alignSelf: 'flex-end', paddingBottom: 8 }}>รับ {reward} Tokens ครั้งเดียวเมื่อสำเร็จ</span>
+          <span className="muted weekly-reward-summary">รับ {reward} Tokens ครั้งเดียวเมื่อสำเร็จ</span>
         </div>
       </form>
       {error && <div className="error" role="alert">{error}</div>}
@@ -100,7 +101,7 @@ function MissionCard({ game, mission, reload, setMsg }: {
       </div>
       {mission.top?.length > 0 && <details>
         <summary style={{ cursor: 'pointer', fontWeight: 600 }}>ผลงานสมาชิก</summary>
-        <div className="table-wrap"><table><thead><tr><th>สมาชิก</th><th>ทีม</th><th>โทเคนที่ได้รับ</th></tr></thead>
+        <p className="table-hint"><AppIcon name="chevron" size={14} /> เลื่อนตารางเพื่อดูข้อมูลเพิ่มเติม</p><div className="table-wrap" tabIndex={0} role="region" aria-label="ผลงานสมาชิก เลื่อนซ้ายขวาเพื่อดูเพิ่มเติม"><table><thead><tr><th>สมาชิก</th><th>ทีม</th><th>โทเคนที่ได้รับ</th></tr></thead>
           <tbody>{mission.top.map((entry, index) => <tr key={index}><td>{entry.name}</td><td>{entry.team}</td><td>{entry.tokens}</td></tr>)}</tbody>
         </table></div>
       </details>}

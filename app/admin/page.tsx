@@ -5,6 +5,7 @@ import QRCode from 'qrcode';
 import { Hero } from '@/components/Icons';
 import WeeklyMissions from '@/components/admin/WeeklyMissions';
 import LineLogo from '@/components/LineLogo';
+import AppIcon from '@/components/AppIcon';
 import { BULK_CONFIRM } from '@/lib/bulk';
 import { MARKET_CATS, marketCat } from '@/lib/market-cats';
 
@@ -45,12 +46,12 @@ function Login({ onDone }: { onDone: (r: Role) => void }) {
     catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
   }
   return (
-    <div className="app">
+    <div className="app admin-login">
       <Hero title="Food Camp Hunt" subtitle="เข้าสู่ระบบผู้จัดงาน (Admin / Staff)" />
       <main className="main">
-        <div className="card stack">
-          <h2>🔑 เข้าสู่ระบบผู้จัด</h2>
-          <input className="field" type="password" placeholder="รหัสผ่านผู้จัด" value={pw}
+        <div className="card stack admin-login-card">
+          <h2 className="admin-section-heading"><AppIcon name="shield" size={24} /> เข้าสู่ระบบผู้จัด</h2>
+          <input className="field" type="password" aria-label="รหัสผ่านผู้จัด" placeholder="รหัสผ่านผู้จัด" value={pw}
             onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && go()} autoComplete="current-password" />
           {err && <div className="error">{err}</div>}
           <button className="btn" disabled={busy || !pw} onClick={go}>{busy ? 'กำลังตรวจสอบ…' : 'เข้าสู่ระบบ'}</button>
@@ -73,8 +74,8 @@ function Toast({ msg, onClose }: { msg: string; onClose: () => void }) {
   const bad = /ไม่|ผิด|error|เกิดข้อผิดพลาด|ลบไม่ได้|ล้มเหลว/i.test(msg) && !/สำเร็จ|แล้ว$/.test(msg.split('\n')[0]);
   return (
     <div className={`toast${bad ? ' err' : ''}`} role="status" aria-live="polite">
-      <span>{bad ? '⚠️ ' : '✅ '}{msg}</span>
-      <button onClick={onClose} aria-label="ปิด">×</button>
+      <span className="toast-message"><AppIcon name={bad ? 'warning' : 'check'} size={20} />{msg}</span>
+      <button onClick={onClose} aria-label="ปิด"><AppIcon name="close" size={20} /></button>
     </div>
   );
 }
@@ -91,29 +92,29 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
     window.addEventListener('fc-photos-changed', poll); // a review was just made: update the menu badge now
     return () => { clearInterval(t); window.removeEventListener('fc-photos-changed', poll); };
   }, []);
-  const tabs: [Tab, string, string, boolean][] = [
-    ['overview', '📊', 'ภาพรวม', true], ['checkin', '📍', 'เช็กอินวันงาน', true], ['line', '💬', 'กลุ่ม LINE', role === 'admin'], ['market', '🛒', 'ตลาดสินค้า', true],
-    ['people', '👥', 'ทีมและผู้เล่น', role === 'admin'], ['questions', '🍜', 'คำถามควิซ', role === 'admin'], ['games', '🎮', 'ภารกิจประจำสัปดาห์', role === 'admin'],
-    ['hunt', '🧭', 'ล่าสมบัติ', role === 'admin'], ['puzzles', '📸', 'ภารกิจทีม', true],
-    ['history', '📜', 'ประวัติ', role === 'admin'], ['export', '⬇️', 'ส่งออก CSV', role === 'admin'],
+  const tabs: [Tab, 'overview' | 'checkin' | 'line' | 'shop' | 'team' | 'quiz' | 'weekly' | 'hunt' | 'camera' | 'history' | 'download', string, boolean][] = [
+    ['overview', 'overview', 'ภาพรวม', true], ['checkin', 'checkin', 'เช็กอินวันงาน', true], ['line', 'line', 'กลุ่ม LINE', role === 'admin'], ['market', 'shop', 'ตลาดสินค้า', true],
+    ['people', 'team', 'ทีมและผู้เล่น', role === 'admin'], ['questions', 'quiz', 'คำถามควิซ', role === 'admin'], ['games', 'weekly', 'ภารกิจประจำสัปดาห์', role === 'admin'],
+    ['hunt', 'hunt', 'ล่าสมบัติ', role === 'admin'], ['puzzles', 'camera', 'ภารกิจทีม', true],
+    ['history', 'history', 'ประวัติ', role === 'admin'], ['export', 'download', 'ส่งออก CSV', role === 'admin'],
   ];
   return (
     <>
-      <Hero compact title="Food Camp Hunt" subtitle={`แดชบอร์ดผู้จัด · ${role === 'admin' ? 'Admin' : 'Staff'}`}
+      <div className="admin-topbar"><Hero compact title="Food Camp Hunt" subtitle={`แดชบอร์ดผู้จัด · ${role === 'admin' ? 'Admin' : 'Staff'}`}
         actions={<>
-          <a className="btn small" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }} href="/admin/live" target="_blank" rel="noreferrer">📺 จอใหญ่ (Live)</a>
-          <button className="btn small" onClick={onLogout}>ออกจากระบบ</button>
-        </>} />
+          <a className="btn small admin-header-action" href="/admin/live" target="_blank" rel="noreferrer"><AppIcon name="overview" size={18} /> จอใหญ่ (Live)</a>
+          <button className="btn small admin-header-action" onClick={onLogout}><AppIcon name="logout" size={18} /> ออกจากระบบ</button>
+        </>} /></div>
       <div className="admin-layout">
         <nav className="admin-nav" aria-label="เมนูผู้จัด">
           {tabs.filter((t) => t[3]).map(([k, icon, label]) => (
-            <button key={k} className={tab === k ? 'on' : ''} onClick={() => { setTab(k); setMsg(''); window.scrollTo({ top: 0 }); }}>
-              <span className="n-ic" aria-hidden>{icon}</span><span className="n-label">{label}</span>
+            <button key={k} className={tab === k ? 'on' : ''} aria-current={tab === k ? 'page' : undefined} onClick={() => { setTab(k); setMsg(''); window.scrollTo({ top: 0 }); }}>
+              <span className="n-ic" aria-hidden>{k === 'line' ? <LineLogo size={22} /> : <AppIcon name={icon} size={22} />}</span><span className="n-label">{label}</span>
               {k === 'puzzles' && pendingPhotos > 0 && <span className="n-badge" title="ภาพที่รอตรวจ">{pendingPhotos}</span>}
             </button>
           ))}
         </nav>
-        <div className="admin">
+        <div className="admin" id="admin-content">
         {tab === 'overview' && <Overview key={rk} role={role} setMsg={setMsg} />}
         {tab === 'checkin' && <Checkin key={rk} role={role} setMsg={setMsg} />}
         {tab === 'line' && <LineGroups key={rk} setMsg={setMsg} />}
@@ -168,7 +169,7 @@ function LineGroups({ setMsg }: { setMsg: (m: string) => void }) {
   return (
     <>
       <div className="card stack">
-        <div className="row" style={{ justifyContent: 'space-between' }}>
+        <div className="row admin-toolbar" style={{ justifyContent: 'space-between' }}>
           <h2 className="row" style={{ margin: 0, gap: 8 }}><LineLogo size={28} /> จัดการกลุ่ม LINE</h2>
           <button className={`btn small ${data?.open ? 'green' : 'ghost'}`} disabled={!data || busy} onClick={toggle}>
             {busy ? 'กำลังบันทึก…' : data?.open ? '🟢 เปิดอยู่ (กดเพื่อปิด)' : '⚪ ปิดอยู่ (กดเพื่อเปิด)'}
@@ -182,7 +183,7 @@ function LineGroups({ setMsg }: { setMsg: (m: string) => void }) {
       {!data && !err && <div className="spinner" />}
       {data && <div className="card">
         <h2>สถานะทั้ง 4 กลุ่ม</h2>
-        <div className="table-wrap"><table>
+        <p className="table-hint"><AppIcon name="chevron" size={14} /> เลื่อนตารางเพื่อดูข้อมูลเพิ่มเติม</p><div className="table-wrap" tabIndex={0} role="region" aria-label="ตารางข้อมูล เลื่อนซ้ายขวาเพื่อดูเพิ่มเติม"><table>
           <thead><tr><th>กลุ่ม LINE</th><th>ทีม</th><th>เชื่อมต่อแล้ว</th><th>อันดับ</th><th>โทเคน</th></tr></thead>
           <tbody>{['D', 'C', 'A', 'O'].map((code) => {
             const team = data.teams.find((t) => t.line_group_code === code);
@@ -217,7 +218,7 @@ function LineGroupCard({ team, teams, onSaved, setMsg }: { team: LineAdminTeam; 
   }
   return (
     <div className="card stack">
-      <div className="row" style={{ justifyContent: 'space-between' }}>
+      <div className="row admin-toolbar" style={{ justifyContent: 'space-between' }}>
         <h2 style={{ margin: 0 }}>ทีม {team.name}</h2>
         <span className="pill">{team.line_completed_at ? `🏆 อันดับ ${team.line_finish_rank} · รับแล้ว ${team.line_reward_tokens} Tokens` : `เข้า LINE แล้ว ${team.joinedCount}/${team.total} คน`}</span>
       </div>
@@ -227,7 +228,7 @@ function LineGroupCard({ team, teams, onSaved, setMsg }: { team: LineAdminTeam; 
           <input id={`line-name-${team.id}`} className="field" value={displayName} maxLength={120} disabled={busy}
             placeholder="เช่น ทีมครัวแคมป์" onChange={(e) => setDisplayName(Array.from(e.target.value).slice(0, 60).join(''))} />
         </div>
-        <div className="row">
+        <div className="row admin-form-row">
           <div>
             <label className="lbl" htmlFor={`line-group-${team.id}`}>รหัสกลุ่มสำหรับจัดสมาชิก</label>
             <select id={`line-group-${team.id}`} className="field" value={group} disabled={codeLocked || busy}
@@ -251,7 +252,7 @@ function LineGroupCard({ team, teams, onSaved, setMsg }: { team: LineAdminTeam; 
       {err && <div className="error" role="alert">{err}</div>}
       <details>
         <summary style={{ cursor: 'pointer', fontWeight: 600 }}>รายชื่อสมาชิกและคณะทำงาน ({team.members.length} คน)</summary>
-        <div className="table-wrap"><table>
+        <p className="table-hint"><AppIcon name="chevron" size={14} /> เลื่อนตารางเพื่อดูข้อมูลเพิ่มเติม</p><div className="table-wrap" tabIndex={0} role="region" aria-label="ตารางข้อมูล เลื่อนซ้ายขวาเพื่อดูเพิ่มเติม"><table>
           <thead><tr><th>สมาชิก</th><th>สถานะ LINE</th><th>เวลาที่กดเข้ากลุ่ม</th></tr></thead>
           <tbody>{team.members.map((member) => <tr key={member.id}><td>{member.name}{member.isObserver && <div className="muted">คณะทำงาน · ไม่นับสัดส่วน</div>}</td><td>{member.joinedAt ? '✅ เข้า LINE แล้ว' : '⏳ ยังไม่กดเข้ากลุ่ม'}</td><td>{fmt(member.joinedAt) || '—'}</td></tr>)}</tbody>
         </table></div>
@@ -324,15 +325,15 @@ function BulkDelete({ target, setMsg, onDone }: { target: string; setMsg: (m: st
   }
   return (
     <>
-      <div className="card danger-zone" style={{ marginTop: 18 }}>
-        <div className="row" style={{ justifyContent: 'space-between' }}>
+      <div className="card danger-zone admin-danger-zone" style={{ marginTop: 18 }}>
+        <div className="row admin-toolbar" style={{ justifyContent: 'space-between' }}>
           <div><strong>⚠️ โซนอันตราย: ล้างข้อมูลทดสอบ</strong><div className="muted" style={{ fontSize: 14 }}>ลบทีเดียวทั้งกลุ่ม ใช้ตอนซ้อมหรือทดสอบก่อนเริ่มงานจริง · กู้คืนไม่ได้</div></div>
           <button className="btn small danger" onClick={() => { setOpen(true); setWord(''); setErr(''); }}>{info.button}</button>
         </div>
       </div>
       {open && (
-        <div className="dlg-back" role="dialog" aria-label="ยืนยันการลบ" onClick={busy ? undefined : () => setOpen(false)}>
-          <div className="dlg" onClick={(e) => e.stopPropagation()}>
+        <div className="dlg-back admin-confirmation" role="dialog" aria-label="ยืนยันการลบ" onClick={busy ? undefined : () => setOpen(false)}>
+          <div className="dlg admin-dialog" onClick={(e) => e.stopPropagation()}>
             <h2 style={{ marginTop: 0, color: 'var(--bad)' }}>{info.button}</h2>
             <p style={{ margin: '0 0 8px' }}>{info.what}</p>
             <p className="muted" style={{ margin: '0 0 12px' }}>{info.keeps}</p>
@@ -352,11 +353,11 @@ function BulkDelete({ target, setMsg, onDone }: { target: string; setMsg: (m: st
 }
 
 // ------------------------------------------------------------------ overview
-const FLAGS: { key: 'is_open' | 'hunt_open' | 'puzzle_open' | 'market_open'; icon: string; title: string; desc: string; on: string; off: string }[] = [
-  { key: 'is_open', icon: '🍜', title: 'ควิซทายอาหาร', desc: 'ผู้เล่นเริ่มและตอบคำถามได้', on: 'เปิดควิซแล้ว', off: 'ปิดควิซแล้ว' },
-  { key: 'hunt_open', icon: '🧭', title: 'ล่าสมบัติ', desc: 'สแกน QR / กรอกรหัสตามจุด', on: 'เปิดล่าสมบัติแล้ว', off: 'ปิดล่าสมบัติแล้ว' },
-  { key: 'puzzle_open', icon: '📸', title: 'ภารกิจทีม', desc: 'ถ่ายภาพทั้งทีม หัวหน้าทีมอัปโหลด', on: 'เปิดภารกิจทีมแล้ว', off: 'ปิดภารกิจทีมแล้ว' },
-  { key: 'market_open', icon: '🛒', title: 'ตลาดสินค้า', desc: 'เปิดให้หัวหน้าทีมกดแลกจากมือถือ (ทีมงานแลกแทนได้เสมอ)', on: 'เปิดให้หัวหน้าทีมแลกของแล้ว', off: 'ปิดการแลกของโดยหัวหน้าทีมแล้ว' },
+const FLAGS: { key: 'is_open' | 'hunt_open' | 'puzzle_open' | 'market_open'; icon: 'quiz' | 'hunt' | 'camera' | 'shop'; title: string; desc: string; on: string; off: string }[] = [
+  { key: 'is_open', icon: 'quiz', title: 'ควิซทายอาหาร', desc: 'ผู้เล่นเริ่มและตอบคำถามได้', on: 'เปิดควิซแล้ว', off: 'ปิดควิซแล้ว' },
+  { key: 'hunt_open', icon: 'hunt', title: 'ล่าสมบัติ', desc: 'สแกน QR / กรอกรหัสตามจุด', on: 'เปิดล่าสมบัติแล้ว', off: 'ปิดล่าสมบัติแล้ว' },
+  { key: 'puzzle_open', icon: 'camera', title: 'ภารกิจทีม', desc: 'ถ่ายภาพทั้งทีม หัวหน้าทีมอัปโหลด', on: 'เปิดภารกิจทีมแล้ว', off: 'ปิดภารกิจทีมแล้ว' },
+  { key: 'market_open', icon: 'shop', title: 'ตลาดสินค้า', desc: 'เปิดให้หัวหน้าทีมกดแลกจากมือถือ (ทีมงานแลกแทนได้เสมอ)', on: 'เปิดให้หัวหน้าทีมแลกของแล้ว', off: 'ปิดการแลกของโดยหัวหน้าทีมแล้ว' },
 ];
 
 function Overview({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
@@ -387,11 +388,11 @@ function Overview({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
     <>
       <div className="stats">
         <div className="stat"><b>{totalC}/{totalP}</b><span>เล่นควิซจบแล้ว</span></div>
-        <div className="stat"><b>🪙 {totalBal}</b><span>โทเคนคงเหลือรวมทุกทีม</span></div>
+        <div className="stat"><b className="stat-value"><AppIcon name="token" size={24} /> {totalBal}</b><span>โทเคนคงเหลือรวมทุกทีม</span></div>
         <div className="stat"><b>{totalSpent}</b><span>โทเคนที่ใช้ไปแล้ว</span></div>
-        <div className="stat"><b>📦 {d.pendingPickup ?? 0}</b><span>ชิ้นที่รอจ่ายของ</span></div>
-        <div className="stat"><b>📍 {d.checkedIn ?? 0}/{totalP}</b><span>เช็กอินวันงานแล้ว{d.settings.checkin_open ? ' · 🟢 เปิดอยู่' : ''}</span></div>
-        <div className="stat" style={(d.pendingPhotos ?? 0) > 0 ? { outline: '3px solid #f0c36a' } : undefined}><b>📸 {d.pendingPhotos ?? 0}</b><span>ภาพภารกิจที่รอตรวจ</span></div>
+        <div className="stat"><b className="stat-value"><AppIcon name="shop" size={24} /> {d.pendingPickup ?? 0}</b><span>ชิ้นที่รอจ่ายของ</span></div>
+        <div className="stat"><b className="stat-value"><AppIcon name="checkin" size={24} /> {d.checkedIn ?? 0}/{totalP}</b><span>เช็กอินวันงานแล้ว{d.settings.checkin_open ? ' · 🟢 เปิดอยู่' : ''}</span></div>
+        <div className="stat" style={(d.pendingPhotos ?? 0) > 0 ? { outline: '3px solid #f0c36a' } : undefined}><b className="stat-value"><AppIcon name="camera" size={24} /> {d.pendingPhotos ?? 0}</b><span>ภาพภารกิจที่รอตรวจ</span></div>
       </div>
 
       <div className="switches">
@@ -400,7 +401,7 @@ function Overview({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
           return (
             <div key={f.key} className={`switch-card${on ? ' on' : ''}`}>
               <div className="s-top">
-                <div className="s-ic" aria-hidden>{f.icon}</div>
+                <div className="s-ic" aria-hidden><AppIcon name={f.icon} size={25} /></div>
                 <div className="s-title">{f.title}</div>
                 <span className="s-state">{on ? '🟢 เปิดอยู่' : '🔴 ปิดอยู่'}</span>
               </div>
@@ -412,10 +413,10 @@ function Overview({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
       </div>
 
       <div className="card">
-        <h2 style={{ margin: 0 }}>🎯 เป้าหมายร่วมของทีม: {d.settings.team_goal_pct ? `${d.settings.team_goal_pct}% ของสมาชิกต้องเล่นควิซจบ` : 'ปิดอยู่'}</h2>
+        <h2 className="admin-section-heading" style={{ margin: 0 }}><AppIcon name="trophy" size={23} /> เป้าหมายร่วมของทีม: {d.settings.team_goal_pct ? `${d.settings.team_goal_pct}% ของสมาชิกต้องเล่นควิซจบ` : 'ปิดอยู่'}</h2>
         <div className="muted">เมื่อทีมถึงเป้า จะปลดล็อกสินค้าที่ติดป้าย “สินค้าพิเศษ” ในตลาด (ตั้งป้ายที่แท็บตลาด) · {d.settings.tokens_per_correct} โทเคนต่อข้อควิซที่ถูก</div>
         {role === 'admin' && (
-          <div className="row" style={{ marginTop: 8 }}>
+          <div className="row admin-form-row" style={{ marginTop: 8 }}>
             <input className="field" style={{ width: 110 }} type="number" min={0} max={100} value={goal} onChange={(e) => setGoal(e.target.value)} />
             <span>% (0 = ปิด)</span>
             <button className="btn small" onClick={saveGoal}>บันทึก</button>
@@ -474,8 +475,8 @@ function AdjustDialog({ team, onClose, onDone }: { team: any; onClose: () => voi
   const reasons = ['ชดเชยระบบขัดข้อง', 'โบนัสกิจกรรมพิเศษ', 'แก้ไขข้อผิดพลาด', 'หักตามกติกา'];
   return (
     <div className="dlg-back" role="dialog" aria-label="ปรับโทเคน" onClick={busy ? undefined : onClose}>
-      <div className="dlg" onClick={(e) => e.stopPropagation()}>
-        <div className="row" style={{ justifyContent: 'space-between' }}>
+      <div className="dlg admin-dialog" onClick={(e) => e.stopPropagation()}>
+        <div className="row admin-toolbar" style={{ justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0 }}>± ปรับโทเคน: {team.name}</h2>
           <button className="btn small ghost" disabled={busy} onClick={onClose}>ปิด</button>
         </div>
@@ -551,9 +552,9 @@ function Checkin({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) 
       )}
 
       <div className="card noprint">
-        <div className="row" style={{ justifyContent: 'space-between' }}>
+        <div className="row admin-toolbar" style={{ justifyContent: 'space-between' }}>
           <div>
-            <h2 style={{ margin: 0 }}>📍 เช็กอินวันงาน: {d.open ? '🟢 เปิดอยู่' : '🔴 ปิดอยู่'}</h2>
+            <h2 className="admin-section-heading" style={{ margin: 0 }}><AppIcon name="checkin" size={23} /> เช็กอินวันงาน: {d.open ? '🟢 เปิดอยู่' : '🔴 ปิดอยู่'}</h2>
             <div className="muted">เมื่อเปิด ผู้เล่นจะเห็นป๊อปอัปและแถบ “ถึงสถานที่แล้ว? เช็กอิน” ที่หน้าแรก · ผู้เล่นสแกน QR ของทีมงาน แล้วต้องกด <strong>ยืนยันการเข้าร่วม</strong> เอง</div>
           </div>
           {isAdmin && (
@@ -579,7 +580,7 @@ function Checkin({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) 
         <h2 style={{ margin: 0 }}>QR Code เช็กอิน (ให้ผู้เล่นสแกน)</h2>
         {url ? (
           <>
-            <div style={{ margin: '12px 0' }}><Qr text={url} size={240} /></div>
+            <div className="admin-qr" style={{ margin: '12px 0' }}><Qr text={url} size={240} /></div>
             <div className="codebox" style={{ fontSize: 24 }}>{d.code}</div>
             {!d.open && <div className="banner" style={{ marginTop: 10 }}>เช็กอินยังปิดอยู่ · QR ใช้ไม่ได้จนกว่าจะเปิด</div>}
             <div className="row noprint" style={{ justifyContent: 'center', marginTop: 10 }}>
@@ -594,14 +595,14 @@ function Checkin({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) 
 
       <div className="card noprint">
         <h2>รายชื่อผู้เล่น</h2>
-        <div className="row" style={{ margin: '4px 0 10px' }}>
+        <div className="row admin-form-row" style={{ margin: '4px 0 10px' }}>
           {([['missing', `⏳ ยังไม่มา (${people.length - inCount})`], ['in', `✅ เช็กอินแล้ว (${inCount})`], ['all', 'ทั้งหมด']] as const).map(([k, label]) => (
             <button key={k} className={`btn small ${filter === k ? '' : 'ghost'}`} onClick={() => setFilter(k)}>{label}</button>
           ))}
           <input className="field grow" placeholder="ค้นหาชื่อ / ทีม" value={q} onChange={(e) => setQ(e.target.value)} />
           <a className="btn small ghost" style={{ textDecoration: 'none' }} href="/api/admin/export?type=checkin">⬇️ CSV</a>
         </div>
-        <div className="table-wrap"><table>
+        <p className="table-hint"><AppIcon name="chevron" size={14} /> เลื่อนตารางเพื่อดูข้อมูลเพิ่มเติม</p><div className="table-wrap" tabIndex={0} role="region" aria-label="ตารางข้อมูล เลื่อนซ้ายขวาเพื่อดูเพิ่มเติม"><table>
           <thead><tr><th>ชื่อ</th><th>ทีม</th><th>สควอด</th><th>สถานะ</th><th /></tr></thead>
           <tbody>{shown.map((p) => (
             <tr key={p.id}>
@@ -691,7 +692,7 @@ function Market({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
     <>
       <div className="card">
         <h2>ยืนยันการแลกของ</h2>
-        <div className="row">
+        <div className="row admin-form-row">
           <select className="field grow" value={rd.team_id} onChange={(e) => setRd({ ...rd, team_id: e.target.value, key: uuid() })}>
             <option value="">เลือกทีม</option>
             {teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name} (🪙 {t.balance})</option>)}
@@ -717,7 +718,7 @@ function Market({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
       <Pickup setMsg={setMsg} reloadKey={items.length} />
 
       <div className="card">
-        <div className="row" style={{ justifyContent: 'space-between' }}>
+        <div className="row admin-toolbar" style={{ justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0 }}>รายการสินค้า</h2>
           {role === 'admin' && <button className="btn small green" onClick={() => setEdit({ name: '', category: 'ingredient', price: 10, stock: 10, active: true, requires_goal: false, image_url: '' })}>+ เพิ่มสินค้า</button>}
         </div>
@@ -727,7 +728,7 @@ function Market({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
             <button key={c.key} className={cat === c.key ? 'on' : ''} onClick={() => setCat(c.key)}>{c.icon} {c.label} / {c.en} ({items.filter((i) => marketCat(i.category) === c.key).length})</button>
           ))}
         </div>
-        <div className="table-wrap">
+        <p className="table-hint"><AppIcon name="chevron" size={14} /> เลื่อนตารางเพื่อดูข้อมูลเพิ่มเติม</p><div className="table-wrap" tabIndex={0} role="region" aria-label="ตารางข้อมูล เลื่อนซ้ายขวาเพื่อดูเพิ่มเติม">
           <table>
             <thead><tr><th>รูป</th><th>ชื่อ</th><th>หมวด</th><th>ราคา</th><th>คงเหลือ</th><th>ล็อกด้วยเป้าหมาย</th><th>สถานะ</th>{role === 'admin' && <th />}</tr></thead>
             <tbody>
@@ -737,10 +738,10 @@ function Market({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
                   <td>{i.name}</td><td>{MARKET_CATS.find((c) => c.key === marketCat(i.category))!.icon} {MARKET_CATS.find((c) => c.key === marketCat(i.category))!.label}</td><td className="num">{i.price}</td><td className="num">{i.stock}</td>
                   <td>{i.requires_goal ? '🎯 ต้องถึงเป้า' : '—'}</td>
                   <td>{i.active ? 'เปิดขาย' : 'ปิด'}</td>
-                  {role === 'admin' && <td className="row">
+                  {role === 'admin' && <td className="table-action-cell"><div className="row table-actions">
                     <button className="btn small ghost" onClick={() => setEdit(i)}>แก้ไข</button>
                     <button className="btn small ghost" onClick={async () => { if (confirm(`ลบ ${i.name}?`)) { await call('item.delete', { id: i.id }); load(); } }}>ลบ</button>
-                  </td>}
+                  </div></td>}
                 </tr>
               ))}
             </tbody>
@@ -751,14 +752,14 @@ function Market({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) {
       {edit && (
         <div className="card">
           <h2>{edit.id ? 'แก้ไขสินค้า' : 'เพิ่มสินค้า'}</h2>
-          <div className="row">
+          <div className="row admin-form-row">
             <div className="grow"><label className="lbl">ชื่อ</label><input className="field" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></div>
             <div className="grow"><label className="lbl">หมวด</label><select className="field" value={marketCat(edit.category)} onChange={(e) => setEdit({ ...edit, category: e.target.value })}>{MARKET_CATS.map((c) => <option key={c.key} value={c.key}>{c.icon} {c.label} ({c.en})</option>)}</select></div>
             <div><label className="lbl">ราคา (โทเคน)</label><input className="field" style={{ width: 110 }} type="number" min={1} value={edit.price} onChange={(e) => setEdit({ ...edit, price: Number(e.target.value) })} /></div>
             <div><label className="lbl">จำนวนคงเหลือ</label><input className="field" style={{ width: 110 }} type="number" min={0} value={edit.stock} onChange={(e) => setEdit({ ...edit, stock: Number(e.target.value) })} /></div>
           </div>
           <label className="lbl">รูปสินค้า (ไฟล์ภาพ PNG / JPG / WebP · ระบบย่อรูปให้อัตโนมัติ ถ่ายจากมือถือได้เลย)</label>
-          <div className="row">
+          <div className="row admin-form-row">
             {edit.image_url
               ? <img src={edit.image_url} alt="" style={{ width: 96, height: 96, objectFit: 'cover', borderRadius: 12, border: '2px solid var(--cream-deep)' }} />
               : <div style={{ width: 96, height: 96, borderRadius: 12, border: '2px dashed var(--cream-deep)', display: 'grid', placeItems: 'center', fontSize: 32 }}>🍽️</div>}
@@ -851,11 +852,11 @@ function Pickup({ setMsg, reloadKey }: { setMsg: (m: string) => void; reloadKey:
   const pendingTeams = d.teams.filter((t) => t.pending > 0);
   return (
     <div className="card">
-      <h2>📦 เตรียมของ / เบิกของ</h2>
+      <h2 className="admin-section-heading"><AppIcon name="shop" size={23} /> เตรียมของ / เบิกของ</h2>
       <p className="muted">สรุปสิ่งที่ทีมแลกไว้แล้วและยังรอรับ เพื่อเตรียมสินค้าให้ทันเวลาเบิกจริง เมื่อจ่ายของให้ทีมแล้วกด “จ่ายแล้ว”</p>
       {d.items.length === 0 ? <p className="muted center" style={{ margin: 0 }}>ยังไม่มีการแลกสินค้า</p> : (
         <>
-          <div className="table-wrap"><table>
+          <p className="table-hint"><AppIcon name="chevron" size={14} /> เลื่อนตารางเพื่อดูข้อมูลเพิ่มเติม</p><div className="table-wrap" tabIndex={0} role="region" aria-label="ตารางข้อมูล เลื่อนซ้ายขวาเพื่อดูเพิ่มเติม"><table>
             <thead><tr><th>สินค้า</th><th>แลกแล้วรวม</th><th>จ่ายแล้ว</th><th>รอเตรียมจ่าย</th><th>ทีมที่รอรับ</th></tr></thead>
             <tbody>{d.items.map((i) => (
               <tr key={i.item}><td>{i.item}</td><td className="num">{i.ordered}</td><td className="num">{i.handed}</td>
@@ -863,7 +864,7 @@ function Pickup({ setMsg, reloadKey }: { setMsg: (m: string) => void; reloadKey:
             ))}</tbody>
           </table></div>
           <h2 style={{ fontSize: 17, marginTop: 14 }}>แยกตามทีม</h2>
-          <div className="table-wrap"><table>
+          <p className="table-hint"><AppIcon name="chevron" size={14} /> เลื่อนตารางเพื่อดูข้อมูลเพิ่มเติม</p><div className="table-wrap" tabIndex={0} role="region" aria-label="ตารางข้อมูล เลื่อนซ้ายขวาเพื่อดูเพิ่มเติม"><table>
             <thead><tr><th>ทีม</th><th>สินค้า</th><th>แลกแล้ว</th><th>จ่ายแล้ว</th><th>รอรับ</th><th /></tr></thead>
             <tbody>{d.teams.map((t, k) => (
               <tr key={k}><td>{t.team}</td><td>{t.item}</td><td className="num">{t.ordered}</td><td className="num">{t.handed}</td>
@@ -936,12 +937,12 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
   return (
     <>
       <div className="card">
-        <h2>ทีม</h2>
+        <h2 className="admin-section-heading"><AppIcon name="team" size={23} /> ทีม</h2>
         <ul className="list">
           {teams.map((t) => (
             <li key={t.team_id}>
               {editTeam?.id === t.team_id ? (
-                <span className="row grow">
+                <span className="row grow admin-form-row">
                   <input className="field grow" value={editTeam.name} onChange={(e) => setEditTeam({ ...editTeam, name: e.target.value })} />
                   <button className="btn small" onClick={() => run(async () => { await call('team.save', editTeam); setEditTeam(null); }, 'บันทึกชื่อทีมแล้ว')}>บันทึก</button>
                 </span>
@@ -957,14 +958,14 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
             </li>
           ))}
         </ul>
-        <div className="row" style={{ marginTop: 8 }}>
+        <div className="row admin-form-row" style={{ marginTop: 8 }}>
           <input className="field grow" placeholder="ชื่อทีมใหม่" value={teamName} onChange={(e) => setTeamName(e.target.value)} />
           <button className="btn small green" disabled={!teamName.trim()} onClick={() => run(async () => { await call('team.save', { name: teamName }); setTeamName(''); }, 'เพิ่มทีมแล้ว')}>+ เพิ่มทีม</button>
         </div>
       </div>
 
       <div className="card">
-        <h2>สควอด (กลุ่มย่อยในทีม)</h2>
+        <h2 className="admin-section-heading"><AppIcon name="users" size={23} /> สควอด (กลุ่มย่อยในทีม)</h2>
         <p className="muted">ทีมละ ~20 คน แนะนำแบ่งเป็นสควอดละ 4–5 คน: ล่าสมบัติจะนับ <strong>แยกตามสควอด</strong> (แต่ละสควอดเก็บแต่ละจุดได้ 1 ครั้ง) โทเคนยังเข้ากระเป๋าทีมรวม · คนที่ไม่มีสควอดจะนับเป็นกลุ่มเดียวทั้งทีม · อย่าลืมปรับโทเคนต่อจุดให้เหมาะกับจำนวนสควอด</p>
         <ul className="list">
           {teams.map((t) => {
@@ -973,9 +974,9 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
             const none = people.filter((p) => p.team_id === t.team_id && !p.squad_id).length;
             return (
               <li key={t.team_id} style={{ display: 'block' }}>
-                <div className="row" style={{ justifyContent: 'space-between' }}>
+                <div className="row admin-toolbar admin-form-row" style={{ justifyContent: 'space-between' }}>
                   <strong>{t.name} <span className="muted">({t.participants} คน · {mine.length} สควอด · ไม่มีสควอด {none})</span></strong>
-                  <span className="row">
+                  <span className="row admin-form-row">
                     <input className="field" style={{ width: 80 }} type="number" min={2} max={30} title="ขนาดสควอด (คน)"
                       value={sizes[t.team_id] ?? '5'} onChange={(e) => setSizes({ ...sizes, [t.team_id]: e.target.value })} />
                     <button className="btn small" disabled={!t.participants}
@@ -984,9 +985,9 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
                     </button>
                   </span>
                 </div>
-                <div className="row" style={{ marginTop: 6 }}>
+                <div className="row admin-form-row" style={{ marginTop: 6 }}>
                   {mine.map((q) => editSquad?.id === q.id ? (
-                    <span key={q.id} className="row">
+                    <span key={q.id} className="row admin-form-row">
                       <input className="field" value={editSquad?.name ?? ""} onChange={(e) => setEditSquad({ id: q.id, name: e.target.value })} />
                       <button className="btn small" onClick={() => run(async () => { await call('squad.save', editSquad); setEditSquad(null); }, 'บันทึกแล้ว')}>บันทึก</button>
                     </span>
@@ -1006,14 +1007,14 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
       </div>
 
       <div className="card">
-        <h2>นำเข้าผู้เล่นจาก Excel</h2>
+        <h2 className="admin-section-heading"><AppIcon name="users" size={23} /> นำเข้าผู้เล่นจาก Excel</h2>
         <p className="muted">
           ไฟล์ต้องมีคอลัมน์ <strong>ID, Full name, Nick name, Team</strong> (เพิ่ม <strong>Squad</strong> และ <strong>Leader</strong> = ใส่ 1/yes/หัวหน้า ให้คนที่เป็นหัวหน้าทีม ได้ ไม่บังคับ ทีมละ 1 คน) · <strong>ID</strong> คือรหัสที่ผู้เล่นใช้เข้าเกม คุณเป็นคนกำหนดเอง ·
           ทีมที่ยังไม่มีในระบบจะถูกสร้างให้ · นำเข้าซ้ำได้: ID เดิมจะอัปเดตชื่อ/ทีม ไม่สร้างซ้ำ ·
           ใน Excel ควรตั้งคอลัมน์ ID เป็นชนิด <strong>ข้อความ (Text)</strong> ไม่งั้นเลขนำหน้า 0 อาจหาย
         </p>
         <p className="muted">กลุ่ม LINE จะตามทีมในไฟล์ โดยตั้งลิงก์ของ D/C/A/O ที่แท็บ “กลุ่ม LINE” · ทีมที่ได้รางวัล LINE แล้วจะเพิ่ม ลบ หรือย้ายสมาชิกไม่ได้</p>
-        <div className="row">
+        <div className="row admin-form-row">
           <input type="file" accept=".xlsx,.csv,.txt" onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f); e.target.value = ''; }} />
         </div>
         <label className="lbl">หรือคัดลอกเซลล์จาก Excel (รวมแถวหัวตาราง) มาวางที่นี่</label>
@@ -1030,7 +1031,7 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
             <div style={{ marginTop: 14 }}>
               <h2 style={{ fontSize: 17 }}>ตัวอย่างจาก {imp.source}: {imp.rows.length} คน · {teamsInFile.length} ทีม</h2>
               {problems.length > 0 && <div className="error" style={{ marginBottom: 10 }}>{problems.slice(0, 10).join('\n')}{problems.length > 10 ? `\n… และอีก ${problems.length - 10} รายการ` : ''}</div>}
-              <div className="table-wrap"><table>
+              <p className="table-hint"><AppIcon name="chevron" size={14} /> เลื่อนตารางเพื่อดูข้อมูลเพิ่มเติม</p><div className="table-wrap" tabIndex={0} role="region" aria-label="ตารางข้อมูล เลื่อนซ้ายขวาเพื่อดูเพิ่มเติม"><table>
                 <thead><tr><th>#</th><th>ID</th><th>Full name</th><th>Nick name</th><th>Team</th><th>Squad</th><th>หัวหน้า</th></tr></thead>
                 <tbody>{imp.rows.slice(0, 8).map((r, k) => <tr key={k}><td className="num">{k + 1}</td><td className="codebox">{r.id}</td><td>{r.full_name}</td><td>{r.nick_name}</td><td>{r.team}</td><td>{r.squad || '—'}</td><td>{r.leader ? '⭐' : ''}</td></tr>)}</tbody>
               </table></div>
@@ -1054,12 +1055,12 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
         </select>
         {form.is_observer && <p className="muted">เลือกทีมที่ต้องการให้คณะทำงานติดตามได้ บัญชีนี้ไม่รวมในคะแนน สัดส่วนเข้า LINE หรือจำนวนผู้ทำกิจกรรม และย้ายไปติดตามทีมอื่นได้</p>}
 
-        <div className="row">
+        <div className="row admin-form-row">
           <input className="field grow" placeholder={form.id ? 'ID ใหม่ (เว้นว่าง = ใช้ ID เดิม)' : 'ID สำหรับเข้าเกม'} value={form.login_id} onChange={(e) => setForm({ ...form, login_id: e.target.value })} />
           <input className="field grow" placeholder="Full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           <input className="field grow" placeholder="Nick name" value={form.nick_name} onChange={(e) => setForm({ ...form, nick_name: e.target.value })} />
         </div>
-        <div className="row" style={{ marginTop: 8 }}>
+        <div className="row admin-form-row" style={{ marginTop: 8 }}>
           <select aria-label="ทีมและกลุ่ม LINE ของผู้เล่น" className="field grow" value={form.team_id} disabled={!form.is_observer && !!form.id && !!people.find((p) => p.id === form.id)?.line_completed_at} onChange={(e) => setForm({ ...form, team_id: e.target.value, squad_id: '' })}>
             <option value="">เลือกทีม</option>{teams.map((t) => <option key={t.team_id} value={t.team_id} disabled={!form.is_observer && !!t.line_completed_at && t.team_id !== people.find((p) => p.id === form.id)?.team_id}>{t.name}{t.line_group_code ? ` · LINE ${t.line_group_name || t.line_group_code}` : ''}{t.line_completed_at ? ' (ล็อกรายชื่อแล้ว)' : ''}</option>)}
           </select>
@@ -1082,10 +1083,10 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
       </div>
 
       <div className="card">
-        <div className="row" style={{ justifyContent: 'space-between' }}>
+        <div className="row admin-toolbar" style={{ justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0 }}>ผู้เล่น ({people.length})</h2>
         </div>
-        <div className="table-wrap"><table>
+        <p className="table-hint"><AppIcon name="chevron" size={14} /> เลื่อนตารางเพื่อดูข้อมูลเพิ่มเติม</p><div className="table-wrap" tabIndex={0} role="region" aria-label="ตารางข้อมูล เลื่อนซ้ายขวาเพื่อดูเพิ่มเติม"><table>
           <thead><tr><th /><th>Full name</th><th>Nick name</th><th>ทีม</th><th>กลุ่ม LINE</th><th>สควอด</th><th>หัวหน้า</th><th>สถานะ</th><th>คะแนน</th><th>ID</th><th /></tr></thead>
           <tbody>
             {people.map((p) => (
@@ -1095,7 +1096,7 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
                 <td>{{ not_started: 'ยังไม่เริ่ม', in_progress: 'กำลังเล่น', completed: 'จบแล้ว' }[p.status as 'completed']}</td>
                 <td className="num">{p.status === 'completed' ? `${p.correct_count} (${p.tokens_earned})` : ''}</td>
                 <td>{p.has_code ? '✔ มี ID' : '— ไม่มี ID'}</td>
-                <td className="row">
+                <td className="table-action-cell"><div className="row table-actions">
                   <button className="btn small ghost" onClick={() => setForm({ id: p.id, login_id: '', name: p.name, nick_name: p.nick_name ?? '', team_id: p.team_id, squad_id: p.squad_id ?? '', is_leader: !!p.is_leader, is_observer: !!p.is_observer })}>แก้ไข</button>
                   {p.is_leader
                     ? <button className="btn small ghost" onClick={() => run(() => call('leader.clear', { id: p.id }), 'ยกเลิกหัวหน้าทีมแล้ว')}>ยกเลิกหัวหน้า</button>
@@ -1104,7 +1105,7 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
                   {p.has_avatar && <button className="btn small ghost" onClick={() => confirm(`ลบรูปโปรไฟล์ของ ${p.name}?`) && run(() => call('avatar.clear', { id: p.id }), 'ลบรูปโปรไฟล์แล้ว')}>ลบรูปโปรไฟล์</button>}
                   {p.has_code && <button className="btn small ghost" onClick={() => confirm(`ยกเลิก ID ของ ${p.name}? จะเข้าเกมไม่ได้จนกว่าจะตั้ง ID ใหม่`) && run(() => call('code.revoke', { id: p.id }), 'ยกเลิก ID แล้ว')}>ยกเลิก ID</button>}
                   {p.status === 'not_started' && <button className="btn small ghost" disabled={!p.is_observer && !!p.line_completed_at} title={p.line_completed_at ? 'ทีมได้รางวัล LINE แล้ว จึงลบสมาชิกไม่ได้' : undefined} onClick={() => confirm(`ลบ ${p.name}?`) && run(() => call('participant.delete', { id: p.id }), 'ลบแล้ว')}>ลบ</button>}
-                </td>
+                </div></td>
               </tr>
             ))}
           </tbody>
@@ -1141,11 +1142,11 @@ function Questions({ setMsg }: { setMsg: (m: string) => void }) {
     <>
       <div className="banner">⚠️ แก้ไขคำถามให้เสร็จก่อนเปิดเกม หลังมีคนเริ่มตอบแล้วไม่ควรเปลี่ยนคำตอบที่ถูกหรือลำดับ</div>
       <div className="card">
-        <div className="row" style={{ justifyContent: 'space-between' }}>
+        <div className="row admin-toolbar" style={{ justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0 }}>คำถาม ({qs.filter((q) => q.active).length} ข้อที่ใช้งาน)</h2>
           <button className="btn small green" onClick={() => setEdit({ position: qs.length + 1, prompt: '', image_url: '', options: ['', '', '', ''], correct_index: 0, active: true })}>+ เพิ่มคำถาม</button>
         </div>
-        <div className="table-wrap"><table>
+        <p className="table-hint"><AppIcon name="chevron" size={14} /> เลื่อนตารางเพื่อดูข้อมูลเพิ่มเติม</p><div className="table-wrap" tabIndex={0} role="region" aria-label="ตารางข้อมูล เลื่อนซ้ายขวาเพื่อดูเพิ่มเติม"><table>
           <thead><tr><th>#</th><th>รูป</th><th>คำถาม</th><th>ตัวเลือก (✔ = ถูก)</th><th>ใช้งาน</th><th /></tr></thead>
           <tbody>
             {qs.map((q) => (
@@ -1155,10 +1156,10 @@ function Questions({ setMsg }: { setMsg: (m: string) => void }) {
                 <td>{q.prompt}</td>
                 <td>{q.options.map((o: string, i: number) => <div key={i}>{i === q.correct_index ? '✔ ' : '• '}{o}</div>)}</td>
                 <td>{q.active ? 'ใช่' : 'ไม่'}</td>
-                <td className="row">
+                <td className="table-action-cell"><div className="row table-actions">
                   <button className="btn small ghost" onClick={() => setEdit({ ...q, image_url: q.image_url ?? '' })}>แก้ไข</button>
                   <button className="btn small ghost" onClick={async () => { if (confirm('ลบคำถามนี้?')) { try { const r = await call('question.delete', { id: q.id }); setMsg(r.deactivated ? 'มีคนตอบแล้ว จึงปิดการใช้งานแทนการลบ' : 'ลบแล้ว'); load(); } catch (e) { setMsg((e as Error).message); } } }}>ลบ</button>
-                </td>
+                </div></td>
               </tr>
             ))}
           </tbody>
@@ -1171,7 +1172,7 @@ function Questions({ setMsg }: { setMsg: (m: string) => void }) {
           <label className="lbl">คำถาม</label>
           <input className="field" value={edit.prompt} onChange={(e) => setEdit({ ...edit, prompt: e.target.value })} />
           <label className="lbl">รูปภาพ — วางลิงก์ https://… หรืออัปโหลด (PNG/JPG/WebP ≤ 2MB) ใช้เฉพาะรูปที่คุณมีสิทธิ์ใช้งาน</label>
-          <div className="row">
+          <div className="row admin-form-row">
             <input className="field grow" value={edit.image_url} onChange={(e) => setEdit({ ...edit, image_url: e.target.value })} placeholder="https://… หรือ /placeholders/q1.svg" />
             <input type="file" accept="image/png,image/jpeg,image/webp" onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])} />
             {up && <span className="muted">กำลังอัปโหลด…</span>}
@@ -1179,12 +1180,12 @@ function Questions({ setMsg }: { setMsg: (m: string) => void }) {
           {edit.image_url && <img src={edit.image_url} alt="" style={{ width: 160, marginTop: 8, borderRadius: 10 }} />}
           <label className="lbl">ตัวเลือก 4 ข้อ (เลือกวงกลมที่เป็นคำตอบที่ถูก)</label>
           {edit.options.map((o: string, i: number) => (
-            <div className="row" key={i} style={{ marginBottom: 6 }}>
+            <div className="row admin-form-row" key={i} style={{ marginBottom: 6 }}>
               <input type="radio" name="correct" checked={edit.correct_index === i} onChange={() => setEdit({ ...edit, correct_index: i })} />
               <input className="field grow" value={o} onChange={(e) => { const opts = [...edit.options]; opts[i] = e.target.value; setEdit({ ...edit, options: opts }); }} />
             </div>
           ))}
-          <div className="row">
+          <div className="row admin-form-row">
             <div><label className="lbl">ลำดับ</label><input className="field" style={{ width: 90 }} type="number" value={edit.position} onChange={(e) => setEdit({ ...edit, position: Number(e.target.value) })} /></div>
             <label className="lbl" style={{ marginTop: 28 }}><input type="checkbox" checked={edit.active} onChange={(e) => setEdit({ ...edit, active: e.target.checked })} /> ใช้งาน</label>
           </div>
@@ -1243,7 +1244,7 @@ function Hunt({ setMsg }: { setMsg: (m: string) => void }) {
           {act.map((s) => (
             <div className="card center" key={s.id} style={{ breakInside: 'avoid' }}>
               <h2>{s.title}</h2>
-              <Qr text={link(s.secret)} size={180} />
+              <div className="admin-qr"><Qr text={link(s.secret)} size={180} /></div>
               <div className="codebox" style={{ fontSize: 22 }}>{s.secret}</div>
               <div className="muted">สแกน หรือกรอกรหัสในเกม · {s.tokens} โทเคน</div>
             </div>
@@ -1256,7 +1257,7 @@ function Hunt({ setMsg }: { setMsg: (m: string) => void }) {
   return (
     <>
       <div className="card">
-        <div className="row" style={{ justifyContent: 'space-between' }}>
+        <div className="row admin-toolbar" style={{ justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0 }}>จุดล่าสมบัติ ({d.spots.length})</h2>
           <span className="row">
             <button className="btn small" onClick={() => setF({ ...blank, position: String(d.spots.length + 1), secret: randomSecret() })}>เพิ่มจุด</button>
@@ -1264,17 +1265,17 @@ function Hunt({ setMsg }: { setMsg: (m: string) => void }) {
           </span>
         </div>
         <p className="muted">แต่ละ <strong>สควอด</strong> (ถ้าไม่มีสควอด = ทั้งทีม) ได้โทเคนจากแต่ละจุด <strong>ครั้งเดียว</strong> (คนแรกในกลุ่มที่เจอ) โทเคนเข้ากระเป๋าทีม · แก้ไขรหัสจุดหลังเริ่มเกมแล้ว QR ที่พิมพ์ไว้จะใช้ไม่ได้</p>
-        <div className="table-wrap"><table>
+        <p className="table-hint"><AppIcon name="chevron" size={14} /> เลื่อนตารางเพื่อดูข้อมูลเพิ่มเติม</p><div className="table-wrap" tabIndex={0} role="region" aria-label="ตารางข้อมูล เลื่อนซ้ายขวาเพื่อดูเพิ่มเติม"><table>
           <thead><tr><th>#</th><th>ชื่อจุด</th><th>รหัส</th><th>โทเคน</th><th>สควอด/ทีมที่เจอ</th><th>สถานะ</th><th></th></tr></thead>
           <tbody>{d.spots.map((s) => (
             <tr key={s.id}>
               <td className="num">{s.position}</td><td>{s.title}{s.min_players > 1 && <span className="pill" style={{ marginLeft: 6 }}>👥 ต้อง {s.min_players} คน/{Math.round(s.window_sec / 60 * 10) / 10} นาที</span>}<div className="muted">{s.hint}</div></td>
               <td className="codebox">{s.secret}</td><td className="num">{s.tokens}</td><td className="num">{count(s.id)}</td>
               <td>{s.active ? 'ใช้งาน' : 'ปิด'}</td>
-              <td className="row">
+              <td className="table-action-cell"><div className="row table-actions">
                 <button className="btn small ghost" onClick={() => setF({ id: s.id, position: String(s.position), title: s.title, hint: s.hint, secret: s.secret, tokens: String(s.tokens), active: s.active, min_players: String(s.min_players ?? 1), window_sec: String(s.window_sec ?? 180) })}>แก้ไข</button>
                 <button className="btn small ghost" onClick={() => confirm(`ลบจุด ${s.title}?`) && call('spot.delete', { id: s.id }).then((r) => { load(); setMsg(r.deactivated ? 'มีทีมเจอแล้ว จึงปิดจุดแทนการลบ' : 'ลบแล้ว'); }).catch((e) => setMsg(e.message))}>ลบ</button>
-              </td>
+              </div></td>
             </tr>))}</tbody>
         </table></div>
       </div>
@@ -1287,12 +1288,12 @@ function Hunt({ setMsg }: { setMsg: (m: string) => void }) {
           <label className="lbl">คำใบ้ (ผู้เล่นเห็นจนกว่าทีมจะเจอ)</label>
           <input className="field" value={f.hint} onChange={(e) => setF({ ...f, hint: e.target.value })} />
           <label className="lbl">รหัสจุด (4–40 ตัว A-Z 0-9 · ซ่อนจากผู้เล่น)</label>
-          <div className="row">
+          <div className="row admin-form-row">
             <input className="field grow codebox" value={f.secret} onChange={(e) => setF({ ...f, secret: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })} />
             <button className="btn small ghost" onClick={() => setF({ ...f, secret: randomSecret() })}>สุ่มใหม่</button>
           </div>
           {f.secret.length >= 4 && <div style={{ margin: '10px 0' }}><Qr text={link(f.secret)} size={120} /></div>}
-          <div className="row">
+          <div className="row admin-form-row">
             <div><label className="lbl">โทเคน</label><input className="field" type="number" min={0} value={f.tokens} onChange={(e) => setF({ ...f, tokens: e.target.value })} /></div>
             <div><label className="lbl">ลำดับ</label><input className="field" type="number" value={f.position} onChange={(e) => setF({ ...f, position: e.target.value })} /></div>
             <div><label className="lbl">จุดร่วมมือ: ต้องสแกนกี่คน (1 = ปกติ)</label><input className="field" style={{ width: 130 }} type="number" min={1} max={10} value={f.min_players} onChange={(e) => setF({ ...f, min_players: e.target.value })} /></div>
@@ -1308,7 +1309,7 @@ function Hunt({ setMsg }: { setMsg: (m: string) => void }) {
 
       <div className="card">
         <h2>ความคืบหน้าล่าสุด</h2>
-        <div className="table-wrap"><table>
+        <p className="table-hint"><AppIcon name="chevron" size={14} /> เลื่อนตารางเพื่อดูข้อมูลเพิ่มเติม</p><div className="table-wrap" tabIndex={0} role="region" aria-label="ตารางข้อมูล เลื่อนซ้ายขวาเพื่อดูเพิ่มเติม"><table>
           <thead><tr><th>เวลา</th><th>ทีม</th><th>สควอด</th><th>จุด</th><th>ผู้พบ</th></tr></thead>
           <tbody>{d.claims.map((c, i) => <tr key={i}><td>{fmt(c.at)}</td><td>{c.team}</td><td>{c.squad || '—'}</td><td>{d.spots.find((s) => s.id === c.spot_id)?.title}</td><td>{c.by}</td></tr>)}</tbody>
         </table></div>
@@ -1378,8 +1379,8 @@ function Missions({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
     <>
       {zoom && <div className="dlg-back" onClick={() => setZoom('')} style={{ cursor: 'zoom-out' }}><img src={zoom} alt="" style={{ maxWidth: '100%', maxHeight: '90dvh', borderRadius: 16 }} /></div>}
       <div className="card">
-        <div className="row" style={{ justifyContent: 'space-between' }}>
-          <h2 style={{ margin: 0 }}>📸 ภารกิจทีม: ถ่ายภาพทั้งทีม ({d.missions.length})</h2>
+        <div className="row admin-toolbar" style={{ justifyContent: 'space-between' }}>
+          <h2 className="admin-section-heading" style={{ margin: 0 }}><AppIcon name="camera" size={23} /> ภารกิจทีม: ถ่ายภาพทั้งทีม ({d.missions.length})</h2>
           {isAdmin && <button className="btn small" onClick={() => setF({ ...blank, position: String(d.missions.length + 1) })}>+ เพิ่มภารกิจ</button>}
         </div>
         <p className="muted">
@@ -1387,7 +1388,7 @@ function Missions({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
           ภาพที่ส่งจะ <strong>รอทีมงานตรวจ</strong>: กด <strong>✅ ยืนยัน</strong> ทีมจึงได้โทเคน หรือ <strong>❌ ปฏิเสธ</strong> (ไม่ตรงโจทย์) ทีมจะไม่ได้โทเคนและหัวหน้าส่งใหม่ได้ ·
           เปิด-ปิดที่สวิตช์ “ภารกิจทีม” ในหน้าภาพรวม · ทีมที่ยังไม่มีหัวหน้าจะส่งภาพไม่ได้
         </p>
-        <div className="table-wrap"><table>
+        <p className="table-hint"><AppIcon name="chevron" size={14} /> เลื่อนตารางเพื่อดูข้อมูลเพิ่มเติม</p><div className="table-wrap" tabIndex={0} role="region" aria-label="ตารางข้อมูล เลื่อนซ้ายขวาเพื่อดูเพิ่มเติม"><table>
           <thead><tr><th>#</th><th>ภาพตัวอย่าง</th><th>ภารกิจ</th><th>ประเภท</th><th>โทเคน</th><th>ผ่านแล้ว</th><th>รอตรวจ</th><th>สถานะ</th><th /></tr></thead>
           <tbody>{d.missions.map((m) => (
             <tr key={m.id}>
@@ -1396,10 +1397,10 @@ function Missions({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
               <td><strong>{m.title}</strong><div className="muted" style={{ maxWidth: 360 }}>{m.description}</div></td>
               <td>{CATS.find((c) => c[0] === m.category)?.[1]}</td><td className="num">{m.tokens}</td><td className="num">{m.done} ทีม</td><td className="num">{m.pending ? <strong style={{ color: '#a35a00' }}>{m.pending}</strong> : '—'}</td>
               <td>{m.active ? 'ใช้งาน' : 'ปิด'}</td>
-              <td className="row">{isAdmin && <>
+              <td className="table-action-cell"><div className="row table-actions">{isAdmin && <>
                 <button className="btn small ghost" onClick={() => setF({ id: m.id, position: String(m.position), title: m.title, description: m.description, category: m.category, ref_image_url: m.ref_image_url ?? '', tokens: String(m.tokens), active: m.active })}>แก้ไข</button>
                 <button className="btn small ghost" onClick={() => confirm(`ลบภารกิจ “${m.title}”?`) && call('mission.delete', { id: m.id }).then((r) => { load(); setMsg(r.deactivated ? 'มีทีมส่งภาพแล้ว จึงปิดภารกิจแทนการลบ' : 'ลบแล้ว'); }).catch((e) => setMsg(e.message))}>ลบ</button>
-              </>}</td>
+              </>}</div></td>
             </tr>))}</tbody>
         </table></div>
       </div>
@@ -1411,7 +1412,7 @@ function Missions({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
           <input className="field" placeholder="เช่น ถ่ายภาพกับเชฟประจำค่าย" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
           <label className="lbl">โจทย์ / วิธีถ่าย</label>
           <textarea className="field" rows={3} placeholder="เช่น ทั้งทีมยืนถ่ายภาพคู่กับเชฟ ทุกคนต้องอยู่ในภาพ" value={f.description} onChange={(e) => setF({ ...f, description: e.target.value })} />
-          <div className="row">
+          <div className="row admin-form-row">
             <div><label className="lbl">ประเภทภาพ</label>
               <select className="field" value={f.category} onChange={(e) => setF({ ...f, category: e.target.value })}>{CATS.map(([k, label]) => <option key={k} value={k}>{label}</option>)}</select></div>
             <div><label className="lbl">โทเคนเมื่อสำเร็จ</label><input className="field" style={{ width: 120 }} type="number" min={0} value={f.tokens} onChange={(e) => setF({ ...f, tokens: e.target.value })} /></div>
@@ -1419,7 +1420,7 @@ function Missions({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
             <label className="row" style={{ marginTop: 24 }}><input type="checkbox" checked={f.active} onChange={(e) => setF({ ...f, active: e.target.checked })} /> ใช้งาน</label>
           </div>
           <label className="lbl">ภาพตัวอย่าง (ไม่บังคับ · ไฟล์ภาพ PNG / JPG / WebP ระบบย่อให้อัตโนมัติ)</label>
-          <div className="row">
+          <div className="row admin-form-row">
             {f.ref_image_url
               ? <img src={f.ref_image_url} alt="" style={{ width: 120, height: 90, objectFit: 'cover', borderRadius: 12, border: '2px solid var(--cream-deep)' }} />
               : <div style={{ width: 120, height: 90, borderRadius: 12, border: '2px dashed var(--cream-deep)', display: 'grid', placeItems: 'center', fontSize: 30 }}>📷</div>}
@@ -1437,7 +1438,7 @@ function Missions({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
       )}
 
       <div className="card">
-        <h2>🖼️ ตรวจภาพที่ทีมส่งมา {pendingList.length > 0 && <span className="pill" style={{ background: '#fbe7b8', marginLeft: 6 }}>⏳ รอตรวจ {pendingList.length}</span>}</h2>
+        <h2 className="admin-section-heading"><AppIcon name="camera" size={23} /> ตรวจภาพที่ทีมส่งมา {pendingList.length > 0 && <span className="pill" style={{ background: '#fbe7b8', marginLeft: 6 }}>⏳ รอตรวจ {pendingList.length}</span>}</h2>
         <div className="row" style={{ margin: '6px 0 10px' }}>
           {([['pending', `⏳ รอตรวจ (${pendingList.length})`], ['approved', `✅ ผ่านแล้ว (${approved.length})`], ['rejected', `❌ ไม่ผ่าน (${d.submissions.length - approved.length - pendingList.length})`], ['all', 'ทั้งหมด']] as const).map(([k, label]) => (
             <button key={k} className={`btn small ${filter === k ? '' : 'ghost'}`} onClick={() => setFilter(k)}>{label}</button>
@@ -1484,21 +1485,21 @@ function History() {
     <>
       <div className="card">
         <h2>ประวัติการแลกของ</h2>
-        <div className="table-wrap"><table>
+        <p className="table-hint"><AppIcon name="chevron" size={14} /> เลื่อนตารางเพื่อดูข้อมูลเพิ่มเติม</p><div className="table-wrap" tabIndex={0} role="region" aria-label="ตารางข้อมูล เลื่อนซ้ายขวาเพื่อดูเพิ่มเติม"><table>
           <thead><tr><th>เวลา</th><th>ทีม</th><th>สินค้า</th><th>จำนวน</th><th>โทเคน</th><th>แลกโดย</th><th>การจ่ายของ</th></tr></thead>
           <tbody>{r.map((x) => <tr key={x.id}><td>{fmt(x.created_at)}</td><td>{x.team_name}</td><td>{x.item_name}</td><td className="num">{x.quantity}</td><td className="num">{x.total_cost}</td><td>{x.confirmed_by}</td><td>{x.fulfilled_at ? `✅ จ่ายแล้ว ${fmt(x.fulfilled_at)}` : '⏳ รอจ่าย'}</td></tr>)}</tbody>
         </table></div>
       </div>
       <div className="card">
         <h2>การปรับโทเคนด้วยมือ</h2>
-        <div className="table-wrap"><table>
+        <p className="table-hint"><AppIcon name="chevron" size={14} /> เลื่อนตารางเพื่อดูข้อมูลเพิ่มเติม</p><div className="table-wrap" tabIndex={0} role="region" aria-label="ตารางข้อมูล เลื่อนซ้ายขวาเพื่อดูเพิ่มเติม"><table>
           <thead><tr><th>เวลา</th><th>ทีม</th><th>จำนวน</th><th>เหตุผล</th><th>โดย</th></tr></thead>
           <tbody>{l.ledger.filter((x: any) => x.kind === 'adjustment').map((x: any) => <tr key={x.id}><td>{fmt(x.created_at)}</td><td>{x.team_name}</td><td className="num">{x.amount > 0 ? '+' : ''}{x.amount}</td><td>{x.reason}</td><td>{x.created_by}</td></tr>)}</tbody>
         </table></div>
       </div>
       <div className="card">
         <h2>Audit log (ล่าสุด)</h2>
-        <div className="table-wrap"><table>
+        <p className="table-hint"><AppIcon name="chevron" size={14} /> เลื่อนตารางเพื่อดูข้อมูลเพิ่มเติม</p><div className="table-wrap" tabIndex={0} role="region" aria-label="ตารางข้อมูล เลื่อนซ้ายขวาเพื่อดูเพิ่มเติม"><table>
           <thead><tr><th>เวลา</th><th>ผู้ทำ</th><th>การกระทำ</th><th>รายละเอียด</th></tr></thead>
           <tbody>{l.audit.map((x: any) => <tr key={x.id}><td>{fmt(x.created_at)}</td><td>{x.actor}</td><td>{x.action}</td><td style={{ fontSize: 13 }}>{JSON.stringify(x.details)}</td></tr>)}</tbody>
         </table></div>
@@ -1519,7 +1520,7 @@ function Export() {
   ];
   return (
     <div className="card stack">
-      <h2>ส่งออก CSV</h2>
+      <h2 className="admin-section-heading"><AppIcon name="download" size={23} /> ส่งออก CSV</h2>
       <p className="muted">ไฟล์มีข้อมูลส่วนบุคคล (ชื่อผู้เล่น) โปรดเก็บและแชร์เท่าที่จำเป็น</p>
       {items.map(([k, label]) => <a key={k} className="btn small ghost" style={{ textDecoration: 'none', textAlign: 'center' }} href={`/api/admin/export?type=${k}`}>{label}</a>)}
     </div>
