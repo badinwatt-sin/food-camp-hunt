@@ -6,6 +6,9 @@ import { AVATAR_EMOJIS } from '@/lib/avatar-list';
 import jsQR from 'jsqr';
 import { ApiError, api } from '@/lib/client-api';
 import MiniGames from '@/components/MiniGames';
+import LineCheckin from '@/components/LineCheckin';
+import type { LineStatus } from '@/lib/line-types';
+import type { MenuAccess } from '@/lib/menu-access';
 import { MARKET_CATS, marketCat } from '@/lib/market-cats';
 
 type Question = { id: string; position: number; prompt: string; image_url: string | null; options: string[] };
@@ -20,6 +23,8 @@ type Me = {
   isLeader: boolean;
   leaderName: string | null;
   marketOpen: boolean;
+  menus: MenuAccess;
+  line: LineStatus;
   inventory: { item: string; image_url: string | null; qty: number; handed: number; pending: number; spent: number }[];
   game: { open: boolean; tokensPerCorrect: number };
   total: number;
@@ -68,14 +73,23 @@ export default function Page() {
   const [editAvatar, setEditAvatar] = useState(false);
   const [pendingSpot, setPendingSpot] = useState('');
   const completing = useRef(false);
+  const sessionEpoch = useRef(0);
+  const endingSession = useRef(false);
+  const loadRequest = useRef(0);
+  const [linePromptOpen, setLinePromptOpen] = useState(false);
 
   const load = useCallback(async () => {
+    if (endingSession.current) return null;
+    const epoch = sessionEpoch.current;
+    const request = ++loadRequest.current;
     try {
       const data = await api<Me>('/api/me');
+      if (epoch !== sessionEpoch.current || request !== loadRequest.current) return null;
       setMe(data);
       setErr('');
       return data;
     } catch (e) {
+      if (epoch !== sessionEpoch.current || request !== loadRequest.current) return null;
       if (e instanceof ApiError && e.status === 401) setMe(null);
       else setErr((e as Error).message);
       return null;
@@ -101,7 +115,7 @@ export default function Page() {
     } catch { /* storage blocked: player can type the code instead */ }
   }, []);
   useEffect(() => {
-    if (me && pendingSpot) setView('hunt');
+    if (me?.menus.hunt && pendingSpot && (!me.line.open || !me.line.configured || me.line.joined)) { setHuntTab('hunt'); setView('hunt'); }
   }, [me, pendingSpot]);
 
   // The staff check-in QR opens /?checkin=CODE: keep the code across the login step, then show the confirm screen.
@@ -119,11 +133,20 @@ export default function Page() {
     } catch { /* storage blocked: the player can type the code instead */ }
   }, []);
   useEffect(() => {
-    if (me && pendingCheckin) setView('checkin');
+    if (me?.menus.checkin && pendingCheckin && (!me.line.open || !me.line.configured || me.line.joined)) setView('checkin');
   }, [me, pendingCheckin]);
 
   // Photo-mission decisions from staff: poll lightly and pop up "confirmed +N" / "not accepted" for the whole team.
   const loggedIn = !!me;
+  // Refresh switches and group progress after LINE returns and while teammates check in.
+  useEffect(() => {
+    if (!loggedIn) return;
+    const refresh = () => { if (document.visibilityState !== 'hidden') void load(); };
+    const timer = setInterval(refresh, 15000);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { clearInterval(timer); window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', refresh); };
+  }, [loggedIn, load]);
   useEffect(() => {
     if (!loggedIn) return;
     noticeStore.onClose = () => { load(); };
@@ -149,7 +172,7 @@ export default function Page() {
 
   // If every question is answered but the finish step didn't run (e.g. connection dropped), finish now.
   useEffect(() => {
-    if (!me || completing.current) return;
+    if (!me || !me.menus.quiz || completing.current) return;
     if (me.participant.status === 'in_progress' && me.total > 0 && me.answered >= me.total && !feedback) {
       completing.current = true;
       api('/api/complete', {}).then(() => load()).catch((e) => setErr(e.message)).finally(() => { completing.current = false; });
@@ -158,18 +181,23 @@ export default function Page() {
 
   // A 401 while logged in means the code was revoked/replaced: go back to the login screen.
   const fail = (e: unknown) => {
-    if (e instanceof ApiError && e.status === 401 && me) { setMe(null); setFeedback(null); setSelected(null); setErr('ID นี้ถูกยกเลิกหรือเปลี่ยนแล้ว กรุณาเข้าสู่ระบบใหม่'); }
+    if (e instanceof ApiError && e.status === 401 && me) { sessionEpoch.current += 1; setMe(null); setView('home'); setFeedback(null); setSelected(null); setErr('ID นี้ถูกยกเลิกหรือเปลี่ยนแล้ว กรุณาเข้าสู่ระบบใหม่'); }
     else setErr((e as Error).message);
   };
 
   async function login() {
     setBusy(true); setErr('');
-    try { await api('/api/login', { id: code }, 1); await load(); }
+    try { await api('/api/login', { id: code }, 1); sessionEpoch.current += 1; setView('home'); await load(); }
     catch (e) { fail(e); }
     finally { setBusy(false); }
   }
   async function logout() {
+    if (endingSession.current) return;
+    endingSession.current = true;
+    sessionEpoch.current += 1;
     await api('/api/logout', {}, 1).catch(() => {});
+    sessionEpoch.current += 1;
+    endingSession.current = false;
     setMe(null); setCode(''); setFeedback(null); setSelected(null); setView('home'); setPendingSpot('');
     try { sessionStorage.removeItem('fc_spot'); sessionStorage.removeItem('fc_checkin'); } catch { /* ignore */ }
     setPendingCheckin('');
@@ -236,6 +264,22 @@ export default function Page() {
   const goHome = () => setView('home');
   const QuizBack = ({ label = 'กลับไปภารกิจ' }: { label?: string }) => <button className="btn ghost" onClick={() => setView('missions')}>{label}</button>;
 
+  const closed = (view === 'missions' && !me.menus.missions)
+    || (view === 'quiz' && !me.menus.quiz)
+    || (view === 'games' && !me.menus.games)
+    || (view === 'hunt' && !(huntTab === 'hunt' ? me.menus.hunt : me.menus.photos))
+    || (view === 'market' && !me.menus.market)
+    || (view === 'checkin' && !me.menus.checkin);
+  if (closed) return (
+    <Shell subtitle={subtitle} onHome={goHome}>
+      <div className="card center stack" role="status">
+        <h2>🔒 เมนูนี้ยังไม่เปิดใช้งาน</h2>
+        <p className="muted">รอทีมงานประกาศเปิดใช้งาน แล้วกลับมาอีกครั้ง</p>
+        <button className="btn ghost" onClick={goHome}>กลับหน้าหลัก</button>
+      </div>
+    </Shell>
+  );
+
   // ---- Solo mini-games
   if (view === 'games') {
     return (
@@ -251,7 +295,9 @@ export default function Page() {
     return (
       <Shell subtitle={subtitle} onHome={goHome}>
         <Activities
-          initialTab={huntTab}
+          tab={huntTab}
+          onTabChange={setHuntTab}
+          access={me.menus}
           pending={pendingSpot}
           clearPending={() => { setPendingSpot(''); try { sessionStorage.removeItem('fc_spot'); } catch { /* ignore */ } }}
           onBalance={() => load()}
@@ -312,8 +358,8 @@ export default function Page() {
             <div className="m-ic" style={{ background: '#fde7b0' }}>🍜</div>
             <div className="m-body"><h2>ควิซทายอาหาร</h2><div className="muted">{quizLine}</div></div>
           </div>
-          {!me.game.open && st !== 'completed' && <div className="banner" style={{ marginTop: 10 }}>ควิซยังไม่เปิด หรือปิดแล้ว รอทีมงานประกาศ</div>}
-          <button className="btn" style={{ marginTop: 12 }} disabled={st !== 'completed' && !me.game.open} onClick={() => setView('quiz')}>
+          {!me.menus.quiz && <div className="banner" style={{ marginTop: 10 }}>ควิซยังไม่เปิด หรือปิดแล้ว รอทีมงานประกาศ</div>}
+          <button className="btn" style={{ marginTop: 12 }} disabled={!me.menus.quiz} onClick={() => setView('quiz')}>
             {st === 'completed' ? 'ดูผลคะแนน' : st === 'in_progress' ? 'เล่นต่อ' : 'เริ่มเล่นควิซ'}
           </button>
         </div>
@@ -322,21 +368,21 @@ export default function Page() {
             <div className="m-ic" style={{ background: '#d9efd8' }}>🎮</div>
             <div className="m-body"><h2>เกมย่อย</h2><div className="muted">จับผิดภาพ · จับคู่การ์ด · ทายวัตถุดิบ — เล่นคนเดียว สะสมโทเคนให้ทีม</div></div>
           </div>
-          <button className="btn green" style={{ marginTop: 12 }} onClick={() => setView('games')}>เล่นเกมย่อย</button>
+          <button className="btn green" style={{ marginTop: 12 }} disabled={!me.menus.games} onClick={() => setView('games')}>{me.menus.games ? 'เล่นเกมย่อย' : '🔒 ยังไม่เปิดใช้งาน'}</button>
         </div>
         <div className="card">
           <div className="mission">
             <div className="m-ic" style={{ background: '#d8ecf5' }}>🧭</div>
             <div className="m-body"><h2>ล่าสมบัติ</h2><div className="muted">สแกน QR หรือกรอกรหัสตามจุดต่าง ๆ ในแคมป์</div></div>
           </div>
-          <button className="btn green" style={{ marginTop: 12 }} onClick={() => { setHuntTab('hunt'); setView('hunt'); }}>ไปล่าสมบัติ</button>
+          <button className="btn green" style={{ marginTop: 12 }} disabled={!me.menus.hunt} onClick={() => { setHuntTab('hunt'); setView('hunt'); }}>{me.menus.hunt ? 'ไปล่าสมบัติ' : '🔒 ยังไม่เปิดใช้งาน'}</button>
         </div>
         <div className="card">
           <div className="mission">
             <div className="m-ic" style={{ background: '#e8dcf5' }}>📸</div>
             <div className="m-body"><h2>ภารกิจทีม</h2><div className="muted">ถ่ายภาพทั้งทีมตามโจทย์ · หัวหน้าทีมเป็นผู้อัปโหลด</div></div>
           </div>
-          <button className="btn green" style={{ marginTop: 12 }} onClick={() => { setHuntTab('puzzle'); setView('hunt'); }}>เปิดภารกิจทีม</button>
+          <button className="btn green" style={{ marginTop: 12 }} disabled={!me.menus.photos} onClick={() => { setHuntTab('puzzle'); setView('hunt'); }}>{me.menus.photos ? 'เปิดภารกิจทีม' : '🔒 ยังไม่เปิดใช้งาน'}</button>
         </div>
         <GoalCard goal={me.goal} mine />
         <button className="btn ghost" onClick={goHome}>กลับหน้าหลัก</button>
@@ -448,7 +494,7 @@ export default function Page() {
           <div className="muted">โทเคนรวมของทีม {team.name}</div>
           <div className="coin-row"><Coin size={44} /> {team.balance}</div>
           {err && <div className="error">{err}</div>}
-          <button className="btn green" onClick={() => { setHuntTab('hunt'); setView('hunt'); }}>🧭 ไปล่าสมบัติ & ภารกิจทีม</button>
+          <button className="btn green" disabled={!me.menus.hunt && !me.menus.photos} onClick={() => { setHuntTab(me.menus.hunt ? 'hunt' : 'puzzle'); setView('hunt'); }}>🧭 ไปล่าสมบัติ & ภารกิจทีม</button>
           <button className="btn green" onClick={() => setView('market')}>🛒 ตลาดของ</button>
           <QuizBack />
         </div>
@@ -459,7 +505,7 @@ export default function Page() {
 
   // ---- Home: who am I + three big buttons
   return (
-    <Shell subtitle={subtitle}>
+    <Shell subtitle={subtitle} suppressNotices={linePromptOpen}>
       {me.checkin.open && !me.checkin.done && (
         <div className="card" style={{ border: '3px solid #f0c36a', background: '#fff9e8' }}>
           <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
@@ -468,6 +514,7 @@ export default function Page() {
           </div>
         </div>
       )}
+      <LineCheckin status={me.line} onRefresh={load} onAuthLost={fail} onPromptChange={setLinePromptOpen} />
       {editAvatar && <AvatarSheet me={me} onClose={() => setEditAvatar(false)} onSaved={() => load()} onAuthLost={fail} />}
       <div className="card">
         <div className="profile">
@@ -494,9 +541,9 @@ export default function Page() {
       </div>
 
       <div className="tiles">
-        <button className="tile t-green" onClick={() => setView('missions')}>
+        <button className="tile t-green" disabled={!me.menus.missions} onClick={() => setView('missions')}>
           <span className="t-icon"><IconMission size={76} /></span>
-          <span><div className="t-title">เริ่มภารกิจ</div><div className="t-desc">ควิซ · ล่าสมบัติ · ภารกิจทีม</div></span>
+          <span><div className="t-title">เริ่มภารกิจ</div><div className="t-desc">{me.menus.missions ? 'ควิซ · ล่าสมบัติ · ภารกิจทีม' : '🔒 รอทีมงานเปิดใช้งาน'}</div></span>
           <span className="t-go" aria-hidden>›</span>
         </button>
         <button className="tile t-navy" onClick={() => setView('team')}>
@@ -504,9 +551,9 @@ export default function Page() {
           <span><div className="t-title">สมาชิกในทีม</div><div className="t-desc">ใครอยู่ทีมเรา ใครทำหน้าที่อะไร</div></span>
           <span className="t-go" aria-hidden>›</span>
         </button>
-        <button className="tile t-clay" onClick={() => setView('market')}>
+        <button className="tile t-clay" disabled={!me.menus.market} onClick={() => setView('market')}>
           <span className="t-icon"><IconShop size={76} /></span>
-          <span><div className="t-title">ตลาดของ</div><div className="t-desc">ดูของ ราคา สต็อก และของของทีม</div></span>
+          <span><div className="t-title">ตลาดของ</div><div className="t-desc">{me.menus.market ? 'ดูของ ราคา สต็อก และของของทีม' : '🔒 รอทีมงานเปิดใช้งาน'}</div></span>
           <span className="t-go" aria-hidden>›</span>
         </button>
       </div>
@@ -741,7 +788,7 @@ function AvatarSheet({ me, onClose, onSaved, onAuthLost }: { me: Me; onClose: ()
 
 /** Team page: who is in the team, who leads, which squad each person is in. */
 function TeamView({ me, onAuthLost }: { me: Me; onAuthLost: (e: unknown) => void }) {
-  type Member = { name: string; isLeader: boolean; isMe: boolean; squad: string | null; quizDone: boolean; avatarUrl: string | null; avatarEmoji: string | null };
+  type Member = { name: string; isLeader: boolean; isMe: boolean; squad: string | null; quizDone: boolean; lineJoined: boolean; avatarUrl: string | null; avatarEmoji: string | null };
   const [d, setD] = useState<{ team: string; total: number; quizDone: number; squads: string[]; members: Member[] } | null>(null);
   const [err, setErr] = useState('');
   const cb = useRef(onAuthLost);
@@ -762,6 +809,7 @@ function TeamView({ me, onAuthLost }: { me: Me; onAuthLost: (e: unknown) => void
       <div style={{ flex: 1, minWidth: 0 }}>
         <strong>{m.name}</strong>{m.isMe && <span className="me-tag">คุณ</span>}
         <div className="muted" style={{ fontSize: 14 }}>{m.isLeader ? '⭐ หัวหน้าทีม · แลกสินค้าให้ทีม' : '🏕️ สมาชิก · ทำภารกิจเก็บโทเคน'}</div>
+        <div className="muted" style={{ fontSize: 13 }}>{m.lineJoined ? '✅ เข้า join LINE แล้ว' : '⏳ ยังไม่ได้กดเข้า LINE'}</div>
       </div>
       <span title={m.quizDone ? 'เล่นควิซจบแล้ว' : 'ยังไม่จบควิซ'} style={{ fontSize: 20 }}>{m.quizDone ? '✅' : '⏳'}</span>
     </div>
@@ -875,27 +923,27 @@ function NoticeModal() {
   );
 }
 
-function Shell({ children, subtitle, onHome }: { children: React.ReactNode; subtitle?: string; onHome?: () => void }) {
+function Shell({ children, subtitle, onHome, suppressNotices = false }: { children: React.ReactNode; subtitle?: string; onHome?: () => void; suppressNotices?: boolean }) {
   return (
     <div className="app">
       <Hero subtitle={subtitle} onHome={onHome} />
       <main className="main">{children}</main>
-      <NoticeModal />
+      {!suppressNotices && <NoticeModal />}
     </div>
   );
 }
 
 
 /** Activities screen: tabs for the treasure hunt and the team puzzles. A scanned QR code always opens the hunt tab. */
-function Activities(props: { initialTab?: 'hunt' | 'puzzle'; pending: string; clearPending: () => void; onBalance: () => void; onAuthLost: (e: unknown) => void }) {
-  const [tab, setTab] = useState<'hunt' | 'puzzle'>(props.initialTab ?? 'hunt');
+function Activities(props: { tab: 'hunt' | 'puzzle'; onTabChange: (tab: 'hunt' | 'puzzle') => void; access: MenuAccess; pending: string; clearPending: () => void; onBalance: () => void; onAuthLost: (e: unknown) => void }) {
+  const { tab, onTabChange, access } = props;
   return (
     <>
       <div className="tabs" style={{ marginTop: 14 }}>
-        <button className={tab === 'hunt' ? 'on' : ''} onClick={() => setTab('hunt')}>🧭 ล่าสมบัติ</button>
-        <button className={tab === 'puzzle' ? 'on' : ''} onClick={() => setTab('puzzle')}>📸 ภารกิจทีม</button>
+        <button className={tab === 'hunt' ? 'on' : ''} disabled={!access.hunt} onClick={() => onTabChange('hunt')}>🧭 ล่าสมบัติ{!access.hunt && ' 🔒'}</button>
+        <button className={tab === 'puzzle' ? 'on' : ''} disabled={!access.photos} onClick={() => onTabChange('puzzle')}>📸 ภารกิจทีม{!access.photos && ' 🔒'}</button>
       </div>
-      {tab === 'hunt' || props.pending ? <HuntView {...props} /> : <PhotoMissionsView onBalance={props.onBalance} onAuthLost={props.onAuthLost} />}
+      {tab === 'hunt' && access.hunt ? <HuntView {...props} /> : access.photos ? <PhotoMissionsView onBalance={props.onBalance} onAuthLost={props.onAuthLost} /> : null}
     </>
   );
 }

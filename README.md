@@ -5,6 +5,32 @@ image-based food quiz in Thai. Each correct answer earns 10 tokens for the team'
 Teams later spend tokens at the **Food Camp Market** for optional extras (sauces, toppings, decorations).
 The organiser runs everything from a password-protected `/admin` page.
 
+## LINE group check-in and closed menus
+
+- **Existing database:** run `supabase/line-groups.sql` in Supabase SQL Editor before deploying this version. New projects use `supabase/schema.sql`, which includes the same migration. No invitation URLs or team assignments are guessed or seeded.
+- **Admin → กลุ่ม LINE:** map your four teams to **D / C / A / O**, enter each real HTTPS group invitation (`line.me` or `lin.ee`), then open LINE check-in. Assign each participant by selecting their team under **ทีมและผู้เล่น**; that team determines their LINE invitation. Finish the roster before opening the activity.
+- On the first visit while LINE check-in is open, members who have not pressed their invitation see a welcome popup. Pressing the button saves the click before redirecting to LINE. Home and team-member screens show **เข้า join LINE แล้ว**, per-member status and group progress; visible screens refresh every 15 seconds and when returning to the app.
+- All participants assigned to the team count, including members who have not yet received a login ID. Once everyone has clicked, the team wallet receives **20 / 15 / 10 / 5 Tokens** for first through fourth place. Database transaction locks and a unique ledger key prevent duplicate rewards and duplicate ranks under concurrent clicks.
+- The status records **opening the invitation**, not verified membership inside LINE. The member must finish joining in LINE. Automatic verification of actual group membership needs a separate LINE integration.
+- To keep everyone on the same invitation, the group/link cannot change after its first click. Once a team earns its reward, its roster is locked. Existing confirmed **ล้างข้อมูลการเล่น** / **ลบทีมทั้งหมด** tools reset all LINE progress and ranked awards together and close LINE check-in; use them only for rehearsals.
+- Closed activity and market menus stay visible as **gray, disabled buttons**. The missions menu is disabled when every activity is closed. Individual quiz, hunt, photo and mini-game switches remain independent; a closed quiz also blocks its results screen. QR links cannot bypass a closed activity. Closed hunt/photo/mini-game APIs return 403, and `/api/me` excludes closed quiz content and market listings.
+
+Validation for this change:
+
+```sh
+npm ci
+npm run typecheck
+npm run build
+npm test                 # Node 24: access, API, session, and LINE URL checks
+npm run test:line-db      # Docker: disposable local PostgreSQL 16, never the event database
+npm run test:line-stack   # Docker + Playwright: isolated Next.js → PostgREST → PostgreSQL
+npm run dev              # In another terminal, for browser checks below
+python scripts/test-player-browser.py
+python scripts/test-admin-line-browser.py
+```
+
+Browser checks require Python Playwright and Chromium (`/usr/bin/chromium` by default). The two browser-only scripts use API fixtures. The database test runs actual SQL, upgrades and concurrent requests on a disposable database. The full-stack test starts its own isolated Next.js server (port 3001 by default), PostgREST and PostgreSQL with dummy credentials, then checks real login/configuration/join/wallet/menu responses and browser rendering. These checks do not modify the live Supabase project or publish a deployment.
+
 ## 0. New: Treasure Hunt mode
 
 Besides the 5-question quiz, teams can take **team photo missions** and **hunt for secret spots around the camp**. Each spot has a code printed as a QR

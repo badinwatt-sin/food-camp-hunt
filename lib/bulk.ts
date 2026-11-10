@@ -3,7 +3,7 @@
  * Each plan deletes tables in an order that respects the foreign keys, so a run can simply be repeated if it is interrupted.
  */
 export type BulkStep = { table: string; eq?: [string, string] };
-export type BulkPlan = { steps: BulkStep[]; resetPlayers?: boolean; switchesOff?: boolean };
+export type BulkPlan = { steps: BulkStep[]; resetPlayers?: boolean; switchesOff?: boolean; resetLine?: boolean };
 export type BulkTarget = 'minigames' | 'missions' | 'items' | 'teams' | 'questions' | 'spots' | 'playdata';
 
 export const BULK_CONFIRM = 'ลบทั้งหมด';
@@ -21,6 +21,7 @@ export const BULK_PLANS: Record<BulkTarget, BulkPlan> = {
   spots: { steps: [{ table: 'hunt_scans' }, { table: 'hunt_claims' }, { table: 'hunt_spots' }] },
   // all teams WITH their players, squads, tokens and history: start from nothing
   teams: {
+    resetLine: true,
     steps: [
       { table: 'photo_submissions' }, { table: 'hunt_scans' }, { table: 'hunt_claims' }, { table: 'puzzle_attempts' }, { table: 'puzzle_solves' },
       { table: 'minigame_attempts' }, { table: 'token_ledger' }, { table: 'redemptions' }, { table: 'answers' }, { table: 'participants' }, { table: 'squads' }, { table: 'teams' },
@@ -28,6 +29,7 @@ export const BULK_PLANS: Record<BulkTarget, BulkPlan> = {
   },
   // wipe the results of a test run but keep everything that was set up (teams, players + IDs, questions, items, missions, spots)
   playdata: {
+    resetLine: true,
     steps: [
       { table: 'answers' }, { table: 'hunt_scans' }, { table: 'hunt_claims' }, { table: 'photo_submissions' }, { table: 'puzzle_attempts' }, { table: 'puzzle_solves' }, { table: 'minigame_attempts' },
       { table: 'token_ledger' }, { table: 'redemptions' }, { table: 'audit_log' },

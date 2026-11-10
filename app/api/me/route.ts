@@ -2,6 +2,8 @@ import { db } from '@/lib/supabase';
 import { requirePlayer } from '@/lib/player';
 import { handler, ok } from '@/lib/http';
 import { teamGoal } from '@/lib/goal';
+import { menuAccess, MENU_SETTINGS_SELECT } from '@/lib/menu-access';
+import { getLineStatus } from '@/lib/line-groups';
 
 export const dynamic = 'force-dynamic';
 
@@ -10,16 +12,21 @@ export const GET = handler(async () => {
   const p = await requirePlayer();
   const sb = db();
 
-  const [{ data: settings }, { data: questions }, { data: answers }, balance, { data: reds }, { data: items }, goal, { data: leaderRow }] =
+  const { data: settings, error: settingsError } = await sb.from('game_settings')
+    .select(`${MENU_SETTINGS_SELECT}, tokens_per_correct`).eq('id', 1).single();
+  if (settingsError) throw settingsError;
+  const menus = menuAccess(settings);
+
+  const [{ data: questions }, { data: answers }, balance, { data: reds }, { data: items }, goal, { data: leaderRow }, line] =
     await Promise.all([
-      sb.from('game_settings').select('is_open, tokens_per_correct, market_open, checkin_open').eq('id', 1).single(),
-      sb.from('questions').select('id, position, prompt, image_url, options').eq('active', true).order('position').order('id'),
+      sb.from('questions').select(menus.quiz ? 'id, position, prompt, image_url, options' : 'id, position').eq('active', true).order('position').order('id'),
       sb.from('answers').select('question_id').eq('participant_id', p.id),
       sb.rpc('team_balance', { p_team: p.team_id }),
       sb.from('redemptions').select('item_id, item_name, quantity, total_cost, created_at, fulfilled_at, market_items(image_url)').eq('team_id', p.team_id).order('created_at', { ascending: false }).limit(500),
-      sb.from('market_items').select('id, name, category, price, stock, requires_goal, image_url').eq('active', true).order('price'),
+      menus.market ? sb.from('market_items').select('id, name, category, price, stock, requires_goal, image_url').eq('active', true).order('price') : Promise.resolve({ data: [] }),
       teamGoal(p.team_id),
       sb.from('participants').select('name, nick_name').eq('team_id', p.team_id).eq('is_leader', true).maybeSingle(),
+      getLineStatus(p),
     ]);
 
   // Team inventory: everything the team has bought, with what is still waiting to be handed over.
@@ -41,10 +48,12 @@ export const GET = handler(async () => {
     team: { name: p.teams?.name ?? '', balance: balance.data ?? 0 },
     squad: p.squads?.name ?? null,
     goal,
+    menus,
+    line,
     game: { open: !!settings?.is_open, tokensPerCorrect: settings?.tokens_per_correct ?? 10 },
     total: qs.length,
     answered,
-    current: p.status === 'in_progress' && next ? next : null,
+    current: menus.quiz && p.status === 'in_progress' && next ? next : null,
     result: p.status === 'completed' ? { correct: p.correct_count, tokens: p.tokens_earned } : null,
     avatar: { url: p.avatar_url ?? null, emoji: p.avatar_emoji ?? null },
     checkin: { open: !!settings?.checkin_open, done: !!p.checked_in_at, at: p.checked_in_at ?? null },
