@@ -155,7 +155,7 @@ begin
   -- race between this RPC and the bulk tool's subsequent table deletions.
   update game_settings set line_open = false where id = 1;
   perform 1 from teams order by id for update;
-  update teams set line_completed_at = null, line_finish_rank = null, line_reward_tokens = 0;
+  update teams set line_completed_at = null, line_finish_rank = null, line_reward_tokens = 0 where id is not null;
   update participants set line_joined_at = null where line_joined_at is not null;
   delete from token_ledger where idempotency_key like 'line:%' and created_by = 'system';
   return jsonb_build_object('ok', true);

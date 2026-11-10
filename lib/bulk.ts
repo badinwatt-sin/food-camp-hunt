@@ -22,6 +22,7 @@ export const BULK_PLANS: Record<BulkTarget, BulkPlan> = {
   // all teams WITH their players, squads, tokens and history: start from nothing
   teams: {
     resetLine: true,
+    switchesOff: true,
     steps: [
       { table: 'photo_submissions' }, { table: 'hunt_scans' }, { table: 'hunt_claims' }, { table: 'puzzle_attempts' }, { table: 'puzzle_solves' },
       { table: 'minigame_attempts' }, { table: 'token_ledger' }, { table: 'redemptions' }, { table: 'answers' }, { table: 'participants' }, { table: 'squads' }, { table: 'teams' },
