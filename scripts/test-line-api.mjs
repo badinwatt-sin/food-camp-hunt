@@ -224,7 +224,7 @@ function renameRoute({ role = 'admin', dbError = null, found = true } = {}) {
     'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } },
     '@/lib/http': http,
     '@/lib/auth': { getAdminRole: async () => role },
-    '@/lib/goal': {}, '@/lib/codes': {}, '@/lib/avatars': {}, '@/lib/bulk': {},
+    '@/lib/goal': {}, '@/lib/codes': {}, '@/lib/avatars': {}, '@/lib/bulk': {}, '@/lib/bulk-reset': {},
     '@/lib/line-types': { isLineGroupUrl, LINE_GROUP_CODES: ['D', 'C', 'A', 'O'] },
     '@/lib/supabase': {
       audit: async (...args) => audits.push(args),

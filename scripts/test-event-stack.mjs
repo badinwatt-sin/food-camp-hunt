@@ -96,6 +96,7 @@ with sync_playwright() as p:
     context=browser.new_context(viewport={'width':390,'height':844})
     page=context.new_page()
     page.set_default_timeout(20000)
+    page.set_default_navigation_timeout(60000)
     errors=[]
     page.on('pageerror',lambda error:errors.append(str(error)))
     context.route('https://line.me/**',lambda route:route.fulfill(status=200,body='Local test LINE destination',content_type='text/html'))
@@ -289,6 +290,55 @@ try {
   check('admin summary also excludes observer from participant count',summary.participants,2);
   const adminLine=(await admin.ok('/api/admin/line.groups')).teams.find(t=>t.id===team.team_id);
   check('admin LINE progress excludes observer staff',[adminLine.total,adminLine.joinedCount],[2,2]);
+
+  // Exercise the two real Admin reset flows against a database that reproduces
+  // the hosted safe-update error. These fixtures never use the event database.
+  const resetItem = randomUUID();
+  await sql(`insert into market_items(id,name,price,stock) values('${resetItem}','Reset fixture item',2,5);`);
+  await leader.ok('/api/start',{});
+  const resetQuiz = await leader.ok('/api/me');
+  await leader.ok('/api/answer',{questionId:resetQuiz.current.id,selected:0});
+  await leader.ok('/api/complete',{});
+  await leader.ok('/api/hunt/claim',{code:'EVENTSPOT'});
+  await sql(`select redeem_item('${team.team_id}','${resetItem}',1,'reset-fixture-purchase','test');
+    select submit_photo('${pLeader.id}',(select id from photo_missions limit 1),'https://example.test/reset-photo.jpg');`);
+  const preservedQuery = `select jsonb_build_object('teams',(select count(*) from teams),'people',(select count(*) from participants),'squads',(select count(*) from squads),'questions',(select count(*) from questions),'spots',(select count(*) from hunt_spots),'missions',(select count(*) from photo_missions),'items',(select count(*) from market_items));`;
+  const preserved = await sql(preservedQuery);
+  const historyQuery = `select (select count(*) from answers)+(select count(*) from minigame_attempts)+(select count(*) from hunt_claims)+(select count(*) from hunt_scans)+(select count(*) from photo_submissions)+(select count(*) from puzzle_attempts)+(select count(*) from puzzle_solves)+(select count(*) from token_ledger)+(select count(*) from redemptions);`;
+  check('reset fixture contains real scored and redeemed history',Number(await sql(historyQuery))>0);
+  const wrongConfirm=await admin.call('/api/admin/bulk.delete',{target:'playdata',confirm:'wrong'});
+  check('bulk reset still requires the existing explicit confirmation word',wrongConfirm.status,400);
+  check('a guest cannot invoke the reset endpoint',(await guest.call('/api/admin/bulk.delete',{target:'teams',confirm:'ลบทั้งหมด'})).status,401);
+  check('rejected reset requests leave existing records unchanged',await sql(preservedQuery),preserved);
+  const brokenReset = `create or replace function public.reset_line_checkin() returns jsonb language plpgsql security definer set search_path=public as $$ begin raise exception 'UPDATE requires a WHERE clause'; end $$;`;
+  await sql(brokenReset);
+  const resetPlay=await admin.ok('/api/admin/bulk.delete',{target:'playdata',confirm:'ลบทั้งหมด'});
+  check('play-data reset succeeds with the hosted safe-update error',resetPlay.target,'playdata');
+  check('play-data reset preserves teams, members, Squads and configured content',await sql(preservedQuery),preserved);
+  check('play-data reset clears every gameplay record and wallet entry',await sql(historyQuery),'0');
+  check('play-data reset clears LINE ranks and joins',await sql(`select (select count(*) from teams where line_finish_rank is not null or line_reward_tokens<>0)+(select count(*) from participants where line_joined_at is not null);`),'0');
+  check('play-data reset restarts profiles without changing observer or leader roles',await sql(`select count(*) from participants where status<>'not_started' or correct_count<>0 or tokens_earned<>0;`),'0');
+  check('observer and team leader survive a play-data reset',await sql(`select (select is_observer from participants where id='${pObserver.id}') and (select is_leader from participants where id='${pLeader.id}');`),'t');
+  check('all game switches are closed before a reset completes',await sql(`select not(is_open or hunt_open or puzzle_open or market_open or checkin_open or line_open or mg_spot_open or mg_memory_open or mg_mystery_open) from game_settings where id=1;`),'t');
+  const schemaForReset=await readFile(path.join(root,'supabase/schema.sql'),'utf8');
+  const fixedReset=schemaForReset.match(/create or replace function public\.reset_line_checkin\(\)[\s\S]*?end \$\$;/);
+  assert.ok(fixedReset,'stored reset function exists in fresh schema');
+  await sql(fixedReset[0]);
+  check('qualified stored reset works with the current observer/roster guards',JSON.parse(await sql('select reset_line_checkin();')).ok,true);
+  await admin.ok('/api/admin/game.set',{line_open:true,mg_spot_open:true});
+  await leader.ok('/api/line/join',{});await member.ok('/api/line/join',{});
+  await leader.ok('/api/minigames/spot',{action:'start'});
+  await sql(`select redeem_item('${team.team_id}','${resetItem}',1,'reset-fixture-purchase-again','test');`);
+  check('fixtures are populated again before deleting teams',Number(await sql(historyQuery))>0);
+  await sql(brokenReset);
+  const resetTeams=await admin.ok('/api/admin/bulk.delete',{target:'teams',confirm:'ลบทั้งหมด'});
+  check('delete-all-teams succeeds with the same hosted safe-update error',resetTeams.target,'teams');
+  check('team reset deletes members, observers and Squads in foreign-key order',await sql('select (select count(*) from teams)+(select count(*) from participants)+(select count(*) from squads);'),'0');
+  check('team reset deletes all associated activity and redemption history',await sql(historyQuery),'0');
+  check('team reset keeps reusable quiz and market content',await sql(`select (select count(*) from questions)>0 and (select count(*) from market_items)>0 and (select count(*) from hunt_spots)>0 and (select count(*) from photo_missions)>0;`),'t');
+  const resetAgain=await admin.ok('/api/admin/bulk.delete',{target:'teams',confirm:'ลบทั้งหมด'});
+  check('retrying team reset on an empty database is safe',resetAgain.counts.teams,0);
+
   console.log(`\n${passed} real event-stack checks passed.`);
 }catch(error){
   console.error('Event stack failed:',error.message);if(devLog)console.error('Isolated Next logs:\n'+devLog);throw error;

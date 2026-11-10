@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import { hashCode, normalizeCode, normalizeId } from '@/lib/codes';
 import { removeAvatarFile, removePublicFile } from '@/lib/avatars';
 import { BULK_CONFIRM, BULK_PLANS, type BulkTarget } from '@/lib/bulk';
+import { resetLineForBulk } from '@/lib/bulk-reset';
 import { isLineGroupUrl, LINE_GROUP_CODES } from '@/lib/line-types';
 import { checkOrigin, handler, HttpError, ok, rateLimit, readJson } from '@/lib/http';
 
@@ -647,10 +648,12 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       }
 
       const counts: Record<string, number> = {};
-      if (plan.resetLine) {
-        const { error } = await sb.rpc('reset_line_checkin');
+      // Stop new game writes before deleting any history or unlocking paid teams.
+      if (plan.switchesOff) {
+        const { error } = await sb.from('game_settings').update({ is_open: false, hunt_open: false, puzzle_open: false, market_open: false, checkin_open: false, line_open: false, mg_spot_open: false, mg_memory_open: false, mg_mystery_open: false }).eq('id', 1);
         if (error) throw error;
       }
+      if (plan.resetLine) await resetLineForBulk(sb);
       for (const step of plan.steps) {
         const del = sb.from(step.table).delete({ count: 'exact' });
         const { error, count } = await (step.eq ? del.eq(step.eq[0], step.eq[1]) : del.not('id', 'is', null));
@@ -660,10 +663,6 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       if (plan.resetPlayers) {
         const { error } = await sb.from('participants')
           .update({ status: 'not_started', correct_count: 0, tokens_earned: 0, confirmed_at: null, completed_at: null, checked_in_at: null, checked_in_by: null }).not('id', 'is', null);
-        if (error) throw error;
-      }
-      if (plan.switchesOff) {
-        const { error } = await sb.from('game_settings').update({ is_open: false, hunt_open: false, puzzle_open: false, market_open: false, checkin_open: false, line_open: false, mg_spot_open: false, mg_memory_open: false, mg_mystery_open: false }).eq('id', 1);
         if (error) throw error;
       }
       for (const f of files) await removePublicFile(f.bucket, f.url);
