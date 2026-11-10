@@ -1,197 +1,122 @@
-/* Presentation only: responsive layouts shared by the player and organiser screens. */
-:root { --page-gutter: clamp(12px, 3.5vw, 24px); }
-html { scroll-padding-top: 20px; }
-body { -webkit-text-size-adjust: 100%; }
-button, a { touch-action: manipulation; }
-button, input, select, textarea { min-width: 0; }
-input, select, textarea { max-width: 100%; }
-img, video, canvas { max-width: 100%; }
-button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px solid var(--green-deep); outline-offset: 3px; }
-.app-icon { display: inline-block; flex: none; vertical-align: -.18em; pointer-events: none; }
-.action-icon { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
-.page-heading { display: flex; align-items: center; justify-content: center; gap: 10px; }
-.page-heading .app-icon { color: var(--forest); }
-.app { width: 100%; max-width: 560px; }
-.hero { padding: 18px var(--page-gutter) 66px; }
-.hero-row { gap: 12px; align-items: center; }
-.hero-text { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
-.hero h1 { font-size: clamp(21px, 5.8vw, 26px); letter-spacing: -.35px; }
-.hero p { line-height: 1.55; overflow-wrap: anywhere; }
-.hero .kicker { font-size: 10px; letter-spacing: 1.7px; }
-.home-btn { width: 46px; height: 46px; min-width: 46px; }
-.main { position: relative; z-index: 1; min-width: 0; margin-top: -18px; padding: 0 var(--page-gutter) calc(28px + env(safe-area-inset-bottom)); }
-.card { min-width: 0; border-radius: 20px; padding: clamp(16px, 4.4vw, 22px); margin-bottom: 16px; }
-.card h2, .card h3, .card p, .banner, .error, .pill, .role { overflow-wrap: anywhere; }
-.card h2 { line-height: 1.45; }
-.btn { min-height: 52px; padding: 13px 16px; font-size: 17px; line-height: 1.45; white-space: normal; }
-.btn.small, .hero-actions .btn.small { min-height: 44px; padding: 9px 13px; font-size: 14px; }
-.btn .app-icon { margin-right: 6px; }
-.btn .action-icon .app-icon { margin-right: 0; }
-.field { min-height: 46px; font-size: 16px; line-height: 1.5; }
-textarea.field { min-height: 100px; resize: vertical; }
-.input { font-size: 22px; min-height: 58px; letter-spacing: 2px; }
-.row { gap: 10px; }
-.row > .grow { flex: 1 1 190px; min-width: 0; }
-.stack > * + * { margin-top: 13px; }
-.banner, .error { line-height: 1.6; }
-.pill, .role { max-width: 100%; font-size: 13px; }
-.profile { align-items: flex-start; gap: 14px; }
-.profile-name { overflow-wrap: anywhere; }
-.profile-meta { gap: 6px; }
-.profile-wallet { align-items: center; gap: 10px; }
-.profile-wallet .muted { flex: 1; min-width: 0; }
-.profile-wallet .coin-row { flex: none; }
-.tiles { gap: 12px; }
-.tile { min-height: 98px; padding: 16px; gap: 13px; border-radius: 20px; }
-.tile .t-icon { width: 62px; height: 62px; }
-.tile .t-icon svg { width: 100%; height: 100%; }
-.tile > span:not(.t-icon):not(.t-go) { flex: 1; min-width: 0; }
-.tile .t-title { font-size: 20px; line-height: 1.4; overflow-wrap: anywhere; }
-.tile .t-desc { font-size: 13px; line-height: 1.6; }
-.tile .t-go { flex: none; margin-left: 0; }
-.checkin-prompt-row { flex-wrap: wrap !important; align-items: flex-start; }
-.checkin-prompt-row > div { flex: 1 1 175px; min-width: 0; }
-.checkin-prompt-row > .btn { align-self: center; }
-.line-entry { margin-top: 16px; }
-.line-entry-button { min-height: 68px; padding: 12px 15px; gap: 12px; border-radius: 17px; }
-.line-entry-title { font-size: 15px; line-height: 1.55; }
-.line-entry-status { margin-top: 2px; font-size: 12px; }
-.team-member-info, .team-inventory-info { min-width: 0; overflow-wrap: anywhere; }
-.team-member-row { gap: 11px; }
-.squad-member-control { grid-template-columns: 50px minmax(0, 1fr); }
-.squad-member-control select { min-height: 44px; font-size: 16px; }
-.squad-create-form { align-items: flex-end; flex-wrap: wrap; }
-.squad-create-form .grow { flex: 1 1 185px; }
-.squad-create-form .btn { min-height: 46px; }
-.line-team-heading, .team-summary-heading { flex-wrap: wrap; justify-content: flex-start; }
-.line-team-heading h2, .team-summary-heading h2 { flex: 1; min-width: 0; }
-.tabs { min-width: 0; gap: 8px; }
-.tabs button { min-height: 46px; padding: 9px 12px; line-height: 1.45; }
-.tabs.cats, .category-tabs, .market-tabs { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; padding: 2px 1px 7px; }
-.tabs.cats button, .category-tabs button, .market-tabs button { flex: 0 0 auto; min-width: 108px; max-width: 220px; font-size: 14px; }
-.market-product-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
-.market-product-media { width: 58px !important; height: 58px !important; flex: none; }
-.market-product-info { flex: 1 1 125px !important; min-width: 0 !important; overflow-wrap: anywhere; }
-.market-product-price { flex: 0 0 auto; max-width: 100%; }
-.redemption-qty .btn { min-width: 44px; }
-.team-inventory-row { flex-wrap: wrap; align-items: center; gap: 12px; }
-.team-inventory-info { flex: 1 1 150px; }
-.opt { min-height: 60px; padding: 11px 13px; gap: 10px; font-size: 16px; line-height: 1.65; }
-.opt .letter { width: 32px; height: 32px; }
-.opt > :last-child { min-width: 0; overflow-wrap: anywhere; }
-.mission { gap: 12px; align-items: flex-start; }
-.mission .m-ic { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 14px; }
-.mission h2 { font-size: 18px; }
-.mission-meta { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
-.weekly-mission-card p { line-height: 1.7; }
-.game-toolbar { top: 8px !important; border: 1px solid var(--cream-deep); }
-.game-toolbar .row { row-gap: 6px; }
-.dlg-back, .player-dialog-overlay { padding: max(14px, env(safe-area-inset-top)) var(--page-gutter) max(14px, env(safe-area-inset-bottom)); overscroll-behavior: contain; }
-.dlg, .player-dialog-panel, .avatar-sheet, .line-invitation-dialog { max-height: calc(100dvh - 36px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; }
-.player-dialog-panel, .avatar-sheet { min-width: 0; overflow-wrap: anywhere; }
-.emoji-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 7px; }
-.emoji-grid button { min-width: 0; min-height: 44px; }
-.toast { bottom: calc(14px + env(safe-area-inset-bottom)); max-height: min(45dvh, 280px); overflow-y: auto; }
-.toast button { min-width: 44px; min-height: 44px; display: grid; place-items: center; margin-top: -8px; margin-right: -8px; }
-/* Organiser screens: a readable workspace from phone to large monitor. */
-.hero.compact { padding: 18px var(--page-gutter) 52px; }
-.hero.compact .hero-row { max-width: 1392px; margin: 0 auto; flex-wrap: nowrap; }
-.hero-actions { gap: 8px; min-width: 0; }
-.admin-layout { width: 100%; max-width: 1440px; margin-top: -14px; padding: 0 var(--page-gutter) calc(36px + env(safe-area-inset-bottom)); grid-template-columns: 218px minmax(0, 1fr); gap: 20px; }
-.admin { padding-top: 0; }
-.admin-nav { gap: 4px; padding: 9px; border: 1px solid #edf0e7; top: 14px; max-height: calc(100dvh - 28px); overflow-y: auto; scrollbar-width: thin; }
-.admin-nav button { min-height: 48px; font-size: 14px; padding: 10px 11px; gap: 10px; border-radius: 12px; line-height: 1.55; }
-.admin-nav .n-ic { width: 30px; min-height: 30px; display: grid; place-items: center; }
-.admin-nav .n-label { min-width: 0; overflow-wrap: anywhere; }
-.n-badge { min-width: 20px; height: 20px; font-size: 11px; top: 5px; right: 6px; }
-.admin .card { padding: clamp(16px, 2vw, 24px); }
-.admin-section-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
-.admin-section-heading h2 { margin: 0; min-width: 0; }
-.admin-toolbar, .admin-actions, .table-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.admin-toolbar { justify-content: space-between; }
-.table-actions { min-width: 210px; }
-.admin-form-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
-.admin-form-field { min-width: 0; flex: 1 1 190px; }
-.admin-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 12px; }
-.grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 250px), 1fr)); }
-.gallery { grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); }
-.switches { grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
-.stats { grid-template-columns: repeat(auto-fit, minmax(min(100%, 145px), 1fr)); gap: 12px; }
-.stat { min-width: 0; padding: 16px; }
-.stat b { font-size: clamp(24px, 2.3vw, 32px); overflow-wrap: anywhere; }
-.stat span { display: block; line-height: 1.6; }
-.table-wrap { width: 100%; min-width: 0; max-width: 100%; overscroll-behavior-x: contain; scrollbar-width: thin; border: 1px solid var(--cream-deep); }
-.table-wrap table { min-width: 600px; }
-.table-wrap td { overflow-wrap: anywhere; }
-.table-hint { display: none; }
-.admin-qr { max-width: 100%; height: auto; }
-.weekly-reward-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
-.weekly-reward-form > * { min-width: 0; }
-.weekly-reward-summary { display: flex; flex-wrap: wrap; gap: 8px; }
-@media (min-width: 1600px) {
-  .admin-layout { grid-template-columns: 230px minmax(0, 1fr); gap: 24px; }
-}
-@media (max-width: 1023px) {
-  .admin-layout { grid-template-columns: minmax(0, 1fr); gap: 14px; }
-  .admin-nav { position: static; flex-direction: row; flex-wrap: wrap; max-height: none; overflow-y: visible; }
-  .admin-nav button { flex: 1 1 calc(25% - 8px); min-width: 120px; justify-content: flex-start; }
-  .hero.compact .hero-actions { flex-shrink: 0; }
-}
+/* Player presentation only. Keep these overrides scoped so Admin retains its original layout. */
+:where(.player-experience) { --page-gutter: clamp(12px, 3.5vw, 24px); }
+:where(.player-experience) { -webkit-text-size-adjust: 100%; }
+:where(.player-experience) button, :where(.player-experience) a { touch-action: manipulation; }
+:where(.player-experience) button, :where(.player-experience) input, :where(.player-experience) select, :where(.player-experience) textarea { min-width: 0; }
+:where(.player-experience) input, :where(.player-experience) select, :where(.player-experience) textarea { max-width: 100%; }
+:where(.player-experience) img, :where(.player-experience) video, :where(.player-experience) canvas { max-width: 100%; }
+:where(.player-experience) button:focus-visible, :where(.player-experience) a:focus-visible, :where(.player-experience) summary:focus-visible { outline: 3px solid var(--green-deep); outline-offset: 3px; }
+:where(.player-experience) .app-icon { display: inline-block; flex: none; vertical-align: -.18em; pointer-events: none; }
+:where(.player-experience) .action-icon { display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+:where(.player-experience) .page-heading { display: flex; align-items: center; justify-content: center; gap: 10px; }
+:where(.player-experience) .page-heading .app-icon { color: var(--forest); }
+:where(.player-experience) .app { width: 100%; max-width: 560px; }
+:where(.player-experience) .hero { padding: 18px var(--page-gutter) 66px; }
+:where(.player-experience) .hero-row { gap: 12px; align-items: center; }
+:where(.player-experience) .hero-text { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+:where(.player-experience) .hero h1 { font-size: clamp(21px, 5.8vw, 26px); letter-spacing: -.35px; }
+:where(.player-experience) .hero p { line-height: 1.55; overflow-wrap: anywhere; }
+:where(.player-experience) .hero .kicker { font-size: 10px; letter-spacing: 1.7px; }
+:where(.player-experience) .home-btn { width: 46px; height: 46px; min-width: 46px; }
+:where(.player-experience) .main { position: relative; z-index: 1; min-width: 0; margin-top: -18px; padding: 0 var(--page-gutter) calc(28px + env(safe-area-inset-bottom)); }
+:where(.player-experience) .card { min-width: 0; border-radius: 20px; padding: clamp(16px, 4.4vw, 22px); margin-bottom: 16px; }
+:where(.player-experience) .card h2, :where(.player-experience) .card h3, :where(.player-experience) .card p, :where(.player-experience) .banner, :where(.player-experience) .error, :where(.player-experience) .pill, :where(.player-experience) .role { overflow-wrap: anywhere; }
+:where(.player-experience) .card h2 { line-height: 1.45; }
+:where(.player-experience) .btn { min-height: 52px; padding: 13px 16px; font-size: 17px; line-height: 1.45; white-space: normal; }
+:where(.player-experience) .btn.small, :where(.player-experience) .hero-actions .btn.small { min-height: 44px; padding: 9px 13px; font-size: 14px; }
+:where(.player-experience) .btn .app-icon { margin-right: 6px; }
+:where(.player-experience) .btn .action-icon .app-icon { margin-right: 0; }
+:where(.player-experience) .field { min-height: 46px; font-size: 16px; line-height: 1.5; }
+:where(.player-experience) textarea.field { min-height: 100px; resize: vertical; }
+:where(.player-experience) .input { font-size: 22px; min-height: 58px; letter-spacing: 2px; }
+:where(.player-experience) .row { gap: 10px; }
+:where(.player-experience) .row > .grow { flex: 1 1 190px; min-width: 0; }
+:where(.player-experience) .stack > * + * { margin-top: 13px; }
+:where(.player-experience) .banner, :where(.player-experience) .error { line-height: 1.6; }
+:where(.player-experience) .pill, :where(.player-experience) .role { max-width: 100%; font-size: 13px; }
+:where(.player-experience) .profile { align-items: flex-start; gap: 14px; }
+:where(.player-experience) .profile-name { overflow-wrap: anywhere; }
+:where(.player-experience) .profile-meta { gap: 6px; }
+:where(.player-experience) .profile-wallet { align-items: center; gap: 10px; }
+:where(.player-experience) .profile-wallet .muted { flex: 1; min-width: 0; }
+:where(.player-experience) .profile-wallet .coin-row { flex: none; }
+:where(.player-experience) .tiles { gap: 12px; }
+:where(.player-experience) .tile { min-height: 98px; padding: 16px; gap: 13px; border-radius: 20px; }
+:where(.player-experience) .tile .t-icon { width: 62px; height: 62px; }
+:where(.player-experience) .tile .t-icon svg { width: 100%; height: 100%; }
+:where(.player-experience) .tile > span:not(.t-icon):not(.t-go) { flex: 1; min-width: 0; }
+:where(.player-experience) .tile .t-title { font-size: 20px; line-height: 1.4; overflow-wrap: anywhere; }
+:where(.player-experience) .tile .t-desc { font-size: 13px; line-height: 1.6; }
+:where(.player-experience) .tile .t-go { flex: none; margin-left: 0; }
+:where(.player-experience) .checkin-prompt-row { flex-wrap: wrap !important; align-items: flex-start; }
+:where(.player-experience) .checkin-prompt-row > div { flex: 1 1 175px; min-width: 0; }
+:where(.player-experience) .checkin-prompt-row > .btn { align-self: center; }
+:where(.player-experience) .line-entry { margin-top: 16px; }
+:where(.player-experience) .line-entry-button { min-height: 68px; padding: 12px 15px; gap: 12px; border-radius: 17px; }
+:where(.player-experience) .line-entry-title { font-size: 15px; line-height: 1.55; }
+:where(.player-experience) .line-entry-status { margin-top: 2px; font-size: 12px; }
+:where(.player-experience) .team-member-info, :where(.player-experience) .team-inventory-info { min-width: 0; overflow-wrap: anywhere; }
+:where(.player-experience) .team-member-row { gap: 11px; }
+:where(.player-experience) .squad-member-control { grid-template-columns: 50px minmax(0, 1fr); }
+:where(.player-experience) .squad-member-control select { min-height: 44px; font-size: 16px; }
+:where(.player-experience) .squad-create-form { align-items: flex-end; flex-wrap: wrap; }
+:where(.player-experience) .squad-create-form .grow { flex: 1 1 185px; }
+:where(.player-experience) .squad-create-form .btn { min-height: 46px; }
+:where(.player-experience) .line-team-heading, :where(.player-experience) .team-summary-heading { flex-wrap: wrap; justify-content: flex-start; }
+:where(.player-experience) .line-team-heading h2, :where(.player-experience) .team-summary-heading h2 { flex: 1; min-width: 0; }
+:where(.player-experience) .tabs { min-width: 0; gap: 8px; }
+:where(.player-experience) .tabs button { min-height: 46px; padding: 9px 12px; line-height: 1.45; }
+:where(.player-experience) .tabs.cats, :where(.player-experience) .category-tabs, :where(.player-experience) .market-tabs { overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; padding: 2px 1px 7px; }
+:where(.player-experience) .tabs.cats button, :where(.player-experience) .category-tabs button, :where(.player-experience) .market-tabs button { flex: 0 0 auto; min-width: 108px; max-width: 220px; font-size: 14px; }
+:where(.player-experience) .market-product-row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+:where(.player-experience) .market-product-media { width: 58px !important; height: 58px !important; flex: none; }
+:where(.player-experience) .market-product-info { flex: 1 1 125px !important; min-width: 0 !important; overflow-wrap: anywhere; }
+:where(.player-experience) .market-product-price { flex: 0 0 auto; max-width: 100%; }
+:where(.player-experience) .redemption-qty .btn { min-width: 44px; }
+:where(.player-experience) .team-inventory-row { flex-wrap: wrap; align-items: center; gap: 12px; }
+:where(.player-experience) .team-inventory-info { flex: 1 1 150px; }
+:where(.player-experience) .opt { min-height: 60px; padding: 11px 13px; gap: 10px; font-size: 16px; line-height: 1.65; }
+:where(.player-experience) .opt .letter { width: 32px; height: 32px; }
+:where(.player-experience) .opt > :last-child { min-width: 0; overflow-wrap: anywhere; }
+:where(.player-experience) .mission { gap: 12px; align-items: flex-start; }
+:where(.player-experience) .mission .m-ic { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 14px; }
+:where(.player-experience) .mission h2 { font-size: 18px; }
+:where(.player-experience) .mission-meta { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
+:where(.player-experience) .weekly-mission-card p { line-height: 1.7; }
+:where(.player-experience) .game-toolbar { top: 8px !important; border: 1px solid var(--cream-deep); }
+:where(.player-experience) .game-toolbar .row { row-gap: 6px; }
+:where(.player-experience) .dlg-back, :where(.player-experience) .player-dialog-overlay { padding: max(14px, env(safe-area-inset-top)) var(--page-gutter) max(14px, env(safe-area-inset-bottom)); overscroll-behavior: contain; }
+:where(.player-experience) .dlg, :where(.player-experience) .player-dialog-panel, :where(.player-experience) .avatar-sheet, :where(.player-experience) .line-invitation-dialog { max-height: calc(100dvh - 36px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; }
+:where(.player-experience) .player-dialog-panel, :where(.player-experience) .avatar-sheet { min-width: 0; overflow-wrap: anywhere; }
+:where(.player-experience) .emoji-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 7px; }
+:where(.player-experience) .emoji-grid button { min-width: 0; min-height: 44px; }
+:where(.player-experience) .toast { bottom: calc(14px + env(safe-area-inset-bottom)); max-height: min(45dvh, 280px); overflow-y: auto; }
+:where(.player-experience) .toast button { min-width: 44px; min-height: 44px; display: grid; place-items: center; margin-top: -8px; margin-right: -8px; }
 @media (max-width: 767px) {
-  .hero.compact .hero-row { flex-wrap: wrap; }
-  .hero.compact .hero-text { flex: 1 1 100%; }
-  .hero-actions { flex: 1 1 100%; margin-left: 0; justify-content: flex-start; }
-  .hero-actions .btn.small { flex: 1 1 125px; justify-content: center; }
-  .admin-layout { margin-top: -12px; }
-  .admin-nav { position: sticky; z-index: 25; top: 6px; flex-wrap: nowrap; gap: 6px; overflow-x: auto; overflow-y: hidden; padding: 7px; max-width: 100%; scrollbar-width: thin; scroll-snap-type: x proximity; }
-  .admin-nav button { flex: 0 0 auto; min-width: 106px; max-width: 184px; min-height: 48px; flex-direction: row; text-align: left; gap: 7px; padding: 8px 10px; scroll-snap-align: start; font-size: 13px; }
-  .admin-nav .n-ic { width: 24px; min-height: 24px; }
-  .admin-nav .n-label { white-space: normal; }
-  .admin-nav .n-badge { top: 0; right: 0; min-width: 17px; height: 17px; font-size: 10px; }
-  .admin .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .admin-section-heading { align-items: flex-start; }
-  .admin-toolbar, .admin-actions { width: 100%; }
-  .admin-actions > .btn, .admin-toolbar > .btn { flex: 1 1 135px; text-align: center; }
-  .admin-form-row > .grow, .admin-form-field { flex-basis: 100%; }
-  .table-hint { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #647087; margin: 6px 0 8px; }
-  .table-wrap th, .table-wrap td { padding: 11px 12px; }
-  .weekly-reward-form > .btn { flex: 1 1 100%; }
-  .dlg { padding: 18px; border-radius: 20px; }
-  .emoji-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  :where(.player-experience) .dlg { padding: 18px; border-radius: 20px; }
+  :where(.player-experience) .emoji-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 }
 @media (max-width: 359px) {
-  .hero { padding-top: 15px; }
-  .hero .kicker { font-size: 9px; letter-spacing: 1.1px; }
-  .hero h1 { font-size: 21px; }
-  .home-btn { min-width: 44px; width: 44px; height: 44px; }
-  .tile { padding: 14px; gap: 10px; }
-  .tile .t-icon { width: 48px; height: 48px; }
-  .tile .t-title { font-size: 18px; }
-  .tile .t-desc { font-size: 12.5px; }
-  .market-product-price { flex-basis: 100%; display: flex; align-items: center; justify-content: flex-end; }
-  .checkin-prompt-row > .btn { width: 100%; }
-  .squad-create-form .btn { width: 100%; }
-  .admin-nav button { min-width: 100px; }
+  :where(.player-experience) .hero { padding-top: 15px; }
+  :where(.player-experience) .hero .kicker { font-size: 9px; letter-spacing: 1.1px; }
+  :where(.player-experience) .hero h1 { font-size: 21px; }
+  :where(.player-experience) .home-btn { min-width: 44px; width: 44px; height: 44px; }
+  :where(.player-experience) .tile { padding: 14px; gap: 10px; }
+  :where(.player-experience) .tile .t-icon { width: 48px; height: 48px; }
+  :where(.player-experience) .tile .t-title { font-size: 18px; }
+  :where(.player-experience) .tile .t-desc { font-size: 12.5px; }
+  :where(.player-experience) .market-product-price { flex-basis: 100%; display: flex; align-items: center; justify-content: flex-end; }
+  :where(.player-experience) .checkin-prompt-row > .btn { width: 100%; }
+  :where(.player-experience) .squad-create-form .btn { width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .btn, .tile, .progress > i { transition: none; }
+  :where(.player-experience) .btn, :where(.player-experience) .tile, :where(.player-experience) .progress > i { transition: none; }
 }
 
-input[type="file"] { display: block; width: 100%; min-width: 0; max-width: 100%; font-size: 16px; }
-input[type="file"]::file-selector-button { min-height: 44px; padding: 9px 12px; margin-right: 10px; border: 1px solid var(--cream-deep); border-radius: 10px; background: var(--cream); color: var(--navy); font: inherit; }
-h2.admin-section-heading, h3.admin-section-heading { justify-content: flex-start; }
-.admin-header-action { display: inline-flex; align-items: center; gap: 7px; text-decoration: none; }
-.admin-mission-title { flex: 1 1 220px; min-width: 0; }
-.admin-mission-icon { display: inline-grid; place-items: center; width: 38px; height: 38px; border-radius: 12px; background: var(--green); flex: none; font-size: 23px; }
-.weekly-reward-row { width: 100%; }
-.game-intro-icon, .dialog-feature-icon { display: inline-grid; place-items: center; width: 74px; height: 74px; margin: 0 auto; border-radius: 22px; background: var(--green); color: var(--forest); }
-.memory-board button { min-width: 0; min-height: 48px; }
-.mystery-options button { overflow-wrap: anywhere; }
-.quiz-question { overflow-wrap: anywhere; }
-.quiz-status-row { row-gap: 8px; }
-@media (max-width: 767px) {
-  .weekly-reward-row > .btn { flex: 1 1 100%; }
-  .weekly-reward-summary { flex-basis: 100%; }
-  .admin-topbar .hero-actions > .btn { display: inline-flex; }
-  .admin-section-heading { gap: 9px; }
-}
+:where(.player-experience) input[type="file"] { display: block; width: 100%; min-width: 0; max-width: 100%; font-size: 16px; }
+:where(.player-experience) input[type="file"]::file-selector-button { min-height: 44px; padding: 9px 12px; margin-right: 10px; border: 1px solid var(--cream-deep); border-radius: 10px; background: var(--cream); color: var(--navy); font: inherit; }
+:where(.player-experience) .game-intro-icon, :where(.player-experience) .dialog-feature-icon { display: inline-grid; place-items: center; width: 74px; height: 74px; margin: 0 auto; border-radius: 22px; background: var(--green); color: var(--forest); }
+:where(.player-experience) .memory-board button { min-width: 0; min-height: 48px; }
+:where(.player-experience) .mystery-options button { overflow-wrap: anywhere; }
+:where(.player-experience) .quiz-question { overflow-wrap: anywhere; }
+:where(.player-experience) .quiz-status-row { row-gap: 8px; }

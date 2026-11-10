@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Responsive presentation regression suite; all application APIs are fixtures.
+"""Player responsive and original Admin navigation checks using API fixtures.
 
 Start Next.js locally, then run python scripts/test-responsive-browser.py.
 MODE=baseline records findings without failing on layout issues. BASE_URL,
@@ -114,8 +114,8 @@ class Fixture:
 
 
 class Audit:
-    def __init__(self): self.findings=[];self.screens=0
-    def snapshot(self,page,label,width,shot=False):
+    def __init__(self): self.findings=[];self.screens=0;self.player_screens=0;self.admin_screens=0
+    def snapshot(self,page,label,width,shot=False,check_layout=True):
         page.wait_for_timeout(90)
         metrics=page.evaluate('''() => {
           const viewport=document.documentElement.clientWidth;
@@ -127,8 +127,10 @@ class Audit:
           return {viewport,doc:Math.max(document.documentElement.scrollWidth,document.body.scrollWidth),overflow,touch,fonts};
         }''')
         self.screens+=1
-        if metrics['doc']>metrics['viewport']+1: self.findings.append(dict(screen=label,width=width,type='document_overflow',details=metrics))
-        if width<=430:
+        if check_layout:self.player_screens+=1
+        else:self.admin_screens+=1
+        if check_layout and metrics['doc']>metrics['viewport']+1: self.findings.append(dict(screen=label,width=width,type='document_overflow',details=metrics))
+        if check_layout and width<=430:
             if metrics['touch']: self.findings.append(dict(screen=label,width=width,type='touch_targets',details=metrics['touch']))
             if metrics['fonts']: self.findings.append(dict(screen=label,width=width,type='input_font',details=metrics['fonts']))
         if shot: page.screenshot(path=str(OUT/f'responsive-{MODE}-{label}-{width}.png'),full_page=True)
@@ -191,34 +193,47 @@ def player_flow(browser,audit,width):
 def admin_flow(browser,audit,width):
     ctx=browser.new_context(viewport=dict(width=width,height=1000),is_mobile=width<=430,has_touch=width<=430)
     page=ctx.new_page();page.set_default_timeout(20000);page.set_default_navigation_timeout(60000);f=Fixture(page,True)
-    page.goto(BASE+'/admin');expect(page.get_by_role('navigation',name='เมนูผู้จัด')).to_be_visible();audit.snapshot(page,'admin-overview',width,shot=width in [320,390,1366,1440])
+    # Admin intentionally uses its original layout; phone navigation must expose every menu.
+    def admin_snapshot(page,label,width,shot=False):
+        audit.snapshot(page,label,width,shot=shot,check_layout=False)
+    page.goto(BASE+'/admin');expect(page.get_by_role('navigation',name='เมนูผู้จัด')).to_be_visible();admin_snapshot(page,'admin-overview',width,shot=width in [320,390,1366,1440])
     nav=page.get_by_role('navigation',name='เมนูผู้จัด')
-    nav.get_by_role('button',name='กลุ่ม LINE',exact=True).click();expect(page.get_by_role('button',name='อัปเดตกลุ่ม LINE').first).to_be_visible();audit.snapshot(page,'admin-line',width,shot=width in [320,390,1366])
+    expect(nav.get_by_role('button')).to_have_count(11)
+    layout=nav.evaluate('''nav => {
+      const r=nav.getBoundingClientRect();
+      return {wrap:getComputedStyle(nav).flexWrap, direction:getComputedStyle(nav).flexDirection,
+        maxWidth:getComputedStyle(nav.closest('.admin-layout')).maxWidth,
+        clipped:[...nav.querySelectorAll('button')].filter(b=>{const x=b.getBoundingClientRect();return x.left<r.left-1||x.right>r.right+1||x.top<r.top-1||x.bottom>r.bottom+1}).length};
+    }''')
+    assert layout['maxWidth']=='1280px' and not layout['clipped'], layout
+    if width<=900:assert layout['wrap']=='wrap' and layout['direction']=='row', layout
+    else:assert layout['direction']=='column', layout
+    for label in ['ภาพรวม','เช็กอินวันงาน','กลุ่ม LINE','ตลาดสินค้า','ทีมและผู้เล่น','คำถามควิซ','ภารกิจประจำสัปดาห์','ล่าสมบัติ','ภารกิจทีม','ประวัติ','ส่งออก CSV']:
+        expect(nav.get_by_role('button',name=re.compile(re.escape(label)))).to_be_visible()
+    nav.get_by_role('button',name=re.compile('กลุ่ม LINE')).click();expect(page.get_by_role('button',name='อัปเดตกลุ่ม LINE').first).to_be_visible();admin_snapshot(page,'admin-line',width,shot=width in [320,390,1366])
     if width in [390,1440]:
         name=page.get_by_label('ชื่อกลุ่ม LINE ที่แสดง',exact=True).first;name.fill('ครัวแคมป์ที่ปรับชื่อใหม่')
         page.get_by_label('ลิงก์เชิญเข้ากลุ่ม LINE',exact=True).first.fill(LINE_URL+'-updated')
         page.get_by_role('button',name='อัปเดตกลุ่ม LINE',exact=True).first.click()
         page.wait_for_timeout(100)
         assert any(path=='/api/admin/line.group.save' and body.get('name')=='ครัวแคมป์ที่ปรับชื่อใหม่' and body.get('team_id')=='teamD' and body.get('group')=='D' and body.get('url')==LINE_URL+'-updated' for path,body in f.posts)
-    nav.get_by_role('button',name='ทีมและผู้เล่น',exact=True).click();expect(page.get_by_label('ประเภทผู้ใช้',exact=True)).to_be_visible();audit.snapshot(page,'admin-people',width,shot=width in [320,390,1440])
-    nav.get_by_role('button',name='ภารกิจประจำสัปดาห์',exact=True).click();expect(page.get_by_label('Tokens เมื่อทำสำเร็จ',exact=True).first).to_be_visible();audit.snapshot(page,'admin-weekly',width)
+    nav.get_by_role('button',name=re.compile('ทีมและผู้เล่น')).click();expect(page.get_by_label('ประเภทผู้ใช้',exact=True)).to_be_visible();admin_snapshot(page,'admin-people',width,shot=width in [320,390,1440])
+    nav.get_by_role('button',name=re.compile('ภารกิจประจำสัปดาห์')).click();expect(page.get_by_label('Tokens เมื่อทำสำเร็จ',exact=True).first).to_be_visible();admin_snapshot(page,'admin-weekly',width)
     if width in [390,1440]:
         page.get_by_label('Tokens เมื่อทำสำเร็จ',exact=True).first.fill('47');page.get_by_role('button',name='บันทึก Tokens',exact=True).first.click();page.wait_for_timeout(100)
         assert any(path=='/api/admin/game.set' and body.get('mg_spot_tokens')==47 for path,body in f.posts)
-    nav.get_by_role('button',name='ตลาดสินค้า',exact=True).click();expect(page.get_by_text(ITEMS[0]['name'],exact=True).first).to_be_visible();audit.snapshot(page,'admin-market',width)
-    nav.get_by_role('button',name='ภารกิจทีม',exact=False).click();expect(page.get_by_text('ถ่ายภาพร่วมกันในกิจกรรมปรุงอาหารของสมาชิกทุกคน',exact=True)).to_be_visible();audit.snapshot(page,'admin-photos',width)
+    nav.get_by_role('button',name=re.compile('ตลาดสินค้า')).click();expect(page.get_by_text(ITEMS[0]['name'],exact=True).first).to_be_visible();admin_snapshot(page,'admin-market',width)
+    nav.get_by_role('button',name='ภารกิจทีม',exact=False).click();expect(page.get_by_text('ถ่ายภาพร่วมกันในกิจกรรมปรุงอาหารของสมาชิกทุกคน',exact=True)).to_be_visible();admin_snapshot(page,'admin-photos',width)
     # Opening and canceling the existing confirmation dialog must not submit a reset.
-    nav.get_by_role('button',name='ภาพรวม',exact=True).click();danger=page.get_by_role('button',name=re.compile('รีเซ็ตผลการเล่นทั้งหมด'))
+    nav.get_by_role('button',name=re.compile('ภาพรวม')).click();danger=page.get_by_role('button',name=re.compile('รีเซ็ตผลการเล่นทั้งหมด'))
     if danger.count():
-        danger.first.click();audit.snapshot(page,'admin-reset-dialog',width);page.get_by_role('dialog',name='ยืนยันการลบ').get_by_role('button',name='ยกเลิก',exact=True).click()
+        danger.first.click();admin_snapshot(page,'admin-reset-dialog',width);page.get_by_role('dialog',name='ยืนยันการลบ').get_by_role('button',name='ยกเลิก',exact=True).click()
         assert not any(path=='/api/admin/bulk.delete' for path,_ in f.posts)
     if width in [320,390,1366,1440]:
         for target in ['เช็กอินวันงาน','คำถามควิซ','ล่าสมบัติ','ประวัติ','ส่งออก CSV']:
-            nav.get_by_role('button',name=target,exact=True).click();page.wait_for_timeout(150);audit.snapshot(page,'admin-'+target,width)
+            nav.get_by_role('button',name=re.compile(re.escape(target))).click();page.wait_for_timeout(150);admin_snapshot(page,'admin-'+target,width)
         if width==1366:page.set_viewport_size(dict(width=1366,height=768))
-        page.goto(BASE+'/admin/live');expect(page.get_by_role('heading',name='Food Camp Hunt',exact=True)).to_be_visible();audit.snapshot(page,'admin-live',width,shot=width in [390,1366])
-        clipped=page.evaluate('''() => [...document.querySelectorAll('.live-row')].map(row=>({row:row.getBoundingClientRect(),body:row.querySelector('.live-body').getBoundingClientRect()})).filter(({row,body})=>body.top<row.top-1||body.bottom>row.bottom+1).map(({row,body})=>({rowHeight:row.height,bodyHeight:body.height,overhang:body.bottom-row.bottom}))''')
-        if clipped:audit.findings.append(dict(screen='admin-live',width=width,type='vertical_clipping',details=clipped))
+        page.goto(BASE+'/admin/live');expect(page.get_by_role('heading',name='Food Camp Hunt',exact=True)).to_be_visible();admin_snapshot(page,'admin-live',width,shot=width in [390,1366])
     audit.check_errors(f,'admin-flow',width);ctx.close()
 
 
@@ -266,7 +281,7 @@ def main():
                 try: observer_flow(browser,audit,width)
                 except Exception as error: flow_errors.append(dict(flow='observer',width=width,error=str(error)))
         browser.close()
-    report=dict(mode=MODE,screens=audit.screens,findings=audit.findings,flowErrors=flow_errors)
+    report=dict(mode=MODE,screens=audit.screens,playerResponsiveScreens=audit.player_screens,adminLegacyScreens=audit.admin_screens,findings=audit.findings,flowErrors=flow_errors)
     path=OUT/f'responsive-{MODE}-report.json';path.write_text(json.dumps(report,ensure_ascii=False,indent=2))
     print(json.dumps(dict(screens=audit.screens,layoutFindings=len(audit.findings),flowErrors=len(flow_errors),report=str(path)),ensure_ascii=False),flush=True)
     if flow_errors or (MODE!='baseline' and audit.findings): raise SystemExit(1)

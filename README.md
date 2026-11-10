@@ -40,10 +40,10 @@ npm run test:line-stack   # Docker + Playwright: isolated Next.js → PostgREST 
 npm run dev              # In another terminal, for browser checks below
 python scripts/test-player-browser.py
 python scripts/test-admin-line-browser.py
-python scripts/test-responsive-browser.py  # User/Admin layouts and flows at 320–1920px
+python scripts/test-responsive-browser.py  # Player responsive UI + original Admin menus at 320–1920px
 ```
 
-Browser checks require Python Playwright and Chromium (`/usr/bin/chromium` by default). Browser-only scripts use API fixtures. The responsive suite accepts `BASE_URL`, `WIDTHS` and `SCREENSHOT_DIR`; it checks overflow, mobile controls, navigation, dialogs and unchanged request payloads. The database test runs actual SQL, upgrades and concurrent requests on a disposable database. The full-stack test starts its own isolated Next.js server (port 3001 by default), PostgREST and PostgreSQL with dummy credentials, then checks real login/configuration/join/wallet/menu responses and browser rendering. These checks do not modify the live Supabase project or publish a deployment.
+Browser checks require Python Playwright and Chromium (`/usr/bin/chromium` by default). Browser-only scripts use API fixtures. The responsive suite accepts `BASE_URL`, `WIDTHS` and `SCREENSHOT_DIR`; it checks player overflow, mobile controls, navigation and dialogs, plus all 11 original Admin menus and unchanged request payloads. Admin deliberately retains its previous layout and icons; responsive overrides are scoped to the player screen. The database test runs actual SQL, upgrades and concurrent requests on a disposable database. The full-stack test starts its own isolated Next.js server (port 3001 by default), PostgREST and PostgreSQL with dummy credentials, then checks real login/configuration/join/wallet/menu responses and browser rendering. These checks do not modify the live Supabase project or publish a deployment.
 
 ## 0. New: Treasure Hunt mode
 
