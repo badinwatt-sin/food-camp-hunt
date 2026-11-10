@@ -1,12 +1,12 @@
 import { db } from '@/lib/supabase';
-import { requirePlayer } from '@/lib/player';
+import { requireMember } from '@/lib/player';
 import { normalizeCode } from '@/lib/codes';
 import { checkOrigin, handler, HttpError, ok, rateLimit, readJson } from '@/lib/http';
 
 /** Idempotent: a team earns each spot once, however many times or by whom it is scanned. */
 export const POST = handler(async (req: Request) => {
   checkOrigin(req);
-  const p = await requirePlayer();
+  const p = await requireMember();
   rateLimit(req, 'claim', 40, 10 * 60 * 1000, p.id);
   const body = await readJson<{ code?: string }>(req);
   const code = normalizeCode(body.code ?? '');

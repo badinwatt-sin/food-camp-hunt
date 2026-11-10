@@ -25,7 +25,7 @@ export const GET = handler(async () => {
       sb.from('redemptions').select('item_id, item_name, quantity, total_cost, created_at, fulfilled_at, market_items(image_url)').eq('team_id', p.team_id).order('created_at', { ascending: false }).limit(500),
       menus.market ? sb.from('market_items').select('id, name, category, price, stock, requires_goal, image_url').eq('active', true).order('price') : Promise.resolve({ data: [] }),
       teamGoal(p.team_id),
-      sb.from('participants').select('name, nick_name').eq('team_id', p.team_id).eq('is_leader', true).maybeSingle(),
+      sb.from('participants').select('*').eq('team_id', p.team_id).eq('is_leader', true).maybeSingle(),
       getLineStatus(p),
     ]);
 
@@ -44,6 +44,7 @@ export const GET = handler(async () => {
   const next = qs.find((q: any) => !answeredIds.has(q.id)) ?? null;
 
   return ok({
+    isObserver: !!p.is_observer,
     participant: { name: p.nick_name || p.name, fullName: p.name, status: p.status },
     team: { name: p.teams?.name ?? '', balance: balance.data ?? 0 },
     squad: p.squads?.name ?? null,
@@ -53,12 +54,12 @@ export const GET = handler(async () => {
     game: { open: !!settings?.is_open, tokensPerCorrect: settings?.tokens_per_correct ?? 10 },
     total: qs.length,
     answered,
-    current: menus.quiz && p.status === 'in_progress' && next ? next : null,
-    result: p.status === 'completed' ? { correct: p.correct_count, tokens: p.tokens_earned } : null,
+    current: !p.is_observer && menus.quiz && p.status === 'in_progress' && next ? next : null,
+    result: !p.is_observer && p.status === 'completed' ? { correct: p.correct_count, tokens: p.tokens_earned } : null,
     avatar: { url: p.avatar_url ?? null, emoji: p.avatar_emoji ?? null },
     checkin: { open: !!settings?.checkin_open, done: !!p.checked_in_at, at: p.checked_in_at ?? null },
     isLeader: !!p.is_leader,
-    leaderName: leaderRow ? (leaderRow.nick_name || leaderRow.name) : null,
+    leaderName: leaderRow && !leaderRow.is_observer ? (leaderRow.nick_name || leaderRow.name) : null,
     marketOpen: !!settings?.market_open,
     inventory: Array.from(inv.values()).sort((a, b) => (a.last < b.last ? 1 : -1)).map((i) => ({ item: i.item, image_url: i.image_url, qty: i.qty, handed: i.handed, pending: i.qty - i.handed, spent: i.spent })),
     history: (reds ?? []).slice(0, 50).map((r: any) => ({ item: r.item_name, qty: r.quantity, cost: r.total_cost, at: r.created_at })),

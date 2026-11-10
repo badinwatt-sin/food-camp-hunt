@@ -11,6 +11,12 @@ export type LineStatus = {
   url: string | null;
   joined: boolean;
   joinedAt: string | null;
+  /** Increments whenever Admin changes the invitation URL. */
+  revision?: number;
+  rejoinRequired?: boolean;
+  isObserver?: boolean;
+  nextRewardTokens?: number;
+  rewardPreviouslyEarned?: boolean;
   total: number;
   joinedCount: number;
   complete: boolean;

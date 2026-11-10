@@ -1,36 +1,40 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/client-api';
-import { MG_INFO, MYSTERY, SPOT, memoryTokens, mysteryTokens, type MgGame } from '@/lib/minigames/config';
+import { MG_INFO, MG_SUCCESS_RULES, MYSTERY, SPOT, type MgGame } from '@/lib/minigames/config';
 
-type GameStatus = { open: boolean; used: number; max: number; inProgress: boolean; best: number; scores: number[]; maxTokens: number; top: { tokens: number; name: string; team: string; me: boolean }[] };
-type Status = { games: Record<MgGame, GameStatus>; percent: number };
-type Result = { tokens: number; awarded: number; best: number };
-type Props = { onBalance: () => void; onAuthLost: (e: unknown) => void };
+type GameStatus = { open: boolean; used: number; max: number; inProgress: boolean; claimed: boolean; best: number; scores: number[]; rewardTokens: number; successRule: string; top: { tokens: number; name: string; team: string; me: boolean }[] };
+type Status = { games: Record<MgGame, GameStatus>; isObserver: boolean };
+type Result = { tokens: number; awarded: number; best: number; success: boolean; claimed: boolean; rewardTokens: number };
+type Props = { onBalance: () => void; onAuthLost: (e: unknown) => void; isObserver?: boolean };
 
 const mmss = (s: number) => `${Math.floor(Math.max(0, s) / 60)}:${String(Math.floor(Math.max(0, s) % 60)).padStart(2, '0')}`;
 
 /** Hub: pick one of the 3 solo games. */
-export default function MiniGames({ onBalance, onAuthLost }: Props) {
+export default function MiniGames({ onBalance, onAuthLost, isObserver = false }: Props) {
   const [st, setSt] = useState<Status | null>(null);
   const [err, setErr] = useState('');
   const [play, setPlay] = useState<MgGame | null>(null);
+  const authLost = useRef(onAuthLost);
+  authLost.current = onAuthLost;
   const load = useCallback(async () => {
-    try { setSt(await api<Status>('/api/minigames')); setErr(''); } catch (e) { onAuthLost(e); setErr((e as Error).message); }
-  }, [onAuthLost]);
+    try { setSt(await api<Status>('/api/minigames')); setErr(''); } catch (e) { authLost.current(e); setErr((e as Error).message); }
+  }, []);
   useEffect(() => { load(); }, [load]);
 
-  if (play) {
+  const readOnly = isObserver || !!st?.isObserver;
+  if (play && !readOnly) {
     const exit = () => { setPlay(null); load(); onBalance(); };
-    const p = { onExit: exit, onAuthLost, pct: st?.percent ?? 100 };
+    const p = { onExit: exit, onAuthLost, rewardTokens: st?.games[play].rewardTokens ?? 0 };
     return play === 'spot' ? <SpotGame {...p} /> : play === 'memory' ? <MemoryGame {...p} /> : <MysteryGame {...p} />;
   }
   return (
     <>
       <div className="card center">
-        <h2 style={{ fontSize: 22 }}>🎮 เกมย่อย</h2>
-        <div className="muted">เล่นคนเดียว สะสมโทเคนเข้ากระเป๋าทีมก่อนถึงวันงาน · เล่นได้เกมละ 3 ครั้ง นับครั้งที่ดีที่สุด</div>
+        <h2 style={{ fontSize: 22 }}>🎮 ภารกิจประจำสัปดาห์</h2>
+        <div className="muted">ทำภารกิจให้สำเร็จเพื่อรับโทเคนตามที่ผู้จัดกำหนดเข้ากระเป๋าทีม · รับรางวัลครั้งเดียวต่อคนต่อภารกิจ · ลองได้ภารกิจละ 3 ครั้ง</div>
       </div>
+      {readOnly && <div className="banner">คณะทำงาน · ดูรายละเอียดภารกิจและความเคลื่อนไหวได้ โดยไม่เข้าร่วมเล่นหรือรับโทเคน</div>}
       {err && <div className="error">{err}</div>}
       {!st && !err && <div className="spinner" />}
       {st && (['spot', 'memory', 'mystery'] as MgGame[]).map((g) => {
@@ -44,17 +48,18 @@ export default function MiniGames({ onBalance, onAuthLost }: Props) {
             </div>
             <p style={{ margin: '10px 0 6px' }}>{info.how}</p>
             <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-              <span className="pill" style={{ background: 'var(--green)', fontSize: 13, padding: '2px 10px' }}>ดีที่สุด {x.best}/{x.maxTokens} โทเคน</span>
-              <span className="pill" style={{ background: '#f4ead0', fontSize: 13, padding: '2px 10px' }}>เล่นแล้ว {x.used}/{x.max} ครั้ง</span>
-              {x.scores.length > 0 && <span className="muted" style={{ fontSize: 13 }}>คะแนนแต่ละรอบ: {x.scores.join(' · ')}</span>}
+              <span className="pill" style={{ background: 'var(--green)', fontSize: 13, padding: '2px 10px' }}>สำเร็จรับ {x.rewardTokens} Tokens</span>
+              {!readOnly && <span className="pill" style={{ background: '#f4ead0', fontSize: 13, padding: '2px 10px' }}>ลองแล้ว {x.used}/{x.max} ครั้ง</span>}
+              {x.claimed && <span className="pill" style={{ background: '#d9ecd5', fontSize: 13 }}>✓ รับรางวัลแล้ว</span>}
             </div>
+            <div className="muted" style={{ marginTop: 8 }}>เงื่อนไขสำเร็จ: {x.successRule || MG_SUCCESS_RULES[g]} · รางวัลเข้ากระเป๋าทีมครั้งเดียว</div>
             {!x.open && <div className="banner" style={{ marginTop: 10 }}>เกมนี้ยังไม่เปิด หรือปิดแล้ว</div>}
-            <button className="btn" style={{ marginTop: 12 }} disabled={!x.open || (left <= 0 && !x.inProgress)} onClick={() => setPlay(g)}>
-              {x.inProgress ? '▶️ เล่นต่อ' : left <= 0 ? 'ครบ 3 ครั้งแล้ว' : x.used === 0 ? 'เริ่มเล่น' : `เล่นอีกครั้ง (ครั้งที่ ${x.used + 1})`}
+            <button className="btn" style={{ marginTop: 12 }} disabled={readOnly || !x.open || x.claimed || (left <= 0 && !x.inProgress)} onClick={() => setPlay(g)}>
+              {readOnly ? 'คณะทำงาน · ดูได้อย่างเดียว' : x.claimed ? '✓ รับรางวัลแล้ว' : x.inProgress ? '▶️ ทำภารกิจต่อ' : left <= 0 ? 'ครบ 3 ครั้งแล้ว' : x.used === 0 ? 'เริ่มภารกิจ' : `ลองอีกครั้ง (ครั้งที่ ${x.used + 1})`}
             </button>
             {x.top.length > 0 && (
               <details style={{ marginTop: 10 }}>
-                <summary style={{ cursor: 'pointer', fontWeight: 600 }}>🏆 อันดับ 5 อันดับแรก</summary>
+                <summary style={{ cursor: 'pointer', fontWeight: 600 }}>🏆 ผลงานสมาชิก</summary>
                 <ol style={{ margin: '8px 0 0', paddingLeft: 22 }}>
                   {x.top.map((t, i) => <li key={i} style={t.me ? { fontWeight: 700 } : undefined}>{t.name} <span className="muted">({t.team})</span> — {t.tokens}</li>)}
                 </ol>
@@ -68,24 +73,29 @@ export default function MiniGames({ onBalance, onAuthLost }: Props) {
 }
 
 function ResultCard({ icon, title, lines, res, onExit }: { icon: string; title: string; lines: string[]; res: Result; onExit: () => void }) {
+  const success = !!res.success;
   return (
-    <div className="card center stack" style={{ border: '3px solid #2f8f5b' }}>
+    <div className="card center stack" style={{ border: `3px solid ${success ? '#2f8f5b' : '#d2b56e'}` }}>
       <div style={{ fontSize: 54 }}>{icon}</div>
       <h2 style={{ margin: 0 }}>{title}</h2>
       {lines.map((l) => <div key={l} className="muted">{l}</div>)}
-      <div className="verdict ok" style={{ fontSize: 26 }}>ได้ {res.tokens} โทเคน</div>
-      {res.awarded > 0
-        ? <div>🪙 <strong>+{res.awarded}</strong> เข้ากระเป๋าทีม{res.awarded < res.tokens ? ' (ส่วนที่เพิ่มจากครั้งที่ดีที่สุดเดิม)' : ''}</div>
-        : <div className="muted">ยังไม่ดีกว่าครั้งที่ดีที่สุดของคุณ ({res.best}) จึงไม่ได้โทเคนเพิ่ม ลองใหม่ได้</div>}
-      <button className="btn" onClick={onExit}>กลับไปเมนูเกม</button>
+      <div className={`verdict ${success ? 'ok' : 'bad'}`} style={{ fontSize: 24 }}>
+        {success ? '✓ ภารกิจสำเร็จ' : 'ยังไม่ผ่านเงื่อนไขภารกิจ'}
+      </div>
+      {res.awarded > 0 ? <div>🪙 <strong>+{res.awarded} Tokens</strong> เข้ากระเป๋าทีมแล้ว</div>
+        : !success ? <div className="muted">ยังไม่ได้รับโทเคน · กลับไปดูจำนวนครั้งที่เหลือและลองใหม่ได้</div>
+        : res.rewardTokens === 0 ? <div className="muted">รางวัลที่ผู้จัดกำหนดสำหรับภารกิจนี้คือ 0 Tokens</div>
+        : <div className="muted">คุณรับรางวัลภารกิจนี้แล้ว จึงไม่ได้รับโทเคนซ้ำ</div>}
+      <div className="muted">รางวัลเมื่อสำเร็จ {res.rewardTokens} Tokens · รับครั้งเดียวต่อคนต่อภารกิจ</div>
+      <button className="btn" onClick={onExit}>กลับไปภารกิจประจำสัปดาห์</button>
     </div>
   );
 }
 
-type GP = { onExit: () => void; onAuthLost: (e: unknown) => void; pct: number };
+type GP = { onExit: () => void; onAuthLost: (e: unknown) => void; rewardTokens: number };
 
 // ------------------------------------------------------------------ 1) spot the difference
-function SpotGame({ onExit, onAuthLost }: GP) {
+function SpotGame({ onExit, onAuthLost, rewardTokens }: GP) {
   const [g, setG] = useState<any>(null);
   const [marks, setMarks] = useState<{ x: number; y: number }[]>([]);
   const [miss, setMiss] = useState<{ x: number; y: number; k: number }[]>([]);
@@ -102,6 +112,7 @@ function SpotGame({ onExit, onAuthLost }: GP) {
     setBusy(true); setErr('');
     try {
       const r = await api<any>('/api/minigames/spot', { action: 'start' }, 1);
+      if (r.done) { setRes(r); return; }
       base.current = Date.now() - r.elapsed * 1000;
       setG(r); setMarks(r.found); setPenalty(r.penalty); setLeft(r.seconds - r.elapsed - r.penalty);
     } catch (e) { onAuthLost(e); setErr((e as Error).message); }
@@ -140,7 +151,7 @@ function SpotGame({ onExit, onAuthLost }: GP) {
 
   if (res) {
     const d = res.detail ?? {};
-    return <ResultCard icon="🔍" title={d.found === SPOT.diffs ? 'หาครบทุกจุด!' : `หาเจอ ${d.found ?? 0}/${SPOT.diffs} จุด`}
+    return <ResultCard icon="🔍" title={res.success ? 'หาครบทุกจุด!' : `หาเจอ ${d.found ?? 0}/${SPOT.diffs} จุด`}
       lines={[`ใช้เวลา ${mmss(d.seconds ?? 0)} นาที${d.misses ? ` · กดพลาด ${d.misses} ครั้ง (+${d.misses * SPOT.missPenaltySec} วินาที)` : ''}`]} res={res} onExit={onExit} />;
   }
   if (!g) {
@@ -149,6 +160,7 @@ function SpotGame({ onExit, onAuthLost }: GP) {
         <div style={{ fontSize: 54 }}>🔍</div>
         <h2 style={{ margin: 0 }}>{MG_INFO.spot.title}</h2>
         <p style={{ margin: 0 }}>{MG_INFO.spot.how}</p>
+        <strong>สำเร็จรับ {rewardTokens} Tokens เข้ากระเป๋าทีม</strong>
         <div className="banner" style={{ margin: 0 }}>⏱️ เวลาเริ่มนับทันทีที่กด “เริ่ม” และ<strong>นับต่อแม้ปิดหน้านี้</strong></div>
         {err && <div className="error">{err}</div>}
         <button className="btn" disabled={busy} onClick={start}>{busy ? 'กำลังเริ่ม…' : '▶️ เริ่มจับเวลา'}</button>
@@ -181,7 +193,7 @@ function SpotGame({ onExit, onAuthLost }: GP) {
         <Pic src={g.a} label="ภาพ A" />
         <Pic src={g.b} label="ภาพ B" />
         {err && <div className="error">{err}</div>}
-        <button className="btn ghost" onClick={() => { if (confirm('จบรอบนี้เลยไหม? จะนับเท่าที่หาเจอแล้ว')) finish(); }}>🏳️ จบรอบนี้</button>
+        <button className="btn ghost" onClick={() => { if (confirm('จบรอบนี้เลยไหม? ต้องหาครบทุกจุดจึงจะได้รับโทเคน')) finish(); }}>🏳️ จบรอบนี้</button>
       </div>
     </>
   );
@@ -189,7 +201,7 @@ function SpotGame({ onExit, onAuthLost }: GP) {
 
 // ------------------------------------------------------------------ 2) memory flip
 type Face = { id: string; emoji: string; name: string };
-function MemoryGame({ onExit, onAuthLost }: GP) {
+function MemoryGame({ onExit, onAuthLost, rewardTokens }: GP) {
   const [a, setA] = useState<{ attemptId: string; n: number } | null>(null);
   const [faces, setFaces] = useState<Record<number, Face>>({});         // cards currently turned up
   const [done, setDone] = useState<Set<number>>(new Set());              // matched cards
@@ -204,6 +216,7 @@ function MemoryGame({ onExit, onAuthLost }: GP) {
     setBusy(true); setErr('');
     try {
       const r = await api<any>('/api/minigames/memory', { action: 'start' }, 1);
+      if (r.done) { setMoves(r.detail?.moves ?? 0); setRes(r); return; }
       setA({ attemptId: r.attemptId, n: r.n }); setMoves(r.moves);
       const f: Record<number, Face> = {};
       r.matched.forEach((m: any) => { f[m.i] = m; });
@@ -217,6 +230,7 @@ function MemoryGame({ onExit, onAuthLost }: GP) {
     setLock(true); setErr('');
     try {
       const r = await api<any>('/api/minigames/memory', { action: 'flip', attemptId: a.attemptId, index: i }, 1);
+      if (r.done && !r.card) { setMoves(r.detail?.moves ?? moves); setRes(r); setLock(false); return; }
       setFaces((f) => ({ ...f, [i]: r.card }));
       if (r.phase === 'first') { setFirstIdx(i); setLock(false); return; }
       setMoves(r.moves);
@@ -239,6 +253,7 @@ function MemoryGame({ onExit, onAuthLost }: GP) {
         <div style={{ fontSize: 54 }}>🃏</div>
         <h2 style={{ margin: 0 }}>{MG_INFO.memory.title}</h2>
         <p style={{ margin: 0 }}>{MG_INFO.memory.how}</p>
+        <strong>สำเร็จรับ {rewardTokens} Tokens เข้ากระเป๋าทีม</strong>
         <div className="banner" style={{ margin: 0 }}>แตะการ์ดทีละใบ · เปิด 2 ใบนับเป็น 1 ครั้ง · ไม่จับเวลา</div>
         {err && <div className="error">{err}</div>}
         <button className="btn" disabled={busy} onClick={start}>{busy ? 'กำลังเริ่ม…' : '▶️ เริ่มเล่น'}</button>
@@ -253,7 +268,7 @@ function MemoryGame({ onExit, onAuthLost }: GP) {
         <span>คู่ที่เจอ {done.size / 2}/6</span>
         <span className="muted" style={{ fontSize: 13 }}>รอบที่ {a.n}/3</span>
       </div>
-      <div className="muted" style={{ fontSize: 13, margin: '4px 0 10px' }}>ถ้าจบตอนนี้ ≈ {memoryTokens(moves + 1)}+ โทเคน (ยิ่งน้อยครั้งยิ่งได้มาก)</div>
+      <div className="muted" style={{ fontSize: 13, margin: '4px 0 10px' }}>จับคู่ครบทั้ง 6 คู่ รับ {rewardTokens} Tokens · ไม่ลดรางวัลตามจำนวนครั้งที่เปิด</div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
         {Array.from({ length: 12 }, (_, i) => {
           const f = faces[i], ok = done.has(i);
@@ -277,7 +292,7 @@ function MemoryGame({ onExit, onAuthLost }: GP) {
 
 // ------------------------------------------------------------------ 3) mystery ingredient
 type Q = { round: number; total: number; seconds: number; elapsed: number; emoji: string; ox: number; oy: number; options: Face[] };
-function MysteryGame({ onExit, onAuthLost, pct }: GP) {
+function MysteryGame({ onExit, onAuthLost, rewardTokens }: GP) {
   const [a, setA] = useState<{ attemptId: string; n: number } | null>(null);
   const [q, setQ] = useState<Q | null>(null);
   const [fb, setFb] = useState<any>(null);                 // feedback after an answer
@@ -290,7 +305,8 @@ function MysteryGame({ onExit, onAuthLost, pct }: GP) {
   const sent = useRef(false);
 
   async function loadRound(attemptId: string) {
-    const r = await api<Q>('/api/minigames/mystery', { action: 'round', attemptId }, 1);
+    const r = await api<Q | (Result & { done: true; detail: any })>('/api/minigames/mystery', { action: 'round', attemptId }, 1);
+    if ('done' in r) { setRes(r); return; }
     base.current = Date.now() - r.elapsed * 1000;
     sent.current = false; setTaps(0); setT(r.elapsed); setFb(null); setQ(r);
   }
@@ -298,6 +314,7 @@ function MysteryGame({ onExit, onAuthLost, pct }: GP) {
     setBusy(true); setErr('');
     try {
       const r = await api<any>('/api/minigames/mystery', { action: 'start' }, 1);
+      if (r.done) { setRes(r); return; }
       setA({ attemptId: r.attemptId, n: r.n });
       await loadRound(r.attemptId);
     } catch (e) { onAuthLost(e); setErr((e as Error).message); }
@@ -328,6 +345,7 @@ function MysteryGame({ onExit, onAuthLost, pct }: GP) {
         <div style={{ fontSize: 54 }}>🥬</div>
         <h2 style={{ margin: 0 }}>{MG_INFO.mystery.title}</h2>
         <p style={{ margin: 0 }}>{MG_INFO.mystery.how}</p>
+        <strong>ตอบถูกครบ 5 ข้อ รับ {rewardTokens} Tokens เข้ากระเป๋าทีม</strong>
         {err && <div className="error">{err}</div>}
         <button className="btn" disabled={busy} onClick={start}>{busy ? 'กำลังเริ่ม…' : '▶️ เริ่มเล่น'}</button>
         <button className="btn ghost" onClick={onExit}>กลับ</button>
@@ -335,7 +353,6 @@ function MysteryGame({ onExit, onAuthLost, pct }: GP) {
     );
   }
   const reveal = fb ? 1 : Math.min(1, Math.max(t / (q.seconds * 0.8), taps * 0.25));
-  const potential = Math.round((mysteryTokens(true, t) * pct) / 100);
   return (
     <div className="card center stack">
       <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
@@ -351,11 +368,11 @@ function MysteryGame({ onExit, onAuthLost, pct }: GP) {
           transform: `scale(${1 + 11 * (1 - reveal)})`, transformOrigin: `${q.ox}% ${q.oy}%`, filter: `blur(${(1 - reveal) * 9}px)`, transition: 'transform .35s, filter .35s',
         }}>{q.emoji}</span>
       </button>
-      {!fb && <div className="muted" style={{ fontSize: 14 }}>👆 แตะที่ภาพเพื่อเปิดเพิ่ม ({taps}/4) หรือรอให้ชัดขึ้น · ตอบตอนนี้ได้ ≈ <strong>{potential}</strong> โทเคน</div>}
+      {!fb && <div className="muted" style={{ fontSize: 14 }}>👆 แตะที่ภาพเพื่อเปิดเพิ่ม ({taps}/4) หรือรอให้ชัดขึ้น · ตอบถูกครบ 5 ข้อรับ {rewardTokens} Tokens</div>}
       {fb ? (
         <>
           <div className={`verdict ${fb.correct ? 'ok' : 'bad'}`} style={{ fontSize: 18 }}>
-            {fb.correct ? `✅ ถูกต้อง! +${fb.roundTokens} โทเคน` : fb.timedOut || !fb.pick ? `⌛ หมดเวลา · เฉลย ${fb.answer.emoji} ${fb.answer.name}` : `❌ ไม่ถูก · เฉลย ${fb.answer.emoji} ${fb.answer.name}`}
+            {fb.correct ? `✅ ถูกต้อง! (${fb.correctCount ?? q.round}/${MYSTERY.rounds} ข้อ)` : fb.timedOut || !fb.pick ? `⌛ หมดเวลา · เฉลย ${fb.answer.emoji} ${fb.answer.name}` : `❌ ไม่ถูก · เฉลย ${fb.answer.emoji} ${fb.answer.name}`}
           </div>
           {fb.done === false
             ? <button className="btn" onClick={() => a && loadRound(a.attemptId).catch((e) => { onAuthLost(e); setErr((e as Error).message); })}>ข้อต่อไป ➡️</button>

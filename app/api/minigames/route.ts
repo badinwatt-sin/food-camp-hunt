@@ -12,5 +12,5 @@ export const GET = handler(async () => {
   const { data: settings, error } = await db().from('game_settings').select('mg_spot_open, mg_memory_open, mg_mystery_open').eq('id', 1).single();
   if (error) throw error;
   if (!menuAccess(settings).games) throw new HttpError(403, 'MG_CLOSED');
-  return ok(await status(p.id));
+  return ok(await status(p.id, !!p.is_observer));
 });

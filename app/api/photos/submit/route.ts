@@ -1,6 +1,6 @@
 import { randomUUID } from 'crypto';
 import { db } from '@/lib/supabase';
-import { requirePlayer } from '@/lib/player';
+import { requireMember } from '@/lib/player';
 import { removePublicFile, sniffImage } from '@/lib/avatars';
 import { checkOrigin, handler, HttpError, ok, rateLimit } from '@/lib/http';
 
@@ -10,7 +10,7 @@ import { checkOrigin, handler, HttpError, ok, rateLimit } from '@/lib/http';
  */
 export const POST = handler(async (req: Request) => {
   checkOrigin(req);
-  const p = await requirePlayer();
+  const p = await requireMember();
   rateLimit(req, 'photo', 30, 10 * 60 * 1000, p.id);
   if (!p.is_leader) throw new HttpError(403, 'NOT_LEADER');
   const sb = db();

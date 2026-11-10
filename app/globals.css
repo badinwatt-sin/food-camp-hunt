@@ -271,3 +271,30 @@ label.lbl { display: block; font-size: 14px; color: #5d6a80; margin: 10px 0 4px;
 .line-entry-arrow { flex: none; font-size: 24px; }
 .line-entry-button:disabled { background: #e1e4e8; color: #69717d; border-color: #d0d5dc; box-shadow: none; }
 .line-entry-button:disabled .line-entry-icon { background: #d5dbe1; filter: grayscale(1); }
+
+.line-group-heading { font-size: 20px; overflow-wrap: anywhere; }
+.line-reward-note { background: #edf8f0; padding: 14px; border-radius: 14px; text-align: left; font-size: 14px; }
+.line-reward-ranks { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+.line-reward-ranks > div { display: grid; text-align: center; padding: 8px 2px; border-radius: 10px; background: #fff; }
+.line-reward-ranks span { font-size: 12px; color: #56675c; }
+.line-reward-ranks strong { font-size: 24px; color: #186b36; line-height: 1.25; }
+.line-reward-ranks small { font-size: 10px; color: #56675c; }
+.observer-note { background: #eef2f8; border: 1px solid #d4deeb; color: #43536c; padding: 11px 13px; border-radius: 13px; margin-bottom: 14px; font-size: 13px; }
+.line-entry-icon { background: transparent; }
+.team-line-numbers { display: grid; gap: 1px; margin: 18px 0 10px; }
+.team-line-numbers > strong { font-size: 36px; line-height: 1.15; color: #176c3b; }
+.team-line-numbers > strong span { font-size: 18px; font-weight: 500; color: #5c6e65; }
+.team-line-numbers > span { font-size: 14px; color: #5c6e65; }
+.line-progress-status { font-size: 16px; color: #2e5140; }
+.team-member-row { align-items: flex-start !important; }
+.team-member-info { flex: 1; min-width: 0; }
+.line-member-state { font-size: 13px; color: #717a86; margin-top: 3px; }
+.line-member-state.joined { color: #23834a; }
+.squad-member-control { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 7px; margin-top: 9px; font-size: 12px; }
+.squad-member-control select { min-height: 42px; width: 100%; min-width: 0; padding: 6px 8px; border: 1px solid #d7dfe1; border-radius: 9px; background: #fff; font-size: 14px; }
+.squad-member-control select:disabled { background: #edf0f2; }
+.squad-create-form { display: flex; gap: 8px; align-items: flex-end; }
+.squad-create-form .grow { flex: 1; min-width: 0; }
+.squad-create-form .field { width: 100%; min-width: 0; }
+.squad-create-form .btn { flex: none; }
+.team-save-status { background: #e7f6eb; color: #23653b; padding: 12px 14px; border-radius: 12px; margin-bottom: 14px; font-size: 14px; }

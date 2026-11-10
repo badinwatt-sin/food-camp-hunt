@@ -3,11 +3,11 @@ import { db } from './supabase';
 
 /** Members of the player's group: their squad, or the whole team when they have no squad. Ordered by id (stable). */
 export async function groupMembers(p: { id: string; team_id: string; squad_id: string | null }) {
-  let q = db().from('participants').select('id, name').eq('team_id', p.team_id);
+  let q = db().from('participants').select('*').eq('team_id', p.team_id);
   q = p.squad_id ? q.eq('squad_id', p.squad_id) : q.is('squad_id', null);
   const { data, error } = await q.order('id');
   if (error) throw error;
-  return (data ?? []) as { id: string; name: string }[];
+  return (data ?? []).filter((member) => !member.is_observer).map((member) => ({ id: member.id, name: member.name })) as { id: string; name: string }[];
 }
 
 /**

@@ -1,7 +1,17 @@
-/** Shared (browser + server) numbers for the solo mini-games. Token values are BEFORE the admin's percentage multiplier. */
+/** Shared rules for weekly missions. Rewards are fixed by Admin, once per person and game. */
 export const MG_MAX_ATTEMPTS = 3;
 export type MgGame = 'spot' | 'memory' | 'mystery';
 export const MG_GAMES: MgGame[] = ['spot', 'memory', 'mystery'];
+export const MG_DEFAULT_REWARD = 10;
+export const MG_SUCCESS_RULES: Record<MgGame, string> = {
+  spot: 'หาจุดต่างครบ 5 จุดภายใน 3 นาที',
+  memory: 'จับคู่การ์ดครบทั้ง 6 คู่',
+  mystery: 'ตอบถูกครบทั้ง 5 ข้อภายในเวลาของแต่ละข้อ',
+};
+export function weeklyReward(settings: Record<string, unknown>, game: MgGame): number {
+  const value = settings[`mg_${game}_tokens`];
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 && value <= 100000 ? value : MG_DEFAULT_REWARD;
+}
 
 export const SPOT = { seconds: 180, diffs: 5, perDiff: 6, speedBonus: 30, missPenaltySec: 3, grace: 4 };
 export const MEMORY = { pairs: 6, best: 60, perExtraMove: 4, floor: 10 };
@@ -15,13 +25,14 @@ export const MG_MAX_TOKENS: Record<MgGame, number> = {
 
 export const MG_INFO: Record<MgGame, { icon: string; title: string; en: string; how: string; color: string }> = {
   spot: { icon: '🔍', title: 'จับผิดภาพ Food Camp', en: 'Spot the Difference', color: '#d8ecf5',
-    how: `หาจุดที่ต่างกัน ${SPOT.diffs} จุด ใน ${SPOT.seconds / 60} นาที · หาได้ครบและเร็วยิ่งได้โทเคนมาก · กดผิดโดนบวกเวลา ${SPOT.missPenaltySec} วินาที` },
+    how: `หาจุดที่ต่างกัน ${SPOT.diffs} จุด ใน ${SPOT.seconds / 60} นาที · ต้องหาครบจึงสำเร็จ · กดผิดโดนบวกเวลา ${SPOT.missPenaltySec} วินาที` },
   memory: { icon: '🃏', title: 'Camp Memory Flip', en: 'Memory Match', color: '#fde7b0',
-    how: `เปิดไพ่ 12 ใบ จับคู่วัตถุดิบ/อุปกรณ์ให้ครบ ${MEMORY.pairs} คู่ · ใช้จำนวนครั้งน้อยที่สุดได้โทเคนสูงสุด` },
+    how: `เปิดไพ่ 12 ใบ จับคู่วัตถุดิบ/อุปกรณ์ให้ครบ ${MEMORY.pairs} คู่ · จับคู่ครบจึงรับโทเคนตามที่ผู้จัดกำหนด` },
   mystery: { icon: '🥬', title: 'Mystery Ingredient', en: 'Guess the Ingredient', color: '#d9efd8',
-    how: `ภาพวัตถุดิบซูมจนแทบดูไม่ออก ค่อยๆ ชัดขึ้น (แตะเปิดภาพเพิ่มได้) แล้วเลือกคำตอบ ${MYSTERY.rounds} ข้อ · ตอบเร็วยิ่งได้โทเคนมาก` },
+    how: `ภาพวัตถุดิบซูมจนแทบดูไม่ออก ค่อยๆ ชัดขึ้น (แตะเปิดภาพเพิ่มได้) แล้วเลือกคำตอบ ${MYSTERY.rounds} ข้อ · ต้องตอบถูกครบทุกข้อภายในเวลาจึงสำเร็จ` },
 };
 
+// Legacy raw-score helpers remain for historical records; current mission rewards never use them.
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
 
 /** Spot the difference: 6 tokens per difference + a speed bonus (scaled by how many were found). 5/5 in 60 s = 50. */

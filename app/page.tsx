@@ -6,7 +6,8 @@ import { AVATAR_EMOJIS } from '@/lib/avatar-list';
 import jsQR from 'jsqr';
 import { ApiError, api } from '@/lib/client-api';
 import MiniGames from '@/components/MiniGames';
-import LineCheckin from '@/components/LineCheckin';
+import LineCheckin, { LineInvitationProvider, useLineInvitation } from '@/components/LineCheckin';
+import LineLogo from '@/components/LineLogo';
 import type { LineStatus } from '@/lib/line-types';
 import type { MenuAccess } from '@/lib/menu-access';
 import { MARKET_CATS, marketCat } from '@/lib/market-cats';
@@ -21,6 +22,7 @@ type Me = {
   avatar: { url: string | null; emoji: string | null };
   checkin: { open: boolean; done: boolean; at: string | null };
   isLeader: boolean;
+  isObserver?: boolean;
   leaderName: string | null;
   marketOpen: boolean;
   menus: MenuAccess;
@@ -76,7 +78,6 @@ export default function Page() {
   const sessionEpoch = useRef(0);
   const endingSession = useRef(false);
   const loadRequest = useRef(0);
-  const [linePromptOpen, setLinePromptOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (endingSession.current) return null;
@@ -133,7 +134,7 @@ export default function Page() {
     } catch { /* storage blocked: the player can type the code instead */ }
   }, []);
   useEffect(() => {
-    if (me?.menus.checkin && pendingCheckin && (!me.line.open || !me.line.configured || me.line.joined)) setView('checkin');
+    if (me?.menus.checkin && !me.isObserver && pendingCheckin && (!me.line.open || !me.line.configured || me.line.joined)) setView('checkin');
   }, [me, pendingCheckin]);
 
   // Photo-mission decisions from staff: poll lightly and pop up "confirmed +N" / "not accepted" for the whole team.
@@ -172,7 +173,7 @@ export default function Page() {
 
   // If every question is answered but the finish step didn't run (e.g. connection dropped), finish now.
   useEffect(() => {
-    if (!me || !me.menus.quiz || completing.current) return;
+    if (!me || me.isObserver || !me.menus.quiz || completing.current) return;
     if (me.participant.status === 'in_progress' && me.total > 0 && me.answered >= me.total && !feedback) {
       completing.current = true;
       api('/api/complete', {}).then(() => load()).catch((e) => setErr(e.message)).finally(() => { completing.current = false; });
@@ -203,13 +204,14 @@ export default function Page() {
     setPendingCheckin('');
   }
   async function start() {
+    if (me?.isObserver) return;
     setBusy(true); setErr('');
     try { await api('/api/start', {}); await load(); }
     catch (e) { fail(e); }
     finally { setBusy(false); }
   }
   async function submit() {
-    if (!me?.current || selected === null) return;
+    if (!me?.current || me.isObserver || selected === null) return;
     setBusy(true); setErr('');
     try {
       const r = await api<Feedback & { isCorrect: boolean }>('/api/answer', { questionId: me.current.id, selected });
@@ -218,7 +220,7 @@ export default function Page() {
     finally { setBusy(false); }
   }
   async function next() {
-    if (!me) return;
+    if (!me || me.isObserver) return;
     setBusy(true); setErr('');
     try {
       const fb = feedback;
@@ -233,6 +235,8 @@ export default function Page() {
     finally { setBusy(false); }
   }
 
+  // Keep one global LINE invitation mounted while the player changes screens.
+  const renderPage = () => {
   // ------------------------------------------------------------- render
   if (loading) return <Shell><div className="spinner" /></Shell>;
 
@@ -260,7 +264,7 @@ export default function Page() {
   }
 
   const { participant, team } = me;
-  const subtitle = `ทีม ${team.name}${me.isLeader ? ' · ⭐ หัวหน้าทีม' : ''}`;
+  const subtitle = `ทีม ${team.name}${me.isObserver ? ' · คณะทำงาน' : me.isLeader ? ' · ⭐ หัวหน้าทีม' : ''}`;
   const goHome = () => setView('home');
   const QuizBack = ({ label = 'กลับไปภารกิจ' }: { label?: string }) => <button className="btn ghost" onClick={() => setView('missions')}>{label}</button>;
 
@@ -284,7 +288,7 @@ export default function Page() {
   if (view === 'games') {
     return (
       <Shell subtitle={subtitle} onHome={goHome}>
-        <MiniGames onBalance={() => load()} onAuthLost={fail} />
+        <MiniGames isObserver={!!me.isObserver} onBalance={() => load()} onAuthLost={fail} />
         <QuizBack />
       </Shell>
     );
@@ -298,6 +302,7 @@ export default function Page() {
           tab={huntTab}
           onTabChange={setHuntTab}
           access={me.menus}
+          readOnly={!!me.isObserver}
           pending={pendingSpot}
           clearPending={() => { setPendingSpot(''); try { sessionStorage.removeItem('fc_spot'); } catch { /* ignore */ } }}
           onBalance={() => load()}
@@ -330,7 +335,7 @@ export default function Page() {
   }
 
   // ---- Event-day check-in (scan the staff QR, then confirm)
-  if (view === 'checkin') {
+  if (view === 'checkin' && !me.isObserver) {
     return (
       <Shell subtitle={subtitle} onHome={goHome}>
         <CheckinView me={me} pendingCode={pendingCheckin}
@@ -366,9 +371,9 @@ export default function Page() {
         <div className="card">
           <div className="mission">
             <div className="m-ic" style={{ background: '#d9efd8' }}>🎮</div>
-            <div className="m-body"><h2>เกมย่อย</h2><div className="muted">จับผิดภาพ · จับคู่การ์ด · ทายวัตถุดิบ — เล่นคนเดียว สะสมโทเคนให้ทีม</div></div>
+            <div className="m-body"><h2>ภารกิจประจำสัปดาห์</h2><div className="muted">จับผิดภาพ · จับคู่การ์ด · ทายวัตถุดิบ — เล่นคนเดียว สะสมโทเคนให้ทีม</div></div>
           </div>
-          <button className="btn green" style={{ marginTop: 12 }} disabled={!me.menus.games} onClick={() => setView('games')}>{me.menus.games ? 'เล่นเกมย่อย' : '🔒 ยังไม่เปิดใช้งาน'}</button>
+          <button className="btn green" style={{ marginTop: 12 }} disabled={!me.menus.games} onClick={() => setView('games')}>{me.menus.games ? 'ดูภารกิจประจำสัปดาห์' : '🔒 ยังไม่เปิดใช้งาน'}</button>
         </div>
         <div className="card">
           <div className="mission">
@@ -392,6 +397,15 @@ export default function Page() {
 
   // ---- Quiz (start / questions / result)
   if (view === 'quiz') {
+    if (me.isObserver) return (
+      <Shell subtitle={subtitle} onHome={goHome}>
+        <div className="card center stack"><Pot size={64} /><h2>ควิซทายอาหาร</h2>
+          <p className="muted">{me.total} ข้อ · สมาชิกตอบถูกได้รับ {me.game.tokensPerCorrect} โทเคนต่อข้อเข้ากระเป๋าทีม</p>
+          <p className="observer-note">คณะทำงานดูข้อมูลกิจกรรมได้ แต่ไม่ส่งคำตอบหรือรับคะแนน</p>
+          <GoalCard goal={me.goal} mine /><QuizBack />
+        </div>
+      </Shell>
+    );
     if (participant.status === 'not_started') {
       return (
         <Shell subtitle={subtitle} onHome={goHome}>
@@ -401,7 +415,7 @@ export default function Page() {
             <div className="muted">{me.total} ข้อ · ตอบถูกข้อละ {me.game.tokensPerCorrect} โทเคน เข้ากระเป๋าทีม</div>
             {!me.game.open && <div className="banner">เกมยังไม่เปิด รอทีมงานประกาศสักครู่นะ</div>}
             {err && <div className="error">{err}</div>}
-            <button className="btn" disabled={busy || !me.game.open} onClick={start}>{busy ? 'กำลังเริ่ม…' : 'เริ่มเล่นเลย'}</button>
+            <button className="btn" disabled={busy || !me.game.open || me.isObserver} onClick={start}>{me.isObserver ? 'คณะทำงาน · ดูข้อมูลเท่านั้น' : busy ? 'กำลังเริ่ม…' : 'เริ่มเล่นเลย'}</button>
             {!me.game.open && <button className="btn ghost" onClick={() => load()}>ตรวจสอบอีกครั้ง</button>}
             <QuizBack />
           </div>
@@ -451,7 +465,7 @@ export default function Page() {
                     else if (i === feedback.selected) cls += ' wrong';
                   } else if (selected === i) cls += ' sel';
                   return (
-                    <button key={i} className={cls} disabled={!!feedback || busy} onClick={() => setSelected(i)}>
+                    <button key={i} className={cls} disabled={!!feedback || busy || me.isObserver} onClick={() => setSelected(i)}>
                       <span className="letter">{LETTERS[i]}</span>
                       <span>{o}</span>
                     </button>
@@ -468,7 +482,7 @@ export default function Page() {
             {err && <div className="error" style={{ marginTop: 12 }}>{err}</div>}
             <div style={{ marginTop: 14 }}>
               {!feedback ? (
-                <button className="btn" disabled={selected === null || busy} onClick={submit}>
+                <button className="btn" disabled={selected === null || busy || me.isObserver} onClick={submit}>
                   {busy ? 'กำลังส่ง…' : 'ส่งคำตอบ'}
                 </button>
               ) : (
@@ -505,8 +519,8 @@ export default function Page() {
 
   // ---- Home: who am I + three big buttons
   return (
-    <Shell subtitle={subtitle} suppressNotices={linePromptOpen}>
-      {me.checkin.open && !me.checkin.done && (
+    <Shell subtitle={subtitle}>
+      {me.checkin.open && !me.checkin.done && !me.isObserver && (
         <div className="card" style={{ border: '3px solid #f0c36a', background: '#fff9e8' }}>
           <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
             <div><strong>📍 ถึงสถานที่จัดงานแล้วใช่ไหม?</strong><div className="muted" style={{ fontSize: 14 }}>เช็กอินกับทีมงานหน้างาน: สแกน QR แล้วกดยืนยันการเข้าร่วม</div></div>
@@ -525,7 +539,7 @@ export default function Page() {
             <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.25 }}>สวัสดี {participant.name}</div>
             {participant.fullName && participant.fullName !== participant.name && <div className="muted" style={{ fontSize: 14 }}>{participant.fullName}</div>}
             <div className="row" style={{ marginTop: 8, gap: 6 }}>
-              <span className={`role ${me.isLeader ? 'leader' : 'member'}`}>{me.isLeader ? '⭐ หัวหน้าทีม' : '🏕️ สมาชิกทีม'}</span>
+              <span className={`role ${me.isLeader && !me.isObserver ? 'leader' : 'member'}`}>{me.isObserver ? '👁 คณะทำงาน' : me.isLeader ? '⭐ หัวหน้าทีม' : '🏕️ สมาชิกทีม'}</span>
               <span className="pill">ทีม {team.name}</span>
               {me.squad && <span className="pill" style={{ background: '#f9dca0' }}>{me.squad}</span>}
               {me.checkin.done && <span className="pill" style={{ background: '#cfe9c9' }}>✅ เช็กอินแล้ว{me.checkin.at ? ` ${new Date(me.checkin.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : ''}</span>}
@@ -534,7 +548,7 @@ export default function Page() {
         </div>
         {!me.avatar.url && !me.avatar.emoji && <div className="muted" style={{ marginTop: 10, fontSize: 14 }}>👆 แตะที่วงกลมเพื่อเลือกรูปโปรไฟล์ของคุณ</div>}
         <div className="row" style={{ marginTop: 12, justifyContent: 'space-between' }}>
-          <span className="muted">{me.isLeader ? 'คุณมีสิทธิ์แลกสินค้าให้ทีม' : 'หัวหน้าทีมเป็นผู้แลกสินค้า'}</span>
+          <span className="muted">{me.isObserver ? 'ติดตามความเคลื่อนไหวของทีม' : me.isLeader ? 'คุณมีสิทธิ์แลกสินค้าให้ทีม' : 'หัวหน้าทีมเป็นผู้แลกสินค้า'}</span>
           <span className="coin-row" style={{ fontSize: 22, gap: 6 }}><Coin size={26} /> {team.balance}</span>
         </div>
       </div>
@@ -556,12 +570,14 @@ export default function Page() {
           <span className="t-go" aria-hidden>›</span>
         </button>
       </div>
-      <LineCheckin status={me.line} onRefresh={load} onAuthLost={fail} onPromptChange={setLinePromptOpen} />
+      <LineCheckin status={me.line} onRefresh={load} onAuthLost={fail} />
       <p className="center" style={{ marginTop: 18 }}>
         <button className="btn small ghost" onClick={logout}>ไม่ใช่คุณ? ออกจากระบบ</button>
       </p>
     </Shell>
   );
+  };
+  return <LineInvitationProvider status={me?.line ?? null} onRefresh={load} onAuthLost={fail}>{renderPage()}</LineInvitationProvider>;
 }
 
 /** Event-day check-in: (1) scan the staff QR (the app opens with its code), (2) press confirm. */
@@ -786,57 +802,112 @@ function AvatarSheet({ me, onClose, onSaved, onAuthLost }: { me: Me; onClose: ()
   );
 }
 
-/** Team page: who is in the team, who leads, which squad each person is in. */
+/** The team screen leads with LINE participation and keeps staff outside every denominator. */
 function TeamView({ me, onAuthLost }: { me: Me; onAuthLost: (e: unknown) => void }) {
-  type Member = { name: string; isLeader: boolean; isMe: boolean; squad: string | null; quizDone: boolean; lineJoined: boolean; avatarUrl: string | null; avatarEmoji: string | null };
-  const [d, setD] = useState<{ team: string; total: number; quizDone: number; squads: string[]; members: Member[] } | null>(null);
+  type Member = { id?: string; name: string; isLeader: boolean; isMe: boolean; isObserver?: boolean;
+    squad: string | null; squadId?: string | null; quizDone: boolean; lineJoined: boolean; avatarUrl: string | null; avatarEmoji: string | null };
+  type TeamData = { team: string; total: number; quizDone: number; squads: string[]; members: Member[];
+    squadOptions?: { id: string; name: string }[]; canManageSquads?: boolean; observerTotal?: number;
+    line?: { joined: number; total: number; missing: number; missingPct: number } };
+  const [d, setD] = useState<TeamData | null>(null);
   const [err, setErr] = useState('');
+  const [message, setMessage] = useState('');
+  const [newSquad, setNewSquad] = useState('');
+  const [saving, setSaving] = useState<string | null>(null);
   const cb = useRef(onAuthLost);
   cb.current = onAuthLost;
-  useEffect(() => {
-    api('/api/team').then(setD).catch((e) => { cb.current(e); setErr((e as Error).message); });
+  const load = useCallback(async () => {
+    try { setD(await api<TeamData>('/api/team')); setErr(''); }
+    catch (e) { cb.current(e); setErr((e as Error).message); }
   }, []);
+  useEffect(() => {
+    void load();
+    const timer = setInterval(() => { if (document.visibilityState === 'visible') void load(); }, 15000);
+    return () => clearInterval(timer);
+  }, [load]);
+
+  async function createSquad() {
+    if (!newSquad.trim() || saving) return;
+    setSaving('create'); setErr(''); setMessage('');
+    try {
+      await api('/api/team/squads', { action: 'create', name: newSquad.trim() });
+      setNewSquad(''); await load(); setMessage('สร้าง Squad แล้ว เลือกสมาชิกด้านล่างเพื่อจัดเข้ากลุ่มได้เลย');
+    } catch (e) { cb.current(e); setErr((e as Error).message); }
+    finally { setSaving(null); }
+  }
+  async function assignSquad(member: Member, squadId: string) {
+    if (!member.id || saving) return;
+    setSaving(member.id); setErr(''); setMessage('');
+    try {
+      await api('/api/team/squads', { action: 'assign', participantId: member.id, squadId: squadId || null });
+      await load(); setMessage(`บันทึก Squad ของ ${member.name} แล้ว`);
+    } catch (e) { cb.current(e); setErr((e as Error).message); }
+    finally { setSaving(null); }
+  }
   if (!d) return <div className="card center">{err ? <div className="error">{err}</div> : <div className="spinner" />}</div>;
 
-  const leader = d.members.find((m) => m.isLeader);
-  const groups: { title: string; list: Member[] }[] = [
-    ...d.squads.map((sq) => ({ title: sq, list: d.members.filter((m) => m.squad === sq) })),
-    { title: 'ยังไม่ได้อยู่สควอด', list: d.members.filter((m) => !m.squad) },
-  ].filter((g) => g.list.length > 0);
-  const row = (m: Member, k: number) => (
-    <div className="m-row" key={k}>
+  const members = d.members.filter((m) => !m.isObserver);
+  const observers = d.members.filter((m) => m.isObserver);
+  const leader = members.find((m) => m.isLeader);
+  const total = d.line?.total ?? members.length;
+  const joined = d.line?.joined ?? members.filter((m) => m.lineJoined).length;
+  const missing = d.line?.missing ?? Math.max(0, total - joined);
+  const missingPct = d.line?.missingPct ?? (total ? Math.ceil(missing * 1000 / total) / 10 : 0);
+  const progress = total ? Math.min(100, joined * 100 / total) : 0;
+  const squadOptions = d.squadOptions ?? [];
+  const canManage = !!d.canManageSquads && !me.isObserver;
+  const groups = [
+    ...d.squads.map((name) => ({ title: name, list: members.filter((m) => !m.isLeader && m.squad === name) })),
+    { title: 'ยังไม่ได้อยู่ Squad', list: members.filter((m) => !m.isLeader && !m.squad) },
+  ].filter((group) => group.list.length);
+  const row = (m: Member, index: number) => (
+    <div className="m-row team-member-row" key={m.id ?? index}>
       <div className={`m-av ${m.isLeader ? 'leader' : ''}`} aria-hidden><Avatar url={m.avatarUrl} emoji={m.avatarEmoji} name={m.name} /></div>
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="team-member-info">
         <strong>{m.name}</strong>{m.isMe && <span className="me-tag">คุณ</span>}
-        <div className="muted" style={{ fontSize: 14 }}>{m.isLeader ? '⭐ หัวหน้าทีม · แลกสินค้าให้ทีม' : '🏕️ สมาชิก · ทำภารกิจเก็บโทเคน'}</div>
-        <div className="muted" style={{ fontSize: 13 }}>{m.lineJoined ? '✅ เข้า join LINE แล้ว' : '⏳ ยังไม่ได้กดเข้า LINE'}</div>
+        <div className="muted" style={{ fontSize: 13 }}>{m.isObserver ? 'คณะทำงาน · ดูความเคลื่อนไหวของทีม' : m.isLeader ? '⭐ หัวหน้าทีม' : 'สมาชิกทีม'}</div>
+        {!m.isObserver && <div className={`line-member-state ${m.lineJoined ? 'joined' : ''}`}>{m.lineJoined ? '✓ เข้า LINE แล้ว' : 'ยังไม่ได้เข้ากลุ่ม LINE'}</div>}
+        {canManage && !m.isObserver && m.id && <label className="squad-member-control">
+          <span>Squad</span>
+          <select aria-label={`Squad ของ ${m.name}`} value={m.squadId ?? ''} disabled={!!saving}
+            onChange={(event) => void assignSquad(m, event.target.value)}>
+            <option value="">ยังไม่กำหนด Squad</option>
+            {squadOptions.map((squad) => <option key={squad.id} value={squad.id}>{squad.name}</option>)}
+          </select>
+          {saving === m.id && <span className="muted">กำลังบันทึก…</span>}
+        </label>}
+        {!canManage && !m.isObserver && m.squad && <span className="muted" style={{ fontSize: 13 }}>Squad {m.squad}</span>}
       </div>
-      <span title={m.quizDone ? 'เล่นควิซจบแล้ว' : 'ยังไม่จบควิซ'} style={{ fontSize: 20 }}>{m.quizDone ? '✅' : '⏳'}</span>
     </div>
   );
   return (
     <>
-      <div className="card center">
-        <h2 style={{ fontSize: 22 }}>👥 สมาชิกทีม {d.team}</h2>
-        <div className="muted">ทั้งหมด {d.total} คน · เล่นควิซจบแล้ว {d.quizDone}/{d.total}</div>
-        <div className="progress" style={{ margin: '10px 0 0' }}><i style={{ width: `${d.total ? (d.quizDone / d.total) * 100 : 0}%` }} /></div>
-      </div>
-      <div className="card" style={{ border: '3px solid #f4b860', background: '#fff9e8' }}>
-        <div className="muted" style={{ marginBottom: 4 }}>⭐ หัวหน้าทีม</div>
-        {leader ? (
-          <div className="members">{row(leader, -1)}</div>
-        ) : (
-          <div className="muted">ยังไม่ได้กำหนดหัวหน้าทีม · สอบถามทีมงาน</div>
-        )}
-        <div className="muted" style={{ fontSize: 14, marginTop: 6 }}>หัวหน้าทีมเป็นผู้ใช้โทเคนทีมแลกสินค้าที่ตลาด</div>
-      </div>
-      {groups.map((g) => (
-        <div className="card members" key={g.title}>
-          <strong>🏕️ {g.title} <span className="muted" style={{ fontWeight: 400 }}>({g.list.length} คน)</span></strong>
-          <div style={{ marginTop: 4 }}>{g.list.map(row)}</div>
+      <div className="card team-line-summary">
+        <div className="row" style={{ gap: 10, flexWrap: 'nowrap' }}><LineLogo size={42} /><h2 style={{ margin: 0 }}>สมาชิกทีม {d.team}</h2></div>
+        <div className="team-line-numbers"><strong>{joined}<span> / {total} คน</span></strong><span>เข้ากลุ่ม LINE แล้ว</span></div>
+        <div className="progress" role="progressbar" aria-label="สมาชิกที่เข้ากลุ่ม LINE แล้ว" aria-valuemin={0} aria-valuemax={total || 1} aria-valuenow={joined}>
+          <i style={{ width: `${progress}%`, background: '#06c755' }} />
         </div>
-      ))}
-      {d.squads.length > 0 && <p className="muted center" style={{ margin: '0 0 14px' }}>คนในสควอดเดียวกันช่วยกันกระจายหาจุดล่าสมบัติ ส่วนภารกิจถ่ายภาพทีม หัวหน้าทีมเป็นผู้อัปโหลด</p>}
+        <div className="line-progress-status" role="status">{missing > 0 ? <>ยังขาด <strong>{missing} คน</strong> · อีก <strong>{missingPct}%</strong></> : total > 0 ? '✓ สมาชิกเข้ากลุ่ม LINE ครบแล้ว 100%' : 'ยังไม่มีสมาชิกในทีม'}</div>
+        {observers.length > 0 && <div className="muted" style={{ marginTop: 8, fontSize: 13 }}>คณะทำงาน {observers.length} คน ไม่รวมในจำนวนสมาชิกและสัดส่วนนี้</div>}
+      </div>
+      {canManage && <div className="card stack">
+        <h2>จัด Squad ของทีม</h2>
+        <p className="muted" style={{ margin: 0 }}>สร้าง Squad แล้วเลือกกลุ่มให้สมาชิกแต่ละคน ระบบจะบันทึกให้ทันที</p>
+        <form className="squad-create-form" onSubmit={(event) => { event.preventDefault(); void createSquad(); }}>
+          <label className="grow"><span className="lbl">ชื่อ Squad ใหม่</span><input className="field" aria-label="ชื่อ Squad ใหม่" value={newSquad} maxLength={60} disabled={!!saving} onChange={(event) => setNewSquad(event.target.value)} placeholder="เช่น ครัวที่ 1" /></label>
+          <button className="btn small" type="submit" disabled={!!saving || !newSquad.trim()}>{saving === 'create' ? 'กำลังสร้าง…' : 'สร้าง Squad'}</button>
+        </form>
+      </div>}
+      {err && <div className="error" role="alert">{err}</div>}
+      {message && <div className="team-save-status" role="status">✓ {message}</div>}
+      <div className="card" style={{ border: '2px solid #f0d99e', background: '#fffdf6' }}>
+        <h2 style={{ fontSize: 17 }}>⭐ หัวหน้าทีม</h2>
+        {leader ? <div className="members">{row(leader, -1)}</div> : <div className="muted">ยังไม่ได้กำหนดหัวหน้าทีม · สอบถามทีมงาน</div>}
+        <p className="muted" style={{ fontSize: 13, margin: '8px 0 0' }}>หัวหน้าทีมจัด Squad และแลกสินค้าด้วยโทเคนของทีมได้</p>
+      </div>
+      {groups.map((group) => <div className="card members" key={group.title}><strong>🏕️ {group.title} <span className="muted" style={{ fontWeight: 400 }}>({group.list.length} คน)</span></strong><div style={{ marginTop: 4 }}>{group.list.map(row)}</div></div>)}
+      {observers.length > 0 && <div className="card members"><h2 style={{ fontSize: 18 }}>👁 คณะทำงาน <span className="muted">({observers.length} คน)</span></h2><p className="muted" style={{ margin: '0 0 6px', fontSize: 13 }}>ติดตามความเคลื่อนไหวของทีม ไม่นับคะแนนหรือสัดส่วนกิจกรรม</p>{observers.map(row)}</div>}
     </>
   );
 }
@@ -924,18 +995,19 @@ function NoticeModal() {
 }
 
 function Shell({ children, subtitle, onHome, suppressNotices = false }: { children: React.ReactNode; subtitle?: string; onHome?: () => void; suppressNotices?: boolean }) {
+  const invitation = useLineInvitation();
   return (
     <div className="app">
       <Hero subtitle={subtitle} onHome={onHome} />
-      <main className="main">{children}</main>
-      {!suppressNotices && <NoticeModal />}
+      <main className="main">{invitation?.isObserver && <div className="observer-note" role="status">👁 คณะทำงาน · ดูความเคลื่อนไหวของทีม ข้อมูลของคุณไม่รวมในการนับสมาชิกและคะแนน</div>}{children}</main>
+      {!suppressNotices && !invitation?.promptOpen && <NoticeModal />}
     </div>
   );
 }
 
 
 /** Activities screen: tabs for the treasure hunt and the team puzzles. A scanned QR code always opens the hunt tab. */
-function Activities(props: { tab: 'hunt' | 'puzzle'; onTabChange: (tab: 'hunt' | 'puzzle') => void; access: MenuAccess; pending: string; clearPending: () => void; onBalance: () => void; onAuthLost: (e: unknown) => void }) {
+function Activities(props: { tab: 'hunt' | 'puzzle'; onTabChange: (tab: 'hunt' | 'puzzle') => void; access: MenuAccess; readOnly?: boolean; pending: string; clearPending: () => void; onBalance: () => void; onAuthLost: (e: unknown) => void }) {
   const { tab, onTabChange, access } = props;
   return (
     <>
@@ -943,7 +1015,7 @@ function Activities(props: { tab: 'hunt' | 'puzzle'; onTabChange: (tab: 'hunt' |
         <button className={tab === 'hunt' ? 'on' : ''} disabled={!access.hunt} onClick={() => onTabChange('hunt')}>🧭 ล่าสมบัติ{!access.hunt && ' 🔒'}</button>
         <button className={tab === 'puzzle' ? 'on' : ''} disabled={!access.photos} onClick={() => onTabChange('puzzle')}>📸 ภารกิจทีม{!access.photos && ' 🔒'}</button>
       </div>
-      {tab === 'hunt' && access.hunt ? <HuntView {...props} /> : access.photos ? <PhotoMissionsView onBalance={props.onBalance} onAuthLost={props.onAuthLost} /> : null}
+      {tab === 'hunt' && access.hunt ? <HuntView {...props} /> : access.photos ? <PhotoMissionsView readOnly={props.readOnly} onBalance={props.onBalance} onAuthLost={props.onAuthLost} /> : null}
     </>
   );
 }
@@ -969,7 +1041,7 @@ async function fitJpeg(file: File, maxSide = 1600): Promise<File> {
 }
 
 /** Team photo missions: everyone sees the brief; ONLY the team leader can upload the photo, and that completes the mission. */
-function PhotoMissionsView({ onBalance, onAuthLost }: { onBalance: () => void; onAuthLost: (e: unknown) => void }) {
+function PhotoMissionsView({ onBalance, onAuthLost, readOnly = false }: { onBalance: () => void; onAuthLost: (e: unknown) => void; readOnly?: boolean }) {
   const [d, setD] = useState<PhotoData | null>(null);
   const [err, setErr] = useState('');
   const [done, setDone] = useState('');
@@ -1000,7 +1072,7 @@ function PhotoMissionsView({ onBalance, onAuthLost }: { onBalance: () => void; o
           {d.leaderName ? <> · หัวหน้าทีมของเรา: <strong>⭐ {d.leaderName}</strong></> : ' · ทีมนี้ยังไม่มีหัวหน้า ติดต่อทีมงาน'}
         </p>
         <div className="muted" style={{ marginTop: 6 }}>สำเร็จแล้ว {successCount}/{d.missions.length} ภารกิจ{waitingCount > 0 ? ` · ⏳ รอทีมงานตรวจ ${waitingCount}` : ''}</div>
-        {d.isLeader && <div className="role leader" style={{ marginTop: 8 }}>⭐ คุณคือหัวหน้าทีม มีสิทธิ์อัปโหลดภาพ</div>}
+        {(d.isLeader && !readOnly) && <div className="role leader" style={{ marginTop: 8 }}>⭐ คุณคือหัวหน้าทีม มีสิทธิ์อัปโหลดภาพ</div>}
         {!d.open && <div className="banner" style={{ marginTop: 12 }}>ภารกิจทีมยังไม่เปิด หรือปิดแล้ว รอทีมงานประกาศ</div>}
         {err && <div className="error" style={{ marginTop: 12 }}>{err}</div>}
       </div>
@@ -1010,7 +1082,7 @@ function PhotoMissionsView({ onBalance, onAuthLost }: { onBalance: () => void; o
         const c = CATEGORY[m.category] ?? CATEGORY.other;
         const sub = m.submission;
         const border = sub?.status === 'approved' ? '3px solid #2f8f5b' : sub?.status === 'pending' ? '3px solid #f0c36a' : sub?.status === 'rejected' ? '3px solid #e0a29d' : undefined;
-        const canUpload = d.isLeader && (!sub || sub.status === 'rejected' || sub.status === 'pending');
+        const canUpload = (d.isLeader && !readOnly) && (!sub || sub.status === 'rejected' || sub.status === 'pending');
         return (
           <div className="card" key={m.id} style={border ? { border } : undefined}>
             <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -1035,7 +1107,7 @@ function PhotoMissionsView({ onBalance, onAuthLost }: { onBalance: () => void; o
                 {sub.status === 'rejected' && (
                   <div className="error" style={{ marginTop: 10 }}>
                     ❌ <strong>ภาพนี้ไม่ผ่าน</strong>{sub.reason ? `: ${sub.reason}` : ' (ไม่ตรงโจทย์)'}<br />
-                    {d.isLeader ? 'ถ่ายภาพใหม่แล้วส่งอีกครั้งได้เลย' : `ให้หัวหน้าทีม ${d.leaderName ?? ''} ถ่ายภาพใหม่แล้วส่งอีกครั้ง`}
+                    {(d.isLeader && !readOnly) ? 'ถ่ายภาพใหม่แล้วส่งอีกครั้งได้เลย' : `ให้หัวหน้าทีม ${d.leaderName ?? ''} ถ่ายภาพใหม่แล้วส่งอีกครั้ง`}
                   </div>
                 )}
               </>
@@ -1046,7 +1118,7 @@ function PhotoMissionsView({ onBalance, onAuthLost }: { onBalance: () => void; o
                   onDone={async (text) => { setDone(text); cb.current.onBalance(); await load(); }} onAuthLost={onAuthLost} />
               </div>
             )}
-            {!sub && !d.isLeader && (
+            {!sub && !(d.isLeader && !readOnly) && (
               <div className="banner" style={{ margin: 0 }}>
                 ⏳ ยังไม่ส่ง · {d.leaderName ? `รอหัวหน้าทีม ${d.leaderName} ถ่ายภาพทั้งทีมและอัปโหลด` : 'ทีมยังไม่มีหัวหน้า ติดต่อทีมงาน'}
               </div>
@@ -1108,8 +1180,8 @@ function PhotoUpload({ mission, open, replacing, onDone, onAuthLost }: { mission
   );
 }
 
-function HuntView({ pending, clearPending, onBalance, onAuthLost }: {
-  pending: string; clearPending: () => void; onBalance: () => void; onAuthLost: (e: unknown) => void;
+function HuntView({ pending, clearPending, onBalance, onAuthLost, readOnly = false }: {
+  readOnly?: boolean; pending: string; clearPending: () => void; onBalance: () => void; onAuthLost: (e: unknown) => void;
 }) {
   const [h, setH] = useState<HuntData | null>(null);
   const [code, setCode] = useState('');
@@ -1126,6 +1198,7 @@ function HuntView({ pending, clearPending, onBalance, onAuthLost }: {
   }, []);
 
   const claim = useCallback(async (c: string) => {
+    if (readOnly) return;
     setBusy(true); setErr(''); setWin(null);
     try {
       const r = await api<{ already: boolean; pending: boolean; title: string; tokens: number; have: number; need: number; windowSec: number }>('/api/hunt/claim', { code: c });
@@ -1136,7 +1209,7 @@ function HuntView({ pending, clearPending, onBalance, onAuthLost }: {
       if (e instanceof ApiError && e.status === 401) cb.current.onAuthLost(e);
       setErr((e as Error).message);
     } finally { setBusy(false); await loadHunt(); }
-  }, [loadHunt]);
+  }, [loadHunt, readOnly]);
 
   useEffect(() => { loadHunt(); }, [loadHunt]);
   // While a co-op spot is waiting for teammates, refresh so everyone sees the progress (and the win) quickly.
@@ -1154,8 +1227,8 @@ function HuntView({ pending, clearPending, onBalance, onAuthLost }: {
   }, [h]);
   // Arrived by scanning a QR: claim once, automatically.
   useEffect(() => {
-    if (pending && !claimed.current) { claimed.current = true; const p = pending; cb.current.clearPending(); claim(p); }
-  }, [pending, claim]);
+    if (pending && !readOnly && !claimed.current) { claimed.current = true; const p = pending; cb.current.clearPending(); claim(p); }
+  }, [pending, claim, readOnly]);
 
   if (!h) return <div className="card center">{err ? <div className="error">{err}</div> : <div className="spinner" />}</div>;
   const total = h.spots.length;
@@ -1197,7 +1270,7 @@ function HuntView({ pending, clearPending, onBalance, onAuthLost }: {
         </div>
       )}
 
-      <div className="card stack">
+      {!readOnly && <div className="card stack">
         <strong>กรอกรหัสที่จุด (หรือสแกน QR ด้วยกล้องมือถือ)</strong>
         <input className="input" autoCapitalize="characters" autoComplete="off" autoCorrect="off" placeholder="รหัสจุด" value={code}
           onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && code.trim().length >= 4 && claim(code)} />
@@ -1205,7 +1278,7 @@ function HuntView({ pending, clearPending, onBalance, onAuthLost }: {
         <button className="btn" disabled={busy || code.replace(/[^a-zA-Z0-9]/g, '').length < 4 || !h.open} onClick={() => claim(code)}>
           {busy ? 'กำลังตรวจสอบ…' : 'ยืนยันรหัส'}
         </button>
-      </div>
+      </div>}
 
       <GoalCard goal={h.goal} mine />
 
@@ -1355,7 +1428,7 @@ function MarketView({ me, onRefresh }: { me: Me; onRefresh: () => unknown }) {
     finally { setBusy(false); }
   }
 
-  const canRedeem = me.isLeader && me.marketOpen;
+  const canRedeem = me.isLeader && !me.isObserver && me.marketOpen;
   const maxQty = sel ? Math.max(1, Math.min(20, sel.stock, Math.floor(me.team.balance / sel.price))) : 1;
   return (
     <>

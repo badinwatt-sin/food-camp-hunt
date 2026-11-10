@@ -1,4 +1,4 @@
-import { requirePlayer } from '@/lib/player';
+import { ensureMember, requirePlayer } from '@/lib/player';
 import { checkOrigin, handler, HttpError, ok, rateLimit, readJson } from '@/lib/http';
 import { isGame, memory, mystery, spot } from '@/lib/minigames/engine';
 
@@ -10,6 +10,7 @@ export const POST = handler(async (req: Request, ctx: { params: Promise<{ game: 
   const { game } = await ctx.params;
   if (!isGame(game)) throw new HttpError(404, 'NOT_FOUND');
   const p = await requirePlayer();
+  ensureMember(p);
   rateLimit(req, 'mg', 900, 10 * 60 * 1000, p.id);
   const body = await readJson(req);
   if (typeof body?.action !== 'string') throw new HttpError(400, 'BAD_INPUT');

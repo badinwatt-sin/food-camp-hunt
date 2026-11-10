@@ -1,11 +1,11 @@
 import { db } from '@/lib/supabase';
-import { requirePlayer } from '@/lib/player';
+import { requireMember } from '@/lib/player';
 import { checkOrigin, handler, ok } from '@/lib/http';
 
 /** Idempotent: credits the team wallet exactly once, however many times it is called. */
 export const POST = handler(async (req: Request) => {
   checkOrigin(req);
-  const p = await requirePlayer();
+  const p = await requireMember();
   const sb = db();
   const { data, error } = await sb.rpc('complete_quiz', { p_participant: p.id });
   if (error) throw error;

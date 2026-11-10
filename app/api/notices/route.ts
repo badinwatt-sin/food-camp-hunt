@@ -19,7 +19,7 @@ export const GET = handler(async () => {
     .order('reviewed_at', { ascending: true }).limit(20);
   return ok({
     // pop-up "you are at the venue? check in with staff" for people who have not checked in yet
-    checkin: cs?.checkin_open && !p.checked_in_at ? { announcedAt: cs.checkin_announced_at ?? 'open' } : null,
+    checkin: !p.is_observer && cs?.checkin_open && !p.checked_in_at ? { announcedAt: cs.checkin_announced_at ?? 'open' } : null,
     photos: (data ?? []).map((x: any) => ({
       id: x.id, status: x.status, tokens: x.tokens, reason: x.rejected_reason ?? null, at: x.reviewed_at, title: x.photo_missions?.title ?? '',
     })),
