@@ -12,7 +12,7 @@ export const GET = handler(async () => {
   const p = await requirePlayer();
   const sb = db();
   const [{ data: people }, { data: squads }] = await Promise.all([
-    sb.from('participants').select('id, name, nick_name, is_leader, status, squad_id, avatar_url, avatar_emoji').eq('team_id', p.team_id),
+    sb.from('participants').select('id, name, nick_name, is_leader, status, squad_id, avatar_url, avatar_emoji, line_joined_at').eq('team_id', p.team_id),
     sb.from('squads').select('id, name').eq('team_id', p.team_id).order('name'),
   ]);
   const squadName = new Map((squads ?? []).map((s: any) => [s.id, s.name]));
@@ -21,6 +21,7 @@ export const GET = handler(async () => {
     isLeader: !!m.is_leader,
     isMe: m.id === p.id,
     squad: m.squad_id ? squadName.get(m.squad_id) ?? null : null,
+    lineJoined: !!m.line_joined_at,
     quizDone: m.status === 'completed',
     avatarUrl: m.avatar_url ?? null,
     avatarEmoji: m.avatar_emoji ?? null,

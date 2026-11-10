@@ -8,6 +8,7 @@ import crypto from 'crypto';
 import { hashCode, normalizeCode, normalizeId } from '@/lib/codes';
 import { removeAvatarFile, removePublicFile } from '@/lib/avatars';
 import { BULK_CONFIRM, BULK_PLANS, type BulkTarget } from '@/lib/bulk';
+import { isLineGroupUrl, LINE_GROUP_CODES } from '@/lib/line-types';
 import { checkOrigin, handler, HttpError, ok, rateLimit, readJson } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
@@ -99,15 +100,42 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
 
   if (action === 'teams') {
     await requireRole('staff');
-    const { data } = await sb.from('team_summary').select('*').order('name');
-    return ok({ teams: data ?? [] });
+    const [summary, line] = await Promise.all([
+      sb.from('team_summary').select('*').order('name'),
+      sb.from('teams').select('id, line_group_code, line_completed_at'),
+    ]);
+    if (summary.error) throw summary.error;
+    if (line.error) throw line.error;
+    const lineOf = new Map((line.data ?? []).map((t) => [t.id, t]));
+    return ok({ teams: (summary.data ?? []).map((t) => ({ ...t, ...lineOf.get(t.team_id) })) });
+  }
+
+  if (action === 'line.groups') {
+    await requireRole('admin');
+    const [settings, teams, people] = await Promise.all([
+      sb.from('game_settings').select('line_open').eq('id', 1).single(),
+      sb.from('teams').select('id, name, line_group_code, line_group_url, line_completed_at, line_finish_rank, line_reward_tokens').order('name'),
+      sb.from('participants').select('id, name, nick_name, team_id, line_joined_at').order('name'),
+    ]);
+    if (settings.error) throw settings.error;
+    if (teams.error) throw teams.error;
+    if (people.error) throw people.error;
+    return ok({
+      open: !!settings.data?.line_open,
+      teams: (teams.data ?? []).map((t) => {
+        const members = (people.data ?? []).filter((p) => p.team_id === t.id).map((p) => ({
+          id: p.id, name: p.nick_name || p.name, fullName: p.name, joinedAt: p.line_joined_at,
+        }));
+        return { ...t, members, total: members.length, joinedCount: members.filter((p) => p.joinedAt).length };
+      }),
+    });
   }
 
   if (action === 'participants') {
     await requireRole('admin');
     const { data, error } = await sb
       .from('participants')
-      .select('id, name, nick_name, is_leader, avatar_url, avatar_emoji, team_id, squad_id, status, code_hash, correct_count, tokens_earned, completed_at, teams(name), squads(name)')
+      .select('id, name, nick_name, is_leader, avatar_url, avatar_emoji, team_id, squad_id, status, code_hash, correct_count, tokens_earned, completed_at, line_joined_at, teams(name, line_group_code, line_completed_at), squads(name)')
       .order('name');
     if (error) throw error;
     return ok({
@@ -116,6 +144,8 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
         squad_id: p.squad_id ?? null, squad_name: p.squads?.name ?? '',
         status: p.status, has_code: !!p.code_hash, correct_count: p.correct_count,
         tokens_earned: p.tokens_earned, completed_at: p.completed_at,
+        line_group_code: p.teams?.line_group_code ?? null, line_joined_at: p.line_joined_at,
+        line_completed_at: p.teams?.line_completed_at ?? null,
       })),
     });
   }
@@ -454,6 +484,7 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       if (typeof body.hunt_open === 'boolean') patch.hunt_open = body.hunt_open;
       if (typeof body.puzzle_open === 'boolean') patch.puzzle_open = body.puzzle_open;
       if (typeof body.market_open === 'boolean') patch.market_open = body.market_open;
+      if (typeof body.line_open === 'boolean') patch.line_open = body.line_open;
       for (const k of ['mg_spot_open', 'mg_memory_open', 'mg_mystery_open'] as const) if (typeof body[k] === 'boolean') patch[k] = body[k];
       if (body.mg_percent !== undefined) {
         const n = int(body.mg_percent);
@@ -474,6 +505,19 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       if (error) throw error;
       await audit(role, 'game.set', patch);
       return ok();
+    }
+
+    case 'line.group.save': {
+      const teamId = need(str(body.team_id));
+      const group = str(body.group, 20).toUpperCase() || null;
+      const url = typeof body.url === 'string' ? body.url.trim() : '';
+      if (group && !LINE_GROUP_CODES.some((code) => code === group)) throw new HttpError(400, 'BAD_LINE_GROUP');
+      if ((!group && url) || (group && !url)) throw new HttpError(400, 'BAD_LINE_GROUP');
+      if (url && (url.length > 2000 || !isLineGroupUrl(url))) throw new HttpError(400, 'BAD_LINE_URL');
+      const { data, error } = await sb.rpc('configure_line_group', { p_team: teamId, p_code: group, p_url: url || null });
+      if (error) throw error;
+      await audit(role, 'line.group.save', { team_id: teamId, group });
+      return ok(data);
     }
 
     case 'team.save': {
@@ -566,6 +610,10 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       }
 
       const counts: Record<string, number> = {};
+      if (plan.resetLine) {
+        const { error } = await sb.rpc('reset_line_checkin');
+        if (error) throw error;
+      }
       for (const step of plan.steps) {
         const del = sb.from(step.table).delete({ count: 'exact' });
         const { error, count } = await (step.eq ? del.eq(step.eq[0], step.eq[1]) : del.not('id', 'is', null));
@@ -578,7 +626,7 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
         if (error) throw error;
       }
       if (plan.switchesOff) {
-        const { error } = await sb.from('game_settings').update({ is_open: false, hunt_open: false, puzzle_open: false, market_open: false, checkin_open: false, mg_spot_open: false, mg_memory_open: false, mg_mystery_open: false }).eq('id', 1);
+        const { error } = await sb.from('game_settings').update({ is_open: false, hunt_open: false, puzzle_open: false, market_open: false, checkin_open: false, line_open: false, mg_spot_open: false, mg_memory_open: false, mg_mystery_open: false }).eq('id', 1);
         if (error) throw error;
       }
       for (const f of files) await removePublicFile(f.bucket, f.url);

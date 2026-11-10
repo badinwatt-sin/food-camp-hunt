@@ -245,3 +245,11 @@ label.lbl { display: block; font-size: 14px; color: #5d6a80; margin: 10px 0 4px;
 .danger-zone { border: 2px dashed #d98b86; background: #fff8f6; }
 
 .tabs.cats button { font-size: 14px; padding: 0 4px; line-height: 1.2; }
+
+/* Closed menus stay visible and cannot receive pointer or keyboard activation. */
+.btn:disabled, .btn.green:disabled, .tile:disabled, .tabs button:disabled {
+  background: #e1e4e8; color: #69717d; border-color: #d0d5dc;
+  opacity: 1; cursor: not-allowed; box-shadow: none;
+}
+.tile:disabled .t-icon { filter: grayscale(1); opacity: .6; }
+.tile:disabled:active, .btn:disabled:active { transform: none; }

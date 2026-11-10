@@ -1,6 +1,6 @@
 import { db } from '@/lib/supabase';
 import { requirePlayer } from '@/lib/player';
-import { handler, ok } from '@/lib/http';
+import { handler, HttpError, ok } from '@/lib/http';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,8 +11,10 @@ export const dynamic = 'force-dynamic';
 export const GET = handler(async () => {
   const p = await requirePlayer();
   const sb = db();
-  const [{ data: settings }, { data: missions }, { data: subs }, { data: leader }] = await Promise.all([
-    sb.from('game_settings').select('puzzle_open').eq('id', 1).single(),
+  const { data: settings, error: settingsError } = await sb.from('game_settings').select('puzzle_open').eq('id', 1).single();
+  if (settingsError) throw settingsError;
+  if (!settings?.puzzle_open) throw new HttpError(403, 'PUZZLE_CLOSED');
+  const [{ data: missions }, { data: subs }, { data: leader }] = await Promise.all([
     sb.from('photo_missions').select('id, title, description, category, ref_image_url, tokens').eq('active', true).order('position').order('id'),
     sb.from('photo_submissions').select('id, mission_id, image_url, status, tokens, rejected_reason, created_at, reviewed_at, participants(name, nick_name)').eq('team_id', p.team_id).order('created_at', { ascending: false }),
     sb.from('participants').select('name, nick_name').eq('team_id', p.team_id).eq('is_leader', true).maybeSingle(),

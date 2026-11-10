@@ -58,7 +58,7 @@ function Login({ onDone }: { onDone: (r: Role) => void }) {
   );
 }
 
-type Tab = 'overview' | 'checkin' | 'market' | 'people' | 'questions' | 'games' | 'hunt' | 'puzzles' | 'history' | 'export';
+type Tab = 'overview' | 'checkin' | 'line' | 'market' | 'people' | 'questions' | 'games' | 'hunt' | 'puzzles' | 'history' | 'export';
 
 /** Bottom toast: always visible wherever you are on the page (the old banner sat at the top, out of sight). */
 function Toast({ msg, onClose }: { msg: string; onClose: () => void }) {
@@ -90,7 +90,7 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
     return () => { clearInterval(t); window.removeEventListener('fc-photos-changed', poll); };
   }, []);
   const tabs: [Tab, string, string, boolean][] = [
-    ['overview', '📊', 'ภาพรวม', true], ['checkin', '📍', 'เช็กอินวันงาน', true], ['market', '🛒', 'ตลาดสินค้า', true],
+    ['overview', '📊', 'ภาพรวม', true], ['checkin', '📍', 'เช็กอินวันงาน', true], ['line', '💬', 'กลุ่ม LINE', role === 'admin'], ['market', '🛒', 'ตลาดสินค้า', true],
     ['people', '👥', 'ทีมและผู้เล่น', role === 'admin'], ['questions', '🍜', 'คำถามควิซ', role === 'admin'], ['games', '🎮', 'เกมย่อย', role === 'admin'],
     ['hunt', '🧭', 'ล่าสมบัติ', role === 'admin'], ['puzzles', '📸', 'ภารกิจทีม', true],
     ['history', '📜', 'ประวัติ', role === 'admin'], ['export', '⬇️', 'ส่งออก CSV', role === 'admin'],
@@ -114,6 +114,7 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
         <div className="admin">
         {tab === 'overview' && <Overview key={rk} role={role} setMsg={setMsg} />}
         {tab === 'checkin' && <Checkin key={rk} role={role} setMsg={setMsg} />}
+        {tab === 'line' && <LineGroups key={rk} setMsg={setMsg} />}
         {tab === 'market' && <Market key={rk} role={role} setMsg={setMsg} />}
         {tab === 'people' && <People key={rk} setMsg={setMsg} />}
         {tab === 'questions' && <Questions key={rk} setMsg={setMsg} />}
@@ -127,6 +128,124 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
       </div>
       <Toast msg={msg} onClose={closeMsg} />
     </>
+  );
+}
+
+// ------------------------------------------------------------------ LINE onboarding
+type LineAdminTeam = {
+  id: string; name: string; line_group_code: string | null; line_group_url: string | null;
+  line_completed_at: string | null; line_finish_rank: number | null; line_reward_tokens: number | null;
+  total: number; joinedCount: number;
+  members: { id: string; name: string; fullName: string; joinedAt: string | null }[];
+};
+type LineAdminData = { open: boolean; teams: LineAdminTeam[] };
+
+function LineGroups({ setMsg }: { setMsg: (m: string) => void }) {
+  const [data, setData] = useState<LineAdminData | null>(null);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    try { setData(await call<LineAdminData>('line.groups')); setErr(''); }
+    catch (e) { setErr((e as Error).message); }
+  }, []);
+  useEffect(() => {
+    load();
+    const timer = setInterval(() => { if (document.visibilityState === 'visible') load(); }, 15000);
+    return () => clearInterval(timer);
+  }, [load]);
+  async function toggle() {
+    if (!data) return;
+    setBusy(true);
+    try {
+      await call('game.set', { line_open: !data.open });
+      await load();
+      setMsg(data.open ? 'ปิดการเชื่อมต่อกลุ่ม LINE แล้ว' : 'เปิดการเชื่อมต่อกลุ่ม LINE แล้ว');
+    } catch (e) { setMsg((e as Error).message); }
+    finally { setBusy(false); }
+  }
+  return (
+    <>
+      <div className="card stack">
+        <div className="row" style={{ justifyContent: 'space-between' }}>
+          <h2 style={{ margin: 0 }}>💬 เช็คอินกลุ่ม LINE D / C / A / O</h2>
+          <button className={`btn small ${data?.open ? 'green' : 'ghost'}`} disabled={!data || busy} onClick={toggle}>
+            {busy ? 'กำลังบันทึก…' : data?.open ? '🟢 เปิดอยู่ (กดเพื่อปิด)' : '⚪ ปิดอยู่ (กดเพื่อเปิด)'}
+          </button>
+        </div>
+        <p className="muted" style={{ margin: 0 }}>กำหนดกลุ่มและลิงก์เชิญ LINE ให้แต่ละทีม จากนั้นจัดสมาชิกที่แท็บ <strong>ทีมและผู้เล่น</strong> สมาชิกจะได้รับกลุ่ม LINE ตามทีมที่ Admin เลือกให้</p>
+        <div className="banner" style={{ margin: 0 }}>เมื่อสมาชิกทั้งทีมกดเชื่อมต่อ LINE ครบ ทีมจะได้โทเคนตามลำดับ: <strong>อันดับ 1 = 20 · อันดับ 2 = 15 · อันดับ 3 = 10 · อันดับ 4 = 5</strong> คะแนนเข้ากระเป๋าทีมครั้งเดียว</div>
+        <p className="muted" style={{ margin: 0 }}>จัดรายชื่อให้ครบก่อนเปิดใช้งาน · เมื่อมีคนกดเชื่อมต่อแล้วจะล็อกการแก้กลุ่ม/ลิงก์ และเมื่อทีมได้คะแนนแล้วจะล็อกการเพิ่ม ลบ หรือย้ายสมาชิกของทีมนั้น</p>
+        {err && <div className="error" role="alert">{err}<button className="btn small ghost" onClick={load}>ลองอีกครั้ง</button></div>}
+      </div>
+      {!data && !err && <div className="spinner" />}
+      {data && <div className="card">
+        <h2>สถานะทั้ง 4 กลุ่ม</h2>
+        <div className="table-wrap"><table>
+          <thead><tr><th>กลุ่ม LINE</th><th>ทีม</th><th>เชื่อมต่อแล้ว</th><th>อันดับ</th><th>โทเคน</th></tr></thead>
+          <tbody>{['D', 'C', 'A', 'O'].map((code) => {
+            const team = data.teams.find((t) => t.line_group_code === code);
+            return <tr key={code}><td><strong>{code}</strong></td><td>{team?.name || 'ยังไม่ได้กำหนด'}</td><td>{team ? `${team.joinedCount}/${team.total} คน` : '—'}</td><td>{team?.line_finish_rank || '—'}</td><td>{team?.line_completed_at ? `+${team.line_reward_tokens}` : 'รอครบทีม'}</td></tr>;
+          })}</tbody>
+        </table></div>
+      </div>}
+      {data?.teams.length === 0 && <div className="card muted">ยังไม่มีทีม เพิ่มทีมและสมาชิกที่แท็บ “ทีมและผู้เล่น” ก่อน</div>}
+      {data?.teams.map((team) => <LineGroupCard key={team.id} team={team} teams={data.teams} onSaved={load} setMsg={setMsg} />)}
+    </>
+  );
+}
+
+function LineGroupCard({ team, teams, onSaved, setMsg }: { team: LineAdminTeam; teams: LineAdminTeam[]; onSaved: () => Promise<void>; setMsg: (m: string) => void }) {
+  const [group, setGroup] = useState(team.line_group_code || '');
+  const [url, setUrl] = useState(team.line_group_url || '');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const locked = team.joinedCount > 0 || !!team.line_completed_at;
+  useEffect(() => { setGroup(team.line_group_code || ''); setUrl(team.line_group_url || ''); }, [team.line_group_code, team.line_group_url]);
+  async function save() {
+    setBusy(true); setErr('');
+    try {
+      await call('line.group.save', { team_id: team.id, group, url });
+      await onSaved();
+      setMsg(`บันทึกกลุ่ม LINE ของทีม ${team.name} แล้ว`);
+    } catch (e) { setErr((e as Error).message); }
+    finally { setBusy(false); }
+  }
+  return (
+    <div className="card stack">
+      <div className="row" style={{ justifyContent: 'space-between' }}>
+        <h2 style={{ margin: 0 }}>ทีม {team.name}</h2>
+        <span className="pill">{team.line_completed_at ? `🏆 อันดับ ${team.line_finish_rank} · +${team.line_reward_tokens} โทเคน` : `เชื่อมต่อแล้ว ${team.joinedCount}/${team.total} คน`}</span>
+      </div>
+      <form onSubmit={(e) => { e.preventDefault(); save(); }}>
+        <div className="row">
+          <div>
+            <label className="lbl" htmlFor={`line-group-${team.id}`}>กลุ่ม LINE</label>
+            <select id={`line-group-${team.id}`} className="field" value={group} disabled={locked || busy} onChange={(e) => { setGroup(e.target.value); if (!e.target.value) setUrl(''); }}>
+              <option value="">ยังไม่กำหนด</option>
+              {['D', 'C', 'A', 'O'].map((code) => {
+                const assigned = teams.find((t) => t.id !== team.id && t.line_group_code === code);
+                return <option key={code} value={code} disabled={!!assigned}>{code}{assigned ? ` (ทีม ${assigned.name})` : ''}</option>;
+              })}
+            </select>
+          </div>
+          <div className="grow">
+            <label className="lbl" htmlFor={`line-url-${team.id}`}>ลิงก์เชิญเข้ากลุ่ม LINE</label>
+            <input id={`line-url-${team.id}`} className="field" type="url" placeholder="https://line.me/… หรือ https://lin.ee/…" value={url} disabled={locked || busy || !group} maxLength={2000} required={!!group} onChange={(e) => setUrl(e.target.value)} />
+          </div>
+          <button className="btn small" type="submit" style={{ alignSelf: 'flex-end' }} disabled={locked || busy || (!!group && !url.trim())}>{busy ? 'กำลังบันทึก…' : 'บันทึกกลุ่ม LINE'}</button>
+        </div>
+      </form>
+      {locked && <div className="muted">🔒 {team.line_completed_at ? `ทีมได้คะแนนแล้วเมื่อ ${fmt(team.line_completed_at)} · ล็อกกลุ่ม ลิงก์ และรายชื่อสมาชิก` : 'มีสมาชิกเชื่อมต่อแล้ว · ล็อกกลุ่มและลิงก์เพื่อให้ทุกคนเข้ากลุ่มเดียวกัน'}</div>}
+      {err && <div className="error" role="alert">{err}</div>}
+      <details>
+        <summary style={{ cursor: 'pointer', fontWeight: 600 }}>รายชื่อสมาชิก ({team.total} คน)</summary>
+        <div className="table-wrap"><table>
+          <thead><tr><th>สมาชิก</th><th>สถานะ LINE</th><th>เวลาที่กดเชื่อมต่อ</th></tr></thead>
+          <tbody>{team.members.map((member) => <tr key={member.id}><td>{member.name}{member.name !== member.fullName && <div className="muted">{member.fullName}</div>}</td><td>{member.joinedAt ? '✅ เข้า join LINE แล้ว' : '⏳ ยังไม่กดเชื่อมต่อ'}</td><td>{fmt(member.joinedAt) || '—'}</td></tr>)}</tbody>
+        </table></div>
+        {team.total === 0 && <p className="muted">ยังไม่มีสมาชิก จัดสมาชิกที่แท็บ “ทีมและผู้เล่น”</p>}
+      </details>
+    </div>
   );
 }
 
@@ -945,6 +1064,7 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
           ทีมที่ยังไม่มีในระบบจะถูกสร้างให้ · นำเข้าซ้ำได้: ID เดิมจะอัปเดตชื่อ/ทีม ไม่สร้างซ้ำ ·
           ใน Excel ควรตั้งคอลัมน์ ID เป็นชนิด <strong>ข้อความ (Text)</strong> ไม่งั้นเลขนำหน้า 0 อาจหาย
         </p>
+        <p className="muted">กลุ่ม LINE จะตามทีมในไฟล์ โดยตั้งลิงก์ของ D/C/A/O ที่แท็บ “กลุ่ม LINE” · ทีมที่ได้รางวัล LINE แล้วจะเพิ่ม ลบ หรือย้ายสมาชิกไม่ได้</p>
         <div className="row">
           <input type="file" accept=".xlsx,.csv,.txt" onChange={(e) => { const f = e.target.files?.[0]; if (f) readFile(f); e.target.value = ''; }} />
         </div>
@@ -984,8 +1104,8 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
           <input className="field grow" placeholder="Nick name" value={form.nick_name} onChange={(e) => setForm({ ...form, nick_name: e.target.value })} />
         </div>
         <div className="row" style={{ marginTop: 8 }}>
-          <select className="field grow" value={form.team_id} onChange={(e) => setForm({ ...form, team_id: e.target.value, squad_id: '' })}>
-            <option value="">เลือกทีม</option>{teams.map((t) => <option key={t.team_id} value={t.team_id}>{t.name}</option>)}
+          <select aria-label="ทีมและกลุ่ม LINE ของผู้เล่น" className="field grow" value={form.team_id} disabled={!!form.id && !!people.find((p) => p.id === form.id)?.line_completed_at} onChange={(e) => setForm({ ...form, team_id: e.target.value, squad_id: '' })}>
+            <option value="">เลือกทีม</option>{teams.map((t) => <option key={t.team_id} value={t.team_id} disabled={!!t.line_completed_at && t.team_id !== people.find((p) => p.id === form.id)?.team_id}>{t.name}{t.line_group_code ? ` · LINE ${t.line_group_code}` : ''}{t.line_completed_at ? ' (ล็อกรายชื่อแล้ว)' : ''}</option>)}
           </select>
           <select className="field grow" value={form.squad_id} disabled={!form.team_id} onChange={(e) => setForm({ ...form, squad_id: e.target.value })}>
             <option value="">ไม่มีสควอด</option>{squads.filter((q) => q.team_id === form.team_id).map((q) => <option key={q.id} value={q.id}>{q.name}</option>)}
@@ -996,6 +1116,12 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
           </button>
           {form.id && <button className="btn small ghost" onClick={() => setForm(blankForm)}>ยกเลิก</button>}
         </div>
+        <p className="muted" style={{ margin: '8px 0 0' }}>{(() => {
+          const selectedTeam = teams.find((t) => t.team_id === form.team_id);
+          return selectedTeam?.line_group_code
+            ? `สมาชิกคนนี้จะเข้ากลุ่ม LINE ${selectedTeam.line_group_code} ตามทีมที่เลือก${selectedTeam.line_completed_at ? ' · ทีมได้รางวัลแล้ว จึงเปลี่ยนทีมไม่ได้' : ''}`
+            : 'เลือกทีมเพื่อ Assign กลุ่ม LINE · ถ้าทีมยังไม่มีกลุ่ม ให้ตั้งค่าที่แท็บ “กลุ่ม LINE”';
+        })()}</p>
         <label className="lbl"><input type="checkbox" checked={form.is_leader} onChange={(e) => setForm({ ...form, is_leader: e.target.checked })} /> ⭐ เป็นหัวหน้าทีม (มีสิทธิ์แลกสินค้าให้ทีม · ทีมละ 1 คน ถ้าติ๊กจะแทนที่หัวหน้าคนเดิม)</label>
       </div>
 
@@ -1004,12 +1130,12 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
           <h2 style={{ margin: 0 }}>ผู้เล่น ({people.length})</h2>
         </div>
         <div className="table-wrap"><table>
-          <thead><tr><th /><th>Full name</th><th>Nick name</th><th>ทีม</th><th>สควอด</th><th>หัวหน้า</th><th>สถานะ</th><th>คะแนน</th><th>ID</th><th /></tr></thead>
+          <thead><tr><th /><th>Full name</th><th>Nick name</th><th>ทีม</th><th>กลุ่ม LINE</th><th>สควอด</th><th>หัวหน้า</th><th>สถานะ</th><th>คะแนน</th><th>ID</th><th /></tr></thead>
           <tbody>
             {people.map((p) => (
               <tr key={p.id}>
                 <td><span className="m-av sm" aria-hidden>{p.avatar_url ? <img src={p.avatar_url} alt="" /> : (p.avatar_emoji || Array.from(p.nick_name || p.name)[0])}</span></td>
-                <td>{p.name}</td><td>{p.nick_name || '—'}</td><td>{p.team_name}</td><td>{p.squad_name || '—'}</td><td>{p.is_leader ? '⭐ หัวหน้าทีม' : ''}</td>
+                <td>{p.name}</td><td>{p.nick_name || '—'}</td><td>{p.team_name}</td><td>{p.line_group_code || 'ยังไม่กำหนด'}<div className="muted">{p.line_joined_at ? '✅ เข้า join LINE แล้ว' : 'ยังไม่กดเชื่อมต่อ'}</div></td><td>{p.squad_name || '—'}</td><td>{p.is_leader ? '⭐ หัวหน้าทีม' : ''}</td>
                 <td>{{ not_started: 'ยังไม่เริ่ม', in_progress: 'กำลังเล่น', completed: 'จบแล้ว' }[p.status as 'completed']}</td>
                 <td className="num">{p.status === 'completed' ? `${p.correct_count} (${p.tokens_earned})` : ''}</td>
                 <td>{p.has_code ? '✔ มี ID' : '— ไม่มี ID'}</td>
@@ -1021,7 +1147,7 @@ function People({ setMsg }: { setMsg: (m: string) => void }) {
                   <button className="btn small ghost" onClick={() => { const v = prompt(`ID ใหม่ของ ${p.name} (ID เดิมจะใช้ไม่ได้ทันที)`); if (v?.trim()) run(() => call('participant.save', { id: p.id, login_id: v, name: p.name, nick_name: p.nick_name ?? '', team_id: p.team_id, squad_id: p.squad_id ?? '' }), 'เปลี่ยน ID แล้ว'); }}>เปลี่ยน ID</button>
                   {p.has_avatar && <button className="btn small ghost" onClick={() => confirm(`ลบรูปโปรไฟล์ของ ${p.name}?`) && run(() => call('avatar.clear', { id: p.id }), 'ลบรูปโปรไฟล์แล้ว')}>ลบรูปโปรไฟล์</button>}
                   {p.has_code && <button className="btn small ghost" onClick={() => confirm(`ยกเลิก ID ของ ${p.name}? จะเข้าเกมไม่ได้จนกว่าจะตั้ง ID ใหม่`) && run(() => call('code.revoke', { id: p.id }), 'ยกเลิก ID แล้ว')}>ยกเลิก ID</button>}
-                  {p.status === 'not_started' && <button className="btn small ghost" onClick={() => confirm(`ลบ ${p.name}?`) && run(() => call('participant.delete', { id: p.id }), 'ลบแล้ว')}>ลบ</button>}
+                  {p.status === 'not_started' && <button className="btn small ghost" disabled={!!p.line_completed_at} title={p.line_completed_at ? 'ทีมได้รางวัล LINE แล้ว จึงลบสมาชิกไม่ได้' : undefined} onClick={() => confirm(`ลบ ${p.name}?`) && run(() => call('participant.delete', { id: p.id }), 'ลบแล้ว')}>ลบ</button>}
                 </td>
               </tr>
             ))}

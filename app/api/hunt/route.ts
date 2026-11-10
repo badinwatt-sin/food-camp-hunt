@@ -1,7 +1,7 @@
 import { db } from '@/lib/supabase';
 import { requirePlayer } from '@/lib/player';
 import { teamGoal } from '@/lib/goal';
-import { handler, ok } from '@/lib/http';
+import { handler, HttpError, ok } from '@/lib/http';
 import { groupMembers } from '@/lib/group';
 
 export const dynamic = 'force-dynamic';
@@ -13,9 +13,11 @@ export const dynamic = 'force-dynamic';
 export const GET = handler(async () => {
   const p = await requirePlayer();
   const sb = db();
+  const { data: settings, error: settingsError } = await sb.from('game_settings').select('hunt_open').eq('id', 1).single();
+  if (settingsError) throw settingsError;
+  if (!settings?.hunt_open) throw new HttpError(403, 'HUNT_CLOSED');
   const squadId: string | null = p.squad_id ?? null;
-  const [{ data: settings }, { data: spots }, { data: claims }, { data: squads }, balance, goal, members, { data: scans }] = await Promise.all([
-    sb.from('game_settings').select('hunt_open').eq('id', 1).single(),
+  const [{ data: spots }, { data: claims }, { data: squads }, balance, goal, members, { data: scans }] = await Promise.all([
     sb.from('hunt_spots').select('id, position, title, hint, tokens, min_players, window_sec').eq('active', true).order('position').order('id'),
     sb.from('hunt_claims').select('spot_id, squad_id, participants(name, nick_name)').eq('team_id', p.team_id),
     sb.from('squads').select('id, name').eq('team_id', p.team_id).order('name'),
