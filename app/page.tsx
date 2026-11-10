@@ -544,7 +544,6 @@ function PlayerPage() {
             <span className="edit" aria-hidden><AppIcon name="edit" size={14} /></span>
           </button>
           <div className="profile-welcome">
-            <div className="muted profile-greeting">สวัสดี</div>
             <span className={`role ${me.isLeader && !me.isObserver ? 'leader' : 'member'}`}>{me.isObserver ? '👁 คณะทำงาน' : me.isLeader ? '⭐ หัวหน้าทีม' : '🏕️ สมาชิกทีม'}</span>
           </div>
         </div>
