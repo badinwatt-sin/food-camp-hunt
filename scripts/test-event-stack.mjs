@@ -96,6 +96,7 @@ with sync_playwright() as p:
     context=browser.new_context(viewport={'width':390,'height':844})
     page=context.new_page()
     page.set_default_timeout(20000)
+    page.set_default_navigation_timeout(60000)
     errors=[]
     page.on('pageerror',lambda error:errors.append(str(error)))
     context.route('https://line.me/**',lambda route:route.fulfill(status=200,body='Local test LINE destination',content_type='text/html'))
