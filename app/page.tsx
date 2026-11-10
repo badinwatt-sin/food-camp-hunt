@@ -6,6 +6,7 @@ import { AVATAR_EMOJIS } from '@/lib/avatar-list';
 import jsQR from 'jsqr';
 import { ApiError, api } from '@/lib/client-api';
 import MiniGames from '@/components/MiniGames';
+import AppIcon from '@/components/AppIcon';
 import LineCheckin, { LineInvitationProvider, useLineInvitation } from '@/components/LineCheckin';
 import LineLogo from '@/components/LineLogo';
 import type { LineStatus } from '@/lib/line-types';
@@ -78,6 +79,9 @@ export default function Page() {
   const sessionEpoch = useRef(0);
   const endingSession = useRef(false);
   const loadRequest = useRef(0);
+
+  // A newly opened screen starts at its heading, including when leaving a long list.
+  useEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); }, [view]);
 
   const load = useCallback(async () => {
     if (endingSession.current) return null;
@@ -244,12 +248,12 @@ export default function Page() {
   if (!me) {
     return (
       <Shell>
-        <div className="card stack">
+        <div className="card stack player-login-card">
           <h2>เข้าสู่เกม</h2>
           <p className="muted" style={{ margin: 0 }}>กรอก ID ของคุณ (ที่ทีมงานแจ้งไว้) เพื่อเข้าเกม</p>
           <input
             className="input" inputMode="text" autoCapitalize="characters" autoComplete="off" autoCorrect="off" spellCheck={false}
-            placeholder="ID ของคุณ" value={code} maxLength={40}
+            aria-label="ID ของคุณ" placeholder="ID ของคุณ" value={code} maxLength={40}
             onChange={(e) => setCode(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && code.trim() && login()}
           />
@@ -266,7 +270,7 @@ export default function Page() {
   const { participant, team } = me;
   const subtitle = `ทีม ${team.name}${me.isObserver ? ' · คณะทำงาน' : me.isLeader ? ' · ⭐ หัวหน้าทีม' : ''}`;
   const goHome = () => setView('home');
-  const QuizBack = ({ label = 'กลับไปภารกิจ' }: { label?: string }) => <button className="btn ghost" onClick={() => setView('missions')}>{label}</button>;
+  const QuizBack = ({ label = 'กลับไปภารกิจ' }: { label?: string }) => <button className="btn ghost" onClick={() => setView('missions')}><AppIcon name="back" size={20} />{label}</button>;
 
   const closed = (view === 'missions' && !me.menus.missions)
     || (view === 'quiz' && !me.menus.quiz)
@@ -277,7 +281,7 @@ export default function Page() {
   if (closed) return (
     <Shell subtitle={subtitle} onHome={goHome}>
       <div className="card center stack" role="status">
-        <h2>🔒 เมนูนี้ยังไม่เปิดใช้งาน</h2>
+        <h2 className="page-heading"><AppIcon name="shield" />เมนูนี้ยังไม่เปิดใช้งาน</h2>
         <p className="muted">รอทีมงานประกาศเปิดใช้งาน แล้วกลับมาอีกครั้ง</p>
         <button className="btn ghost" onClick={goHome}>กลับหน้าหลัก</button>
       </div>
@@ -355,12 +359,12 @@ export default function Page() {
     return (
       <Shell subtitle={subtitle} onHome={goHome}>
         <div className="card center" style={{ paddingBottom: 14 }}>
-          <h2 style={{ fontSize: 22 }}>🚩 เลือกภารกิจ</h2>
+          <h2 className="page-heading" style={{ fontSize: 22 }}><AppIcon name="missions" />เลือกภารกิจ</h2>
           <div className="muted">ทำภารกิจเพื่อสะสมโทเคนเข้ากระเป๋าทีม</div>
         </div>
         <div className="card">
           <div className="mission">
-            <div className="m-ic" style={{ background: '#fde7b0' }}>🍜</div>
+            <div className="m-ic" style={{ background: '#fde7b0' }}><AppIcon name="quiz" size={32} /></div>
             <div className="m-body"><h2>ควิซทายอาหาร</h2><div className="muted">{quizLine}</div></div>
           </div>
           {!me.menus.quiz && <div className="banner" style={{ marginTop: 10 }}>ควิซยังไม่เปิด หรือปิดแล้ว รอทีมงานประกาศ</div>}
@@ -370,21 +374,21 @@ export default function Page() {
         </div>
         <div className="card">
           <div className="mission">
-            <div className="m-ic" style={{ background: '#d9efd8' }}>🎮</div>
+            <div className="m-ic" style={{ background: '#d9efd8' }}><AppIcon name="weekly" size={32} /></div>
             <div className="m-body"><h2>ภารกิจประจำสัปดาห์</h2><div className="muted">จับผิดภาพ · จับคู่การ์ด · ทายวัตถุดิบ — เล่นคนเดียว สะสมโทเคนให้ทีม</div></div>
           </div>
           <button className="btn green" style={{ marginTop: 12 }} disabled={!me.menus.games} onClick={() => setView('games')}>{me.menus.games ? 'ดูภารกิจประจำสัปดาห์' : '🔒 ยังไม่เปิดใช้งาน'}</button>
         </div>
         <div className="card">
           <div className="mission">
-            <div className="m-ic" style={{ background: '#d8ecf5' }}>🧭</div>
+            <div className="m-ic" style={{ background: '#d8ecf5' }}><AppIcon name="hunt" size={32} /></div>
             <div className="m-body"><h2>ล่าสมบัติ</h2><div className="muted">สแกน QR หรือกรอกรหัสตามจุดต่าง ๆ ในแคมป์</div></div>
           </div>
           <button className="btn green" style={{ marginTop: 12 }} disabled={!me.menus.hunt} onClick={() => { setHuntTab('hunt'); setView('hunt'); }}>{me.menus.hunt ? 'ไปล่าสมบัติ' : '🔒 ยังไม่เปิดใช้งาน'}</button>
         </div>
         <div className="card">
           <div className="mission">
-            <div className="m-ic" style={{ background: '#e8dcf5' }}>📸</div>
+            <div className="m-ic" style={{ background: '#e8dcf5' }}><AppIcon name="camera" size={32} /></div>
             <div className="m-body"><h2>ภารกิจทีม</h2><div className="muted">ถ่ายภาพทั้งทีมตามโจทย์ · หัวหน้าทีมเป็นผู้อัปโหลด</div></div>
           </div>
           <button className="btn green" style={{ marginTop: 12 }} disabled={!me.menus.photos} onClick={() => { setHuntTab('puzzle'); setView('hunt'); }}>{me.menus.photos ? 'เปิดภารกิจทีม' : '🔒 ยังไม่เปิดใช้งาน'}</button>
@@ -447,8 +451,8 @@ export default function Page() {
       const pct = ((feedback ? feedback.answered : me.answered) / me.total) * 100;
       return (
         <Shell subtitle={subtitle} onHome={goHome}>
-          <div className="card">
-            <div className="row" style={{ justifyContent: 'space-between' }}>
+          <div className="card quiz-card">
+            <div className="row quiz-status-row" style={{ justifyContent: 'space-between' }}>
               <strong>ข้อ {Math.min(idx, me.total)} / {me.total}</strong>
               <span className="muted">{participant.name}</span>
             </div>
@@ -457,7 +461,7 @@ export default function Page() {
             {shown && (
               <>
                 {shown.image_url && <img className="qimg" src={shown.image_url} alt="" />}
-                <h2 style={{ fontSize: 19 }}>{shown.prompt}</h2>
+                <h2 className="quiz-question" style={{ fontSize: 19 }}>{shown.prompt}</h2>
                 {shown.options.map((o, i) => {
                   let cls = 'opt';
                   if (feedback) {
@@ -508,8 +512,8 @@ export default function Page() {
           <div className="muted">โทเคนรวมของทีม {team.name}</div>
           <div className="coin-row"><Coin size={44} /> {team.balance}</div>
           {err && <div className="error">{err}</div>}
-          <button className="btn green" disabled={!me.menus.hunt && !me.menus.photos} onClick={() => { setHuntTab(me.menus.hunt ? 'hunt' : 'puzzle'); setView('hunt'); }}>🧭 ไปล่าสมบัติ & ภารกิจทีม</button>
-          <button className="btn green" onClick={() => setView('market')}>🛒 ตลาดของ</button>
+          <button className="btn green" disabled={!me.menus.hunt && !me.menus.photos} onClick={() => { setHuntTab(me.menus.hunt ? 'hunt' : 'puzzle'); setView('hunt'); }}><AppIcon name="hunt" size={20} />ไปล่าสมบัติ & ภารกิจทีม</button>
+          <button className="btn green" onClick={() => setView('market')}><AppIcon name="shop" size={20} />ตลาดของ</button>
           <QuizBack />
         </div>
         <GoalCard goal={me.goal} mine />
@@ -522,8 +526,8 @@ export default function Page() {
     <Shell subtitle={subtitle}>
       {me.checkin.open && !me.checkin.done && !me.isObserver && (
         <div className="card" style={{ border: '3px solid #f0c36a', background: '#fff9e8' }}>
-          <div className="row" style={{ justifyContent: 'space-between', flexWrap: 'nowrap' }}>
-            <div><strong>📍 ถึงสถานที่จัดงานแล้วใช่ไหม?</strong><div className="muted" style={{ fontSize: 14 }}>เช็กอินกับทีมงานหน้างาน: สแกน QR แล้วกดยืนยันการเข้าร่วม</div></div>
+          <div className="row checkin-prompt-row" style={{ justifyContent: 'space-between' }}>
+            <div><strong className="action-icon"><AppIcon name="checkin" size={22} />ถึงสถานที่จัดงานแล้วใช่ไหม?</strong><div className="muted" style={{ fontSize: 14 }}>เช็กอินกับทีมงานหน้างาน: สแกน QR แล้วกดยืนยันการเข้าร่วม</div></div>
             <button className="btn small" style={{ flex: 'none' }} onClick={() => setView('checkin')}>เช็กอิน</button>
           </div>
         </div>
@@ -533,12 +537,12 @@ export default function Page() {
         <div className="profile">
           <button className="avatar" onClick={() => setEditAvatar(true)} aria-label="เปลี่ยนรูปโปรไฟล์" title="เปลี่ยนรูปโปรไฟล์">
             <Avatar url={me.avatar.url} emoji={me.avatar.emoji} name={participant.name} />
-            <span className="edit" aria-hidden>✎</span>
+            <span className="edit" aria-hidden><AppIcon name="edit" size={14} /></span>
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.25 }}>สวัสดี {participant.name}</div>
+            <div className="profile-name" style={{ fontSize: 22, fontWeight: 700, lineHeight: 1.25 }}>สวัสดี {participant.name}</div>
             {participant.fullName && participant.fullName !== participant.name && <div className="muted" style={{ fontSize: 14 }}>{participant.fullName}</div>}
-            <div className="row" style={{ marginTop: 8, gap: 6 }}>
+            <div className="row profile-meta" style={{ marginTop: 8, gap: 6 }}>
               <span className={`role ${me.isLeader && !me.isObserver ? 'leader' : 'member'}`}>{me.isObserver ? '👁 คณะทำงาน' : me.isLeader ? '⭐ หัวหน้าทีม' : '🏕️ สมาชิกทีม'}</span>
               <span className="pill">ทีม {team.name}</span>
               {me.squad && <span className="pill" style={{ background: '#f9dca0' }}>{me.squad}</span>}
@@ -547,7 +551,7 @@ export default function Page() {
           </div>
         </div>
         {!me.avatar.url && !me.avatar.emoji && <div className="muted" style={{ marginTop: 10, fontSize: 14 }}>👆 แตะที่วงกลมเพื่อเลือกรูปโปรไฟล์ของคุณ</div>}
-        <div className="row" style={{ marginTop: 12, justifyContent: 'space-between' }}>
+        <div className="row profile-wallet" style={{ marginTop: 12, justifyContent: 'space-between' }}>
           <span className="muted">{me.isObserver ? 'ติดตามความเคลื่อนไหวของทีม' : me.isLeader ? 'คุณมีสิทธิ์แลกสินค้าให้ทีม' : 'หัวหน้าทีมเป็นผู้แลกสินค้า'}</span>
           <span className="coin-row" style={{ fontSize: 22, gap: 6 }}><Coin size={26} /> {team.balance}</span>
         </div>
@@ -572,7 +576,7 @@ export default function Page() {
       </div>
       <LineCheckin status={me.line} onRefresh={load} onAuthLost={fail} />
       <p className="center" style={{ marginTop: 18 }}>
-        <button className="btn small ghost" onClick={logout}>ไม่ใช่คุณ? ออกจากระบบ</button>
+        <button className="btn small ghost" onClick={logout}><AppIcon name="logout" size={18} />ไม่ใช่คุณ? ออกจากระบบ</button>
       </p>
     </Shell>
   );
@@ -640,7 +644,7 @@ function CheckinView({ me, pendingCode, clearPending, onDone, onAuthLost }: {
   }
   return (   // step 1: the camera opens straight away; a QR code leads directly to the confirm screen
     <div className="card center stack">
-      <h2 style={{ margin: 0 }}>📷 สแกน QR Code เช็กอิน</h2>
+      <h2 className="page-heading" style={{ margin: 0 }}><AppIcon name="scan" />สแกน QR Code เช็กอิน</h2>
       <div className="muted">ส่องกล้องไปที่ QR Code ของทีมงานหน้างาน</div>
       {err && <div className="error">{err}</div>}
       <QrScanner onCode={(c) => { setErr(''); setCode(c); }} />
@@ -711,7 +715,7 @@ function QrScanner({ onCode }: { onCode: (code: string) => void }) {
             ? 'เปิดกล้องไม่ได้ กรุณากดอนุญาตการใช้กล้องของเบราว์เซอร์ (หรือไปที่การตั้งค่าของเบราว์เซอร์แล้วอนุญาตกล้อง)'
             : 'เบราว์เซอร์นี้เปิดกล้องในแอปไม่ได้'}
         </div>
-        <button className="btn" onClick={() => { setState('starting'); setAttempt((n) => n + 1); }}>📷 ลองเปิดกล้องอีกครั้ง</button>
+        <button className="btn" onClick={() => { setState('starting'); setAttempt((n) => n + 1); }}><AppIcon name="camera" size={20} />ลองเปิดกล้องอีกครั้ง</button>
         <div className="muted" style={{ fontSize: 14 }}>หรือใช้ <strong>กล้องของมือถือ</strong> (แอปกล้อง) สแกน QR Code ของทีมงาน แล้วเปิดลิงก์ที่ขึ้นมา จะมาที่หน้ายืนยันการเข้าร่วมทันที</div>
       </div>
     );
@@ -771,9 +775,9 @@ function AvatarSheet({ me, onClose, onSaved, onAuthLost }: { me: Me; onClose: ()
     if (!res.ok) throw new ApiError(res.status, data.message ?? 'อัปโหลดรูปไม่สำเร็จ');
   });
   return (
-    <div role="dialog" aria-label="เลือกรูปโปรไฟล์" onClick={onClose}
+    <div className="player-dialog-overlay" role="dialog" aria-modal="true" aria-label="เลือกรูปโปรไฟล์" onClick={onClose}
       style={{ position: 'fixed', inset: 0, background: 'rgba(31,47,77,.55)', display: 'grid', placeItems: 'end center', zIndex: 60 }}>
-      <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, borderRadius: '24px 24px 0 0', margin: 0, maxHeight: '88dvh', overflowY: 'auto' }}>
+      <div className="card player-dialog-panel avatar-sheet" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, borderRadius: '24px 24px 0 0', margin: 0 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0 }}>รูปโปรไฟล์ของฉัน</h2>
           <button className="btn small ghost" onClick={onClose}>ปิด</button>
@@ -783,8 +787,8 @@ function AvatarSheet({ me, onClose, onSaved, onAuthLost }: { me: Me; onClose: ()
             <Avatar url={me.avatar.url} emoji={me.avatar.emoji} name={me.participant.name} />
           </div>
         </div>
-        <label className="btn" style={{ display: 'block', textAlign: 'center', opacity: busy ? 0.5 : 1 }}>
-          📷 ถ่ายรูป / เลือกรูปจากเครื่อง
+        <label className="btn avatar-upload-action" style={{ textAlign: 'center', opacity: busy ? 0.5 : 1 }}>
+          <AppIcon name="camera" size={20} />ถ่ายรูป / เลือกรูปจากเครื่อง
           <input type="file" accept="image/*" disabled={busy} hidden
             onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ''; }} />
         </label>
@@ -883,7 +887,7 @@ function TeamView({ me, onAuthLost }: { me: Me; onAuthLost: (e: unknown) => void
   return (
     <>
       <div className="card team-line-summary">
-        <div className="row" style={{ gap: 10, flexWrap: 'nowrap' }}><LineLogo size={42} /><h2 style={{ margin: 0 }}>สมาชิกทีม {d.team}</h2></div>
+        <div className="row team-summary-heading" style={{ gap: 10 }}><LineLogo size={42} /><h2 style={{ margin: 0 }}>สมาชิกทีม {d.team}</h2></div>
         <div className="team-line-numbers"><strong>{joined}<span> / {total} คน</span></strong><span>เข้ากลุ่ม LINE แล้ว</span></div>
         <div className="progress" role="progressbar" aria-label="สมาชิกที่เข้ากลุ่ม LINE แล้ว" aria-valuemin={0} aria-valuemax={total || 1} aria-valuenow={joined}>
           <i style={{ width: `${progress}%`, background: '#06c755' }} />
@@ -892,7 +896,7 @@ function TeamView({ me, onAuthLost }: { me: Me; onAuthLost: (e: unknown) => void
         {observers.length > 0 && <div className="muted" style={{ marginTop: 8, fontSize: 13 }}>คณะทำงาน {observers.length} คน ไม่รวมในจำนวนสมาชิกและสัดส่วนนี้</div>}
       </div>
       {canManage && <div className="card stack">
-        <h2>จัด Squad ของทีม</h2>
+        <h2 className="page-heading"><AppIcon name="team" />จัด Squad ของทีม</h2>
         <p className="muted" style={{ margin: 0 }}>สร้าง Squad แล้วเลือกกลุ่มให้สมาชิกแต่ละคน ระบบจะบันทึกให้ทันที</p>
         <form className="squad-create-form" onSubmit={(event) => { event.preventDefault(); void createSquad(); }}>
           <label className="grow"><span className="lbl">ชื่อ Squad ใหม่</span><input className="field" aria-label="ชื่อ Squad ใหม่" value={newSquad} maxLength={60} disabled={!!saving} onChange={(event) => setNewSquad(event.target.value)} placeholder="เช่น ครัวที่ 1" /></label>
@@ -902,12 +906,12 @@ function TeamView({ me, onAuthLost }: { me: Me; onAuthLost: (e: unknown) => void
       {err && <div className="error" role="alert">{err}</div>}
       {message && <div className="team-save-status" role="status">✓ {message}</div>}
       <div className="card" style={{ border: '2px solid #f0d99e', background: '#fffdf6' }}>
-        <h2 style={{ fontSize: 17 }}>⭐ หัวหน้าทีม</h2>
+        <h2 className="page-heading" style={{ fontSize: 17 }}><AppIcon name="shield" size={20} />หัวหน้าทีม</h2>
         {leader ? <div className="members">{row(leader, -1)}</div> : <div className="muted">ยังไม่ได้กำหนดหัวหน้าทีม · สอบถามทีมงาน</div>}
         <p className="muted" style={{ fontSize: 13, margin: '8px 0 0' }}>หัวหน้าทีมจัด Squad และแลกสินค้าด้วยโทเคนของทีมได้</p>
       </div>
-      {groups.map((group) => <div className="card members" key={group.title}><strong>🏕️ {group.title} <span className="muted" style={{ fontWeight: 400 }}>({group.list.length} คน)</span></strong><div style={{ marginTop: 4 }}>{group.list.map(row)}</div></div>)}
-      {observers.length > 0 && <div className="card members"><h2 style={{ fontSize: 18 }}>👁 คณะทำงาน <span className="muted">({observers.length} คน)</span></h2><p className="muted" style={{ margin: '0 0 6px', fontSize: 13 }}>ติดตามความเคลื่อนไหวของทีม ไม่นับคะแนนหรือสัดส่วนกิจกรรม</p>{observers.map(row)}</div>}
+      {groups.map((group) => <div className="card members" key={group.title}><strong className="action-icon"><AppIcon name="users" size={20} />{group.title} <span className="muted" style={{ fontWeight: 400 }}>({group.list.length} คน)</span></strong><div style={{ marginTop: 4 }}>{group.list.map(row)}</div></div>)}
+      {observers.length > 0 && <div className="card members"><h2 className="page-heading" style={{ fontSize: 18 }}><AppIcon name="users" size={22} />คณะทำงาน <span className="muted">({observers.length} คน)</span></h2><p className="muted" style={{ margin: '0 0 6px', fontSize: 13 }}>ติดตามความเคลื่อนไหวของทีม ไม่นับคะแนนหรือสัดส่วนกิจกรรม</p>{observers.map(row)}</div>}
     </>
   );
 }
@@ -918,7 +922,7 @@ function GoalCard({ goal, mine }: { goal: Goal; mine?: boolean }) {
   const pct = goal.participants ? Math.round((goal.completed / goal.participants) * 100) : 0;
   return (
     <div className="card" style={{ border: `3px solid ${goal.met ? '#2f8f5b' : '#f1e8d0'}` }}>
-      <strong>🎯 เป้าหมายร่วมของทีม: สมาชิกเล่นควิซจบ {goal.goalPct}%</strong>
+      <strong className="action-icon"><AppIcon name="missions" size={21} />เป้าหมายร่วมของทีม: สมาชิกเล่นควิซจบ {goal.goalPct}%</strong>
       <div className="progress" style={{ position: 'relative', margin: '12px 0 8px' }}>
         <i style={{ width: `${Math.min(100, pct)}%`, background: goal.met ? 'var(--ok)' : undefined }} />
         <b style={{ position: 'absolute', left: `${goal.goalPct}%`, top: -4, height: 18, width: 3, background: 'var(--navy)' }} />
@@ -955,13 +959,13 @@ function NoticeModal() {
     const later = () => { markSeen(n.id); noticeStore.set(null); };
     const go = () => { markSeen(n.id); noticeStore.set(null); noticeStore.onCheckin?.(); };
     return (
-      <div role="alertdialog" aria-label="เช็กอินวันงาน" onClick={later}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(31,47,77,.6)', display: 'grid', placeItems: 'center', padding: 18, zIndex: 100 }}>
-        <div className="card center stack" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, margin: 0, border: '4px solid #f0c36a' }}>
-          <div style={{ fontSize: 64, lineHeight: 1 }}>📍</div>
+      <div className="player-dialog-overlay" role="alertdialog" aria-modal="true" aria-label="เช็กอินวันงาน" onClick={later}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(31,47,77,.6)', display: 'grid', placeItems: 'center', zIndex: 100 }}>
+        <div className="card center stack player-dialog-panel" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, margin: 0, border: '4px solid #f0c36a' }}>
+          <div className="dialog-feature-icon"><AppIcon name="checkin" size={52} /></div>
           <h2 style={{ margin: 0 }}>ถึงสถานที่จัดงานแล้วใช่ไหม?</h2>
           <div className="muted">ทีมงานเปิดให้ <strong>เช็กอิน</strong> แล้ว สแกน QR Code เช็กอินที่ทีมงานหน้างานด้วยกล้องมือถือ แล้วกด <strong>ยืนยันการเข้าร่วม</strong></div>
-          <button className="btn" onClick={go}>📷 ไปเช็กอิน</button>
+          <button className="btn" onClick={go}><AppIcon name="scan" size={20} />ไปเช็กอิน</button>
           <button className="btn ghost" onClick={later}>ไว้ทีหลัง</button>
         </div>
       </div>
@@ -970,10 +974,10 @@ function NoticeModal() {
   const ok = n.status === 'approved';
   const close = () => { markSeen(n.id); noticeStore.set(null); noticeStore.onClose?.(); };
   return (
-    <div role="alertdialog" aria-label="ผลการตรวจภาพภารกิจ" onClick={close}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(31,47,77,.6)', display: 'grid', placeItems: 'center', padding: 18, zIndex: 100 }}>
-      <div className="card center stack" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, margin: 0, border: `4px solid ${ok ? '#2f8f5b' : '#d98b86'}` }}>
-        <div style={{ fontSize: 64, lineHeight: 1 }}>{ok ? '🎉' : '😅'}</div>
+    <div className="player-dialog-overlay" role="alertdialog" aria-modal="true" aria-label="ผลการตรวจภาพภารกิจ" onClick={close}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(31,47,77,.6)', display: 'grid', placeItems: 'center', zIndex: 100 }}>
+      <div className="card center stack player-dialog-panel" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, margin: 0, border: `4px solid ${ok ? '#2f8f5b' : '#d98b86'}` }}>
+        <div className="dialog-feature-icon"><AppIcon name={ok ? 'check' : 'info'} size={52} /></div>
         <h2 style={{ margin: 0 }}>{ok ? 'ภารกิจผ่านแล้ว!' : 'ภาพยังไม่ผ่าน'}</h2>
         <div><strong>{n.title}</strong></div>
         {ok ? (
@@ -997,9 +1001,9 @@ function NoticeModal() {
 function Shell({ children, subtitle, onHome, suppressNotices = false }: { children: React.ReactNode; subtitle?: string; onHome?: () => void; suppressNotices?: boolean }) {
   const invitation = useLineInvitation();
   return (
-    <div className="app">
+    <div className="app player-shell">
       <Hero subtitle={subtitle} onHome={onHome} />
-      <main className="main">{invitation?.isObserver && <div className="observer-note" role="status">👁 คณะทำงาน · ดูความเคลื่อนไหวของทีม ข้อมูลของคุณไม่รวมในการนับสมาชิกและคะแนน</div>}{children}</main>
+      <main className="main player-main">{invitation?.isObserver && <div className="observer-note" role="status">👁 คณะทำงาน · ดูความเคลื่อนไหวของทีม ข้อมูลของคุณไม่รวมในการนับสมาชิกและคะแนน</div>}{children}</main>
       {!suppressNotices && !invitation?.promptOpen && <NoticeModal />}
     </div>
   );
@@ -1011,9 +1015,9 @@ function Activities(props: { tab: 'hunt' | 'puzzle'; onTabChange: (tab: 'hunt' |
   const { tab, onTabChange, access } = props;
   return (
     <>
-      <div className="tabs" style={{ marginTop: 14 }}>
-        <button className={tab === 'hunt' ? 'on' : ''} disabled={!access.hunt} onClick={() => onTabChange('hunt')}>🧭 ล่าสมบัติ{!access.hunt && ' 🔒'}</button>
-        <button className={tab === 'puzzle' ? 'on' : ''} disabled={!access.photos} onClick={() => onTabChange('puzzle')}>📸 ภารกิจทีม{!access.photos && ' 🔒'}</button>
+      <div className="tabs activity-tabs" style={{ marginTop: 14 }}>
+        <button className={tab === 'hunt' ? 'on' : ''} disabled={!access.hunt} onClick={() => onTabChange('hunt')}><AppIcon name="hunt" size={20} />ล่าสมบัติ{!access.hunt && ' 🔒'}</button>
+        <button className={tab === 'puzzle' ? 'on' : ''} disabled={!access.photos} onClick={() => onTabChange('puzzle')}><AppIcon name="camera" size={20} />ภารกิจทีม{!access.photos && ' 🔒'}</button>
       </div>
       {tab === 'hunt' && access.hunt ? <HuntView {...props} /> : access.photos ? <PhotoMissionsView readOnly={props.readOnly} onBalance={props.onBalance} onAuthLost={props.onAuthLost} /> : null}
     </>
@@ -1059,13 +1063,13 @@ function PhotoMissionsView({ onBalance, onAuthLost, readOnly = false }: { onBala
   return (
     <>
       {zoom && (
-        <div onClick={() => setZoom(null)} role="dialog" aria-label="ภาพ"
+        <div className="image-preview-overlay" onClick={() => setZoom(null)} role="dialog" aria-modal="true" aria-label="ภาพ"
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.82)', display: 'grid', placeItems: 'center', padding: 16, zIndex: 50, cursor: 'zoom-out' }}>
           <img src={zoom} alt="" style={{ maxWidth: '100%', maxHeight: '88dvh', borderRadius: 16 }} />
         </div>
       )}
       <div className="card">
-        <h2>📸 ภารกิจทีม</h2>
+        <h2 className="page-heading"><AppIcon name="camera" />ภารกิจทีม</h2>
         <p className="muted" style={{ margin: 0 }}>
           ถ่ายภาพ<strong>ทั้งทีม</strong>ตามโจทย์ที่กำหนด (ทุกคนอยู่ในภาพพร้อมกับสิ่งนั้น) แล้ว <strong>หัวหน้าทีมเท่านั้น</strong>เป็นผู้อัปโหลดภาพ ·
           <strong>ทีมงานจะตรวจภาพก่อน</strong> เมื่อกดยืนยันภารกิจจึงสำเร็จและทีมได้โทเคน (ถ้าไม่ตรงโจทย์จะถูกปฏิเสธ และถ่ายส่งใหม่ได้)
@@ -1235,7 +1239,7 @@ function HuntView({ pending, clearPending, onBalance, onAuthLost, readOnly = fal
   return (
     <>
       <div className="card center">
-        <h2>🧭 ล่าสมบัติ</h2>
+        <h2 className="page-heading"><AppIcon name="hunt" />ล่าสมบัติ</h2>
         <div className="muted">
           {h.squad ? <>สควอด <strong>{h.squad}</strong> (ทีม {h.team.name}) เจอแล้ว</> : <>ทีม {h.team.name} เจอแล้ว</>} {h.found}/{total} จุด · ได้ {h.earned} โทเคน
         </div>
@@ -1246,7 +1250,7 @@ function HuntView({ pending, clearPending, onBalance, onAuthLost, readOnly = fal
 
       {h.squads.length > 0 && (
         <div className="card">
-          <strong>🏕️ สควอดในทีมของคุณ</strong>
+          <strong className="action-icon"><AppIcon name="users" size={20} />สควอดในทีมของคุณ</strong>
           <ul className="list">
             {h.squads.map((q) => (
               <li key={q.id}><span>{q.mine ? '⭐ ' : ''}{q.name}</span><strong>{q.found}/{total} จุด</strong></li>
@@ -1272,7 +1276,7 @@ function HuntView({ pending, clearPending, onBalance, onAuthLost, readOnly = fal
 
       {!readOnly && <div className="card stack">
         <strong>กรอกรหัสที่จุด (หรือสแกน QR ด้วยกล้องมือถือ)</strong>
-        <input className="input" autoCapitalize="characters" autoComplete="off" autoCorrect="off" placeholder="รหัสจุด" value={code}
+        <input className="input" aria-label="รหัสจุด" autoCapitalize="characters" autoComplete="off" autoCorrect="off" placeholder="รหัสจุด" value={code}
           onChange={(e) => setCode(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && code.trim().length >= 4 && claim(code)} />
         {err && <div className="error">{err}</div>}
         <button className="btn" disabled={busy || code.replace(/[^a-zA-Z0-9]/g, '').length < 4 || !h.open} onClick={() => claim(code)}>
@@ -1311,12 +1315,12 @@ function MarketList({ me, onRedeem }: { me: Me; onRedeem?: (m: Me['market'][numb
   return (
     <>
       {zoom && (
-        <div onClick={() => setZoom(null)} role="dialog" aria-label="รูปสินค้า"
+        <div className="image-preview-overlay" onClick={() => setZoom(null)} role="dialog" aria-modal="true" aria-label="รูปสินค้า"
           style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.8)', display: 'grid', placeItems: 'center', padding: 16, zIndex: 50, cursor: 'zoom-out' }}>
           <img src={zoom} alt="" style={{ maxWidth: '100%', maxHeight: '85dvh', borderRadius: 16 }} />
         </div>
       )}
-      <div className="tabs cats" role="tablist" aria-label="หมวดสินค้า">
+      <div className="tabs cats category-tabs" role="tablist" aria-label="หมวดสินค้า">
         <button role="tab" aria-selected={cat === 'all'} className={cat === 'all' ? 'on' : ''} onClick={() => setCat('all')}>ทั้งหมด ({count('all')})</button>
         {MARKET_CATS.map((c) => (
           <button key={c.key} role="tab" aria-selected={cat === c.key} className={cat === c.key ? 'on' : ''} onClick={() => setCat(c.key)}>{c.icon} {c.label} ({count(c.key)})</button>
@@ -1332,12 +1336,12 @@ function MarketList({ me, onRedeem }: { me: Me; onRedeem?: (m: Me['market'][numb
           const have = owned.get(m.name) ?? 0;
           const canBuy = !!onRedeem && !out && !locked && afford;
           return (
-            <li key={m.id} style={{ alignItems: 'center', opacity: out ? 0.55 : 1, flexWrap: 'wrap' }}>
-              <button type="button" aria-label={`ดูรูป ${m.name}`} disabled={!m.image_url} onClick={() => m.image_url && setZoom(m.image_url)}
+            <li className="market-product-row" key={m.id} style={{ alignItems: 'center', opacity: out ? 0.55 : 1, flexWrap: 'wrap' }}>
+              <button className="market-product-media" type="button" aria-label={`ดูรูป ${m.name}`} disabled={!m.image_url} onClick={() => m.image_url && setZoom(m.image_url)}
                 style={{ flex: 'none', width: 64, height: 64, padding: 0, border: 0, borderRadius: 12, overflow: 'hidden', background: 'var(--cream-deep)', cursor: m.image_url ? 'zoom-in' : 'default' }}>
                 {m.image_url ? <img src={m.image_url} alt={m.name} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : <span style={{ fontSize: 28 }}>🍽️</span>}
               </button>
-              <span style={{ flex: 1, minWidth: 140 }}>
+              <span className="market-product-info" style={{ flex: 1, minWidth: 0 }}>
                 <strong>{locked ? '🔒 ' : m.requires_goal ? '🎯 ' : ''}{m.name}</strong>
                 <br />
                 <span className="pill" style={{ background: out ? '#f1d4d1' : low ? '#f2c46d' : 'var(--green)', fontSize: 13, padding: '2px 10px' }}>
@@ -1349,9 +1353,9 @@ function MarketList({ me, onRedeem }: { me: Me; onRedeem?: (m: Me['market'][numb
                 )}
                 {!out && !locked && !afford && <><br /><span className="muted" style={{ fontSize: 13 }}>โทเคนทีมยังไม่พอ (ขาดอีก {m.price - me.team.balance})</span></>}
               </span>
-              <strong style={{ textAlign: 'right' }}>{m.price}<br /><span className="muted" style={{ fontWeight: 400 }}>โทเคน</span></strong>
+              <strong className="market-product-price" style={{ textAlign: 'right' }}>{m.price}<br /><span className="muted" style={{ fontWeight: 400 }}>โทเคน</span></strong>
               {onRedeem && (
-                <button className="btn small" style={{ flexBasis: '100%', marginTop: 6 }} disabled={!canBuy} onClick={() => onRedeem(m)}>
+                <button className="btn small market-product-action" style={{ flexBasis: '100%', marginTop: 6 }} disabled={!canBuy} onClick={() => onRedeem(m)}>
                   {out ? 'สินค้าหมด' : locked ? 'ยังล็อกอยู่' : !afford ? 'โทเคนไม่พอ' : 'แลกสินค้านี้'}
                 </button>
               )}
@@ -1376,11 +1380,11 @@ function TeamInventory({ me }: { me: Me }) {
       <div className="muted" style={{ marginBottom: 6 }}>รวม {totalQty} ชิ้น · ใช้โทเคนไปแล้ว {totalSpent}</div>
       <ul className="list">
         {inv.map((i) => (
-          <li key={i.item} style={{ alignItems: 'center' }}>
-            <span style={{ flex: 'none', width: 56, height: 56, borderRadius: 12, overflow: 'hidden', background: 'var(--cream-deep)', display: 'grid', placeItems: 'center' }}>
+          <li className="team-inventory-row" key={i.item} style={{ alignItems: 'center' }}>
+            <span className="team-inventory-media" style={{ flex: 'none', width: 56, height: 56, borderRadius: 12, overflow: 'hidden', background: 'var(--cream-deep)', display: 'grid', placeItems: 'center' }}>
               {i.image_url ? <img src={i.image_url} alt={i.item} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 26 }}>🍽️</span>}
             </span>
-            <span style={{ flex: 1 }}>
+            <span className="team-inventory-info" style={{ flex: 1, minWidth: 0 }}>
               <strong>{i.item}</strong>
               <br />
               <span className="muted" style={{ fontSize: 14 }}>
@@ -1433,7 +1437,7 @@ function MarketView({ me, onRefresh }: { me: Me; onRefresh: () => unknown }) {
   return (
     <>
       <div className="card center">
-        <h2>🛒 ตลาด / แลกของ</h2>
+        <h2 className="page-heading"><AppIcon name="shop" />ตลาด / แลกของ</h2>
         <div className="muted">โทเคนของทีม {me.team.name}</div>
         <div className="coin-row"><Coin size={40} /> {me.team.balance}</div>
         <p className="muted" style={{ marginBottom: 0 }}>
@@ -1442,21 +1446,21 @@ function MarketView({ me, onRefresh }: { me: Me; onRefresh: () => unknown }) {
             : `เฉพาะหัวหน้าทีม${me.leaderName ? ` (${me.leaderName})` : ''} เท่านั้นที่แลกสินค้าได้ · คุณดูของและสต็อกได้`}
         </p>
       </div>
-      <div className="tabs">
-        <button className={tab === 'buy' ? 'on' : ''} onClick={() => setTab('buy')}>🛒 แลกของ</button>
-        <button className={tab === 'mine' ? 'on' : ''} onClick={() => setTab('mine')}>🎒 ของของทีม</button>
+      <div className="tabs market-tabs">
+        <button className={tab === 'buy' ? 'on' : ''} onClick={() => setTab('buy')}><AppIcon name="shop" size={20} />แลกของ</button>
+        <button className={tab === 'mine' ? 'on' : ''} onClick={() => setTab('mine')}><AppIcon name="team" size={20} />ของของทีม</button>
       </div>
       {done && <div className="card center" style={{ border: '3px solid #2f8f5b' }}><div className="verdict ok" style={{ fontSize: 17 }}>{done}</div></div>}
       {tab === 'buy' && <GoalCard goal={me.goal} mine />}
       <div className="card">{tab === 'buy' ? <MarketList me={me} onRedeem={canRedeem ? open : undefined} /> : <TeamInventory me={me} />}</div>
 
       {sel && (
-        <div role="dialog" aria-label="ยืนยันการแลก" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', display: 'grid', placeItems: 'end center', zIndex: 60 }}>
-          <div className="card" style={{ width: '100%', maxWidth: 480, borderRadius: '22px 22px 0 0', margin: 0 }}>
+        <div className="player-dialog-overlay" role="dialog" aria-modal="true" aria-label="ยืนยันการแลก" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.6)', display: 'grid', placeItems: 'end center', zIndex: 60 }}>
+          <div className="card player-dialog-panel market-dialog-panel" style={{ width: '100%', maxWidth: 480, borderRadius: '22px 22px 0 0', margin: 0 }}>
             <h2>ยืนยันการแลก</h2>
-            <div style={{ fontSize: 20, fontWeight: 700 }}>{sel.name}</div>
+            <div className="market-product-name" style={{ fontSize: 20, fontWeight: 700 }}>{sel.name}</div>
             <div className="muted">ราคา {sel.price} โทเคน/ชิ้น · เหลือ {sel.stock} ชิ้น</div>
-            <div className="row" style={{ margin: '14px 0', justifyContent: 'center' }}>
+            <div className="row redemption-qty" style={{ margin: '14px 0', justifyContent: 'center' }}>
               <button className="btn small ghost" disabled={qty <= 1 || busy} onClick={() => { setQty(qty - 1); keyRef.current = crypto.randomUUID(); }} aria-label="ลด">−</button>
               <strong style={{ fontSize: 28, minWidth: 48, textAlign: 'center' }}>{qty}</strong>
               <button className="btn small ghost" disabled={qty >= maxQty || busy} onClick={() => { setQty(qty + 1); keyRef.current = crypto.randomUUID(); }} aria-label="เพิ่ม">+</button>
@@ -1470,7 +1474,7 @@ function MarketView({ me, onRefresh }: { me: Me; onRefresh: () => unknown }) {
           </div>
         </div>
       )}
-      <button className="btn ghost" onClick={() => { refresh.current(); }}>รีเฟรชสต็อกตอนนี้</button>
+      <button className="btn ghost" onClick={() => { refresh.current(); }}><AppIcon name="refresh" size={20} />รีเฟรชสต็อกตอนนี้</button>
     </>
   );
 }

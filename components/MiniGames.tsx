@@ -1,6 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '@/lib/client-api';
+import AppIcon from '@/components/AppIcon';
 import { MG_INFO, MG_SUCCESS_RULES, MYSTERY, SPOT, type MgGame } from '@/lib/minigames/config';
 
 type GameStatus = { open: boolean; used: number; max: number; inProgress: boolean; claimed: boolean; best: number; scores: number[]; rewardTokens: number; successRule: string; top: { tokens: number; name: string; team: string; me: boolean }[] };
@@ -21,6 +22,7 @@ export default function MiniGames({ onBalance, onAuthLost, isObserver = false }:
     try { setSt(await api<Status>('/api/minigames')); setErr(''); } catch (e) { authLost.current(e); setErr((e as Error).message); }
   }, []);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { window.scrollTo({ top: 0, left: 0, behavior: 'instant' }); }, [play]);
 
   const readOnly = isObserver || !!st?.isObserver;
   if (play && !readOnly) {
@@ -30,8 +32,8 @@ export default function MiniGames({ onBalance, onAuthLost, isObserver = false }:
   }
   return (
     <>
-      <div className="card center">
-        <h2 style={{ fontSize: 22 }}>🎮 ภารกิจประจำสัปดาห์</h2>
+      <div className="card center weekly-hub">
+        <h2 className="page-heading" style={{ fontSize: 22 }}><AppIcon name="weekly" />ภารกิจประจำสัปดาห์</h2>
         <div className="muted">ทำภารกิจให้สำเร็จเพื่อรับโทเคนตามที่ผู้จัดกำหนดเข้ากระเป๋าทีม · รับรางวัลครั้งเดียวต่อคนต่อภารกิจ · ลองได้ภารกิจละ 3 ครั้ง</div>
       </div>
       {readOnly && <div className="banner">คณะทำงาน · ดูรายละเอียดภารกิจและความเคลื่อนไหวได้ โดยไม่เข้าร่วมเล่นหรือรับโทเคน</div>}
@@ -41,13 +43,13 @@ export default function MiniGames({ onBalance, onAuthLost, isObserver = false }:
         const x = st.games[g], info = MG_INFO[g];
         const left = x.max - x.used;
         return (
-          <div className="card" key={g}>
+          <div className="card weekly-mission-card" key={g}>
             <div className="mission">
-              <div className="m-ic" style={{ background: info.color }}>{info.icon}</div>
+              <div className="m-ic" style={{ background: info.color }}><AppIcon name={g === 'spot' ? 'scan' : g === 'memory' ? 'weekly' : 'quiz'} size={32} /></div>
               <div className="m-body"><h2>{info.title}</h2><div className="muted">{info.en}</div></div>
             </div>
             <p style={{ margin: '10px 0 6px' }}>{info.how}</p>
-            <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            <div className="row mission-meta" style={{ gap: 8, flexWrap: 'wrap' }}>
               <span className="pill" style={{ background: 'var(--green)', fontSize: 13, padding: '2px 10px' }}>สำเร็จรับ {x.rewardTokens} Tokens</span>
               {!readOnly && <span className="pill" style={{ background: '#f4ead0', fontSize: 13, padding: '2px 10px' }}>ลองแล้ว {x.used}/{x.max} ครั้ง</span>}
               {x.claimed && <span className="pill" style={{ background: '#d9ecd5', fontSize: 13 }}>✓ รับรางวัลแล้ว</span>}
@@ -59,7 +61,7 @@ export default function MiniGames({ onBalance, onAuthLost, isObserver = false }:
             </button>
             {x.top.length > 0 && (
               <details style={{ marginTop: 10 }}>
-                <summary style={{ cursor: 'pointer', fontWeight: 600 }}>🏆 ผลงานสมาชิก</summary>
+                <summary style={{ cursor: 'pointer', fontWeight: 600 }}><span className="action-icon"><AppIcon name="trophy" size={18} />ผลงานสมาชิก</span></summary>
                 <ol style={{ margin: '8px 0 0', paddingLeft: 22 }}>
                   {x.top.map((t, i) => <li key={i} style={t.me ? { fontWeight: 700 } : undefined}>{t.name} <span className="muted">({t.team})</span> — {t.tokens}</li>)}
                 </ol>
@@ -75,14 +77,14 @@ export default function MiniGames({ onBalance, onAuthLost, isObserver = false }:
 function ResultCard({ icon, title, lines, res, onExit }: { icon: string; title: string; lines: string[]; res: Result; onExit: () => void }) {
   const success = !!res.success;
   return (
-    <div className="card center stack" style={{ border: `3px solid ${success ? '#2f8f5b' : '#d2b56e'}` }}>
+    <div className="card center stack game-result" style={{ border: `3px solid ${success ? '#2f8f5b' : '#d2b56e'}` }}>
       <div style={{ fontSize: 54 }}>{icon}</div>
       <h2 style={{ margin: 0 }}>{title}</h2>
       {lines.map((l) => <div key={l} className="muted">{l}</div>)}
       <div className={`verdict ${success ? 'ok' : 'bad'}`} style={{ fontSize: 24 }}>
         {success ? '✓ ภารกิจสำเร็จ' : 'ยังไม่ผ่านเงื่อนไขภารกิจ'}
       </div>
-      {res.awarded > 0 ? <div>🪙 <strong>+{res.awarded} Tokens</strong> เข้ากระเป๋าทีมแล้ว</div>
+      {res.awarded > 0 ? <div className="action-icon"><AppIcon name="token" size={22} /><strong>+{res.awarded} Tokens</strong> เข้ากระเป๋าทีมแล้ว</div>
         : !success ? <div className="muted">ยังไม่ได้รับโทเคน · กลับไปดูจำนวนครั้งที่เหลือและลองใหม่ได้</div>
         : res.rewardTokens === 0 ? <div className="muted">รางวัลที่ผู้จัดกำหนดสำหรับภารกิจนี้คือ 0 Tokens</div>
         : <div className="muted">คุณรับรางวัลภารกิจนี้แล้ว จึงไม่ได้รับโทเคนซ้ำ</div>}
@@ -156,8 +158,8 @@ function SpotGame({ onExit, onAuthLost, rewardTokens }: GP) {
   }
   if (!g) {
     return (
-      <div className="card center stack">
-        <div style={{ fontSize: 54 }}>🔍</div>
+      <div className="card center stack game-intro">
+        <div className="game-intro-icon"><AppIcon name="scan" size={52} /></div>
         <h2 style={{ margin: 0 }}>{MG_INFO.spot.title}</h2>
         <p style={{ margin: 0 }}>{MG_INFO.spot.how}</p>
         <strong>สำเร็จรับ {rewardTokens} Tokens เข้ากระเป๋าทีม</strong>
@@ -180,9 +182,9 @@ function SpotGame({ onExit, onAuthLost, rewardTokens }: GP) {
   );
   return (
     <>
-      <div className="card" style={{ position: 'sticky', top: 0, zIndex: 5 }}>
-        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <strong style={{ fontSize: 24, color: left < 30 ? '#d02b20' : 'var(--navy)' }}>⏱️ {mmss(left)}</strong>
+      <div className="card game-toolbar" style={{ position: 'sticky', top: 0, zIndex: 5 }}>
+        <div className="row game-status-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <strong className="action-icon" style={{ fontSize: 24, color: left < 30 ? '#d02b20' : 'var(--navy)' }}><AppIcon name="clock" size={22} />{mmss(left)}</strong>
           <span><strong>{marks.length}</strong>/{SPOT.diffs} จุด</span>
           <span className="muted" style={{ fontSize: 13 }}>รอบที่ {g.n}/3 · {g.scene}</span>
         </div>
@@ -249,8 +251,8 @@ function MemoryGame({ onExit, onAuthLost, rewardTokens }: GP) {
   if (res) return <ResultCard icon="🃏" title="จับคู่ครบแล้ว!" lines={[`ใช้ ${moves} ครั้ง (ต่ำสุดที่เป็นไปได้ 6 ครั้ง)`]} res={res} onExit={onExit} />;
   if (!a) {
     return (
-      <div className="card center stack">
-        <div style={{ fontSize: 54 }}>🃏</div>
+      <div className="card center stack game-intro">
+        <div className="game-intro-icon"><AppIcon name="weekly" size={52} /></div>
         <h2 style={{ margin: 0 }}>{MG_INFO.memory.title}</h2>
         <p style={{ margin: 0 }}>{MG_INFO.memory.how}</p>
         <strong>สำเร็จรับ {rewardTokens} Tokens เข้ากระเป๋าทีม</strong>
@@ -262,14 +264,14 @@ function MemoryGame({ onExit, onAuthLost, rewardTokens }: GP) {
     );
   }
   return (
-    <div className="card center">
-      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+    <div className="card center memory-game">
+      <div className="row game-status-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <strong>ครั้งที่เปิด: {moves}</strong>
         <span>คู่ที่เจอ {done.size / 2}/6</span>
         <span className="muted" style={{ fontSize: 13 }}>รอบที่ {a.n}/3</span>
       </div>
       <div className="muted" style={{ fontSize: 13, margin: '4px 0 10px' }}>จับคู่ครบทั้ง 6 คู่ รับ {rewardTokens} Tokens · ไม่ลดรางวัลตามจำนวนครั้งที่เปิด</div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
+      <div className="memory-board" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
         {Array.from({ length: 12 }, (_, i) => {
           const f = faces[i], ok = done.has(i);
           return (
@@ -341,8 +343,8 @@ function MysteryGame({ onExit, onAuthLost, rewardTokens }: GP) {
   if (res) return <ResultCard icon="🥬" title="ครบ 5 ข้อแล้ว!" lines={[`ตอบถูก ${res.detail?.correct ?? 0}/${MYSTERY.rounds} ข้อ`]} res={res} onExit={onExit} />;
   if (!a || !q) {
     return (
-      <div className="card center stack">
-        <div style={{ fontSize: 54 }}>🥬</div>
+      <div className="card center stack game-intro">
+        <div className="game-intro-icon"><AppIcon name="quiz" size={52} /></div>
         <h2 style={{ margin: 0 }}>{MG_INFO.mystery.title}</h2>
         <p style={{ margin: 0 }}>{MG_INFO.mystery.how}</p>
         <strong>ตอบถูกครบ 5 ข้อ รับ {rewardTokens} Tokens เข้ากระเป๋าทีม</strong>
@@ -354,11 +356,11 @@ function MysteryGame({ onExit, onAuthLost, rewardTokens }: GP) {
   }
   const reveal = fb ? 1 : Math.min(1, Math.max(t / (q.seconds * 0.8), taps * 0.25));
   return (
-    <div className="card center stack">
-      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+    <div className="card center stack mystery-game">
+      <div className="row game-status-row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
         <strong>ข้อ {q.round}/{q.total}</strong>
         <span className="muted" style={{ fontSize: 13 }}>รอบที่ {a.n}/3</span>
-        {!fb && <strong style={{ color: t > q.seconds - 5 ? '#d02b20' : 'var(--navy)' }}>⏱️ {Math.max(0, Math.ceil(q.seconds - t))} วิ</strong>}
+        {!fb && <strong className="action-icon" style={{ color: t > q.seconds - 5 ? '#d02b20' : 'var(--navy)' }}><AppIcon name="clock" size={20} />{Math.max(0, Math.ceil(q.seconds - t))} วิ</strong>}
       </div>
       {!fb && <div style={{ height: 8, borderRadius: 4, background: 'var(--cream-deep)', overflow: 'hidden' }}><div style={{ height: '100%', width: `${Math.max(0, 100 - (t / q.seconds) * 100)}%`, background: 'var(--forest)', transition: 'width .1s linear' }} /></div>}
       <button type="button" aria-label="แตะเพื่อเปิดภาพเพิ่ม" disabled={!!fb || taps >= 4} onClick={() => setTaps((n) => n + 1)}
@@ -379,7 +381,7 @@ function MysteryGame({ onExit, onAuthLost, rewardTokens }: GP) {
             : <button className="btn" onClick={() => setRes(fb)}>ดูผลรวม</button>}
         </>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+        <div className="mystery-options" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           {q.options.map((o) => (
             <button key={o.id} className="btn ghost" style={{ display: 'grid', placeItems: 'center', padding: 8, minHeight: 92, fontSize: 40, lineHeight: 1.1 }} onClick={() => pick(o.id)}>
               {o.emoji}<span style={{ fontSize: 14, fontWeight: 600 }}>{o.name}</span>
