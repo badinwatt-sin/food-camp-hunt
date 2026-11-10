@@ -63,6 +63,10 @@ const fmtTime = (iso: string) =>
   new Date(iso).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
 
 export default function Page() {
+  return <div className="player-experience"><PlayerPage /></div>;
+}
+
+function PlayerPage() {
   const [loading, setLoading] = useState(true);
   const [me, setMe] = useState<Me | null>(null);
   const [code, setCode] = useState('');
