@@ -20,7 +20,8 @@ export default function LineCheckin({ status, onRefresh, onAuthLost, onPromptCha
   const available = status.open && status.configured && !!status.group;
   const showPrompt = available && !status.joined && dismissedGroup !== status.group;
   const closePrompt = useCallback(() => setDismissedGroup(status.group), [status.group]);
-  const progress = status.total > 0 ? Math.min(100, status.joinedCount * 100 / status.total) : 0;
+  const groupName = status.groupName || status.group;
+  const buttonTitle = groupName ? `กลุ่ม LINE · ${groupName}` : 'กลุ่ม LINE';
 
   useEffect(() => {
     onPromptChange?.(showPrompt);
@@ -47,60 +48,23 @@ export default function LineCheckin({ status, onRefresh, onAuthLost, onPromptCha
     }
   }
 
-  const disabledStyle = !available ? { background: '#e2e5e9', color: '#657084', opacity: 1 } : undefined;
-  const buttonLabel = busy ? 'กำลังเชื่อมต่อ…' : !status.open ? 'ยังไม่เปิดให้เชื่อมต่อ LINE'
-    : !status.configured ? 'รอทีมงานกำหนดกลุ่ม LINE' : status.joined ? 'เปิดกลุ่ม LINE อีกครั้ง' : 'เชื่อมต่อกลุ่ม LINE';
+  const buttonStatus = busy ? 'กำลังเชื่อมต่อ…' : !status.open ? 'ยังไม่เปิดใช้งาน'
+    : !status.configured ? 'รอทีมงานกำหนดกลุ่ม' : status.joined ? '✓ เข้า LINE แล้ว' : 'แตะเพื่อเข้าร่วมกลุ่ม';
 
   return (
-    <section className="card" aria-label="เช็กอินกลุ่ม LINE" style={{ border: `2px solid ${status.complete ? '#8ac49c' : '#d4e6d7'}` }}>
-      <div className="row" style={{ justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-        <h2 style={{ margin: 0 }}>💬 กลุ่ม LINE{status.group ? ` · ${status.group}` : ''}</h2>
-        {status.joined && <span className="pill" style={{ background: '#d9ecd5' }}>✅ เข้า join LINE แล้ว</span>}
-      </div>
-      <p className="muted" style={{ margin: '8px 0' }}>
-        {status.configured
-          ? `เข้ากลุ่ม LINE ${status.group} ที่ทีมงานจัดไว้ให้ แล้วกลับมาติดตามสมาชิกในทีม`
-          : 'ทีมงานกำลังกำหนดกลุ่มและลิงก์ LINE ให้ทีมของคุณ'}
-      </p>
-      <div aria-live="polite">
-        <strong>สมาชิกเข้า LINE แล้ว {status.joinedCount}/{status.total} คน</strong>
-        <div className="progress" role="progressbar" aria-label="สมาชิกที่เข้า LINE แล้ว" aria-valuemin={0}
-          aria-valuemax={status.total || 1} aria-valuenow={status.joinedCount}>
-          <i style={{ width: `${progress}%` }} />
-        </div>
-        {status.complete && (
-          <div className="verdict ok" style={{ fontSize: 17, marginBottom: 10 }}>
-            🎉 สมาชิกเข้าครบแล้ว · อันดับ {status.rank} · ได้ +{status.tokens} Tokens เข้ากระเป๋าทีม
-          </div>
-        )}
-      </div>
-      <p className="muted" style={{ margin: '0 0 12px', fontSize: 14 }}>
-        เมื่อสมาชิกทั้งทีมกดเข้าครบ รับ Tokens ตามลำดับความเร็ว: อันดับ 1 = 20 · 2 = 15 · 3 = 10 · 4 = 5
-      </p>
-      {status.members.length > 0 && (
-        <details style={{ marginBottom: 12 }}>
-          <summary style={{ cursor: 'pointer', fontWeight: 600 }}>ดูสถานะสมาชิกในกลุ่ม</summary>
-          <ul style={{ listStyle: 'none', padding: 0, margin: '8px 0 0', maxHeight: 240, overflowY: 'auto' }}>
-            {status.members.map((member, index) => (
-              <li key={index} style={{ padding: '7px 0', borderBottom: '1px solid #edf0ed', fontSize: 14 }}>
-                <strong>{member.name}{member.isMe ? ' (คุณ)' : ''}</strong>
-                <span style={{ display: 'block', color: member.joined ? '#2f6b4a' : '#657084' }}>
-                  {member.joined ? '✅ เข้า join LINE แล้ว' : '⏳ ยังไม่ได้กดเข้า LINE'}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
+    <section className="line-entry" aria-label="กลุ่ม LINE ของคุณ">
       {!showPrompt && error && <div className="error" role="alert" style={{ marginBottom: 10 }}>{error}</div>}
-      <button className="btn" disabled={!available || busy} style={disabledStyle}
+      <button className="btn line-entry-button" disabled={!available || busy}
+        aria-label={`${status.joined ? 'เปิด' : 'เข้าร่วม'}กลุ่ม LINE${groupName ? ` ${groupName}` : ''}`}
         onClick={() => { if (status.joined) void join(); else { setError(''); setDismissedGroup(null); } }}>
-        {buttonLabel}
+        <span className="line-entry-icon" aria-hidden>💬</span>
+        <span className="line-entry-text">
+          <span className="line-entry-title">{buttonTitle}</span>
+          <span className="line-entry-status">{buttonStatus}</span>
+        </span>
+        <span className="line-entry-arrow" aria-hidden>›</span>
       </button>
-      <p className="muted" style={{ fontSize: 12, margin: '8px 0 0' }}>
-        สถานะนี้บันทึกเมื่อกดเปิดลิงก์ กรุณากดเข้าร่วมกลุ่มในแอป LINE ให้เสร็จด้วย
-      </p>
-      {showPrompt && <JoinPrompt group={status.group!} busy={busy} error={error} onJoin={join} onClose={closePrompt} />}
+      {showPrompt && <JoinPrompt group={groupName!} busy={busy} error={error} onJoin={join} onClose={closePrompt} />}
     </section>
   );
 }
@@ -132,7 +96,7 @@ function JoinPrompt({ group, busy, error, onJoin, onClose }: {
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(31,47,77,.65)', display: 'grid', placeItems: 'center', padding: 18, zIndex: 120 }}>
       <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId}
         tabIndex={-1} className="card center stack"
-        style={{ width: '100%', maxWidth: 420, margin: 0, border: '3px solid #8ac49c', maxHeight: 'calc(100dvh - 36px)', overflowY: 'auto' }}
+        style={{ width: '100%', maxWidth: 420, margin: 0, border: '3px solid #8ac49c', maxHeight: 'calc(100dvh - 36px)', overflowY: 'auto', overflowWrap: 'anywhere' }}
         onKeyDown={(event) => {
           if (event.key === 'Escape') { event.preventDefault(); onClose(); }
           if (event.key !== 'Tab') return;

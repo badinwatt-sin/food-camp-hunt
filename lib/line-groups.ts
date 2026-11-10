@@ -7,7 +7,7 @@ export async function getLineStatus(p: { id: string; team_id: string }): Promise
   const sb = db();
   const [settings, team, people] = await Promise.all([
     sb.from('game_settings').select('line_open').eq('id', 1).single(),
-    sb.from('teams').select('line_group_code, line_group_url, line_completed_at, line_finish_rank, line_reward_tokens').eq('id', p.team_id).single(),
+    sb.from('teams').select('*').eq('id', p.team_id).single(),
     sb.from('participants').select('id, name, nick_name, line_joined_at').eq('team_id', p.team_id).order('name').order('id'),
   ]);
   if (settings.error) throw settings.error;
@@ -19,6 +19,7 @@ export async function getLineStatus(p: { id: string; team_id: string }): Promise
   return {
     open, configured,
     group: team.data.line_group_code,
+    groupName: team.data.line_group_name || team.data.line_group_code || null,
     url: open && configured ? team.data.line_group_url : null,
     joined: !!me?.line_joined_at,
     joinedAt: me?.line_joined_at ?? null,

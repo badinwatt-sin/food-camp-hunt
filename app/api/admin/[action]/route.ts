@@ -102,11 +102,11 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     await requireRole('staff');
     const [summary, line] = await Promise.all([
       sb.from('team_summary').select('*').order('name'),
-      sb.from('teams').select('id, line_group_code, line_completed_at'),
+      sb.from('teams').select('*'),
     ]);
     if (summary.error) throw summary.error;
     if (line.error) throw line.error;
-    const lineOf = new Map((line.data ?? []).map((t) => [t.id, t]));
+    const lineOf = new Map((line.data ?? []).map((t) => [t.id, { line_group_code: t.line_group_code, line_group_name: t.line_group_name ?? null, line_completed_at: t.line_completed_at }]));
     return ok({ teams: (summary.data ?? []).map((t) => ({ ...t, ...lineOf.get(t.team_id) })) });
   }
 
@@ -114,7 +114,7 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     await requireRole('admin');
     const [settings, teams, people] = await Promise.all([
       sb.from('game_settings').select('line_open').eq('id', 1).single(),
-      sb.from('teams').select('id, name, line_group_code, line_group_url, line_completed_at, line_finish_rank, line_reward_tokens').order('name'),
+      sb.from('teams').select('*').order('name'),
       sb.from('participants').select('id, name, nick_name, team_id, line_joined_at').order('name'),
     ]);
     if (settings.error) throw settings.error;
@@ -126,7 +126,9 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
         const members = (people.data ?? []).filter((p) => p.team_id === t.id).map((p) => ({
           id: p.id, name: p.nick_name || p.name, fullName: p.name, joinedAt: p.line_joined_at,
         }));
-        return { ...t, members, total: members.length, joinedCount: members.filter((p) => p.joinedAt).length };
+        return { id: t.id, name: t.name, line_group_code: t.line_group_code, line_group_name: t.line_group_name ?? null, line_group_url: t.line_group_url,
+          line_completed_at: t.line_completed_at, line_finish_rank: t.line_finish_rank, line_reward_tokens: t.line_reward_tokens,
+          members, total: members.length, joinedCount: members.filter((p) => p.joinedAt).length };
       }),
     });
   }
@@ -135,7 +137,7 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     await requireRole('admin');
     const { data, error } = await sb
       .from('participants')
-      .select('id, name, nick_name, is_leader, avatar_url, avatar_emoji, team_id, squad_id, status, code_hash, correct_count, tokens_earned, completed_at, line_joined_at, teams(name, line_group_code, line_completed_at), squads(name)')
+      .select('id, name, nick_name, is_leader, avatar_url, avatar_emoji, team_id, squad_id, status, code_hash, correct_count, tokens_earned, completed_at, line_joined_at, teams(*), squads(name)')
       .order('name');
     if (error) throw error;
     return ok({
@@ -144,7 +146,7 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
         squad_id: p.squad_id ?? null, squad_name: p.squads?.name ?? '',
         status: p.status, has_code: !!p.code_hash, correct_count: p.correct_count,
         tokens_earned: p.tokens_earned, completed_at: p.completed_at,
-        line_group_code: p.teams?.line_group_code ?? null, line_joined_at: p.line_joined_at,
+        line_group_code: p.teams?.line_group_code ?? null, line_group_name: p.teams?.line_group_name ?? null, line_joined_at: p.line_joined_at,
         line_completed_at: p.teams?.line_completed_at ?? null,
       })),
     });
@@ -505,6 +507,25 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       if (error) throw error;
       await audit(role, 'game.set', patch);
       return ok();
+    }
+
+    case 'line.group.rename': {
+      const teamId = need(str(body.team_id));
+      const name = typeof body.name === 'string' ? body.name.trim() : '';
+      if (!name || Array.from(name).length > 60 || /[\u0000-\u001f\u007f]/.test(name)) {
+        throw new HttpError(400, 'BAD_LINE_GROUP_NAME');
+      }
+      // A display-name edit never changes the invitation, membership, or awarded score.
+      const { data, error } = await sb.from('teams').update({ line_group_name: name }).eq('id', teamId).select('id, line_group_name').maybeSingle();
+      if (error) {
+        if (error.code === '42703' || error.code === 'PGRST204' || /line_group_name.*(column|schema cache)|(column|schema cache).*line_group_name/i.test(error.message ?? '')) {
+          throw new HttpError(409, 'LINE_NAMES_NOT_READY');
+        }
+        throw error;
+      }
+      if (!data) throw new HttpError(404, 'NOT_FOUND');
+      await audit(role, 'line.group.rename', { team_id: data.id, name: data.line_group_name });
+      return ok({ ok: true, name: data.line_group_name });
     }
 
     case 'line.group.save': {

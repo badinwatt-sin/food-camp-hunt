@@ -6,6 +6,8 @@ export type LineStatus = {
   open: boolean;
   configured: boolean;
   group: LineGroupCode | null;
+  /** Editable label; the stable group code still controls assignment and ranking. */
+  groupName?: string | null;
   url: string | null;
   joined: boolean;
   joinedAt: string | null;
