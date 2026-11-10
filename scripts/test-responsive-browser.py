@@ -88,7 +88,7 @@ class Fixture:
             if action=='ledger': return self.response(route,dict(ledger=[],audit=[]))
             if action=='missions': return self.response(route,dict(missions=[dict(id='photo1',title='ถ่ายภาพร่วมกันในกิจกรรมปรุงอาหารของสมาชิกทุกคน',description='ทุกคนร่วมถ่ายภาพในกิจกรรม',category='food',tokens=20,position=1,active=True,done=0,pending=1)],submissions=[],pending=0))
             if action=='checkin': return self.response(route,dict(open=True,code='FIXTURE',announcedAt=None,people=[dict(id=P1,name=NAME,nick_name=NAME,team_id='teamD',team=TEAM,squad='ครัวสร้างสรรค์กลุ่มที่หนึ่ง',checked_in_at=None,checked_in_by=None)]))
-            if action=='live': return self.response(route,dict(open=True,huntOpen=True,puzzleOpen=True,totalSpots=5,goalPct=80,teams=[dict(**{**t,'name':f'DCAO{i+1}'},huntFound=4,quizTokens=100,huntTokens=50,puzzleTokens=25,goalNeed=5,goalMet=False) for i,t in enumerate(self.summaries())],feed=[dict(at='2026-11-10T09:00:00Z',kind='hunt',team='DCAO1',text='พบจุดภารกิจและร่วมกิจกรรมกับสมาชิกในกลุ่มแล้ว')]))
+            if action=='live': return self.response(route,dict(open=True,huntOpen=True,puzzleOpen=True,totalSpots=5,goalPct=80,teams=[dict(**{**t,'name':f'DCAO{i+1}'},lineGroupCode=t['line_group_code'],huntFound=4,quizTokens=100,huntTokens=50,puzzleTokens=25,goalNeed=5,goalMet=False) for i,t in enumerate(self.summaries())],feed=[dict(at='2026-11-10T09:00:00Z',kind='hunt',teamId='teamD',team='DCAO1',text='พบจุดภารกิจและร่วมกิจกรรมกับสมาชิกในกลุ่มแล้ว')]))
         if path=='/api/me': return self.response(route,self.me)
         if path=='/api/notices': return self.response(route,dict(photos=[],checkin=None))
         if path=='/api/team': return self.response(route,self.team)

@@ -17,7 +17,7 @@ OUT.mkdir(parents=True, exist_ok=True)
 
 
 def team(name, participants, balance=0, completed=0, hunt_found=0):
-    return dict(id=name, name=name, balance=balance, spent=0, participants=participants,
+    return dict(id=name, name=name, lineGroupCode={'DCAO1':'D','DCAO2':'C','DCAO3':'A','DCAO4':'O'}.get(name), balance=balance, spent=0, participants=participants,
                 completed=completed, inProgress=0, huntFound=hunt_found, quizTokens=0,
                 huntTokens=0, puzzleTokens=0, goalNeed=21, goalMet=False)
 
@@ -26,20 +26,20 @@ def payload():
     return dict(open=False, huntOpen=False, puzzleOpen=False, totalSpots=5, goalPct=0,
                 teams=[team(f'DCAO{i+1}', n) for i, n in enumerate([26, 26, 26, 27])]
                 + [team('committee', 19, 99999, 19, 7), team('กรรมการ', 0, 99999)],
-                feed=[dict(at='2026-11-10T12:00:00Z', kind='quiz', team='committee', text='STAFF-ONLY')])
+                feed=[dict(at='2026-11-10T12:00:00Z', kind='quiz', teamId='committee', team='committee', text='STAFF-ONLY')])
 
 
 def check_bounds(page):
     metrics = page.evaluate('''() => ({width:innerWidth,doc:document.documentElement.scrollWidth,
       clipped:[...document.querySelectorAll('.live-row')].map(row=>({r:row.getBoundingClientRect(),b:row.querySelector('.live-body').getBoundingClientRect()}))
-        .filter(({r,b})=>b.top<r.top-1||b.bottom>r.bottom+1||r.bottom>innerHeight+1).length})''')
+        .filter(({r,b})=>b.top<r.top-1||b.bottom>r.bottom+1).length})''')
     assert metrics['doc'] <= metrics['width'] + 1 and metrics['clipped'] == 0, metrics
 
 
 checks = []
 with sync_playwright() as p:
     browser = p.chromium.launch(executable_path=os.environ.get('CHROMIUM_PATH', '/usr/bin/chromium'), headless=True, args=['--no-sandbox'])
-    for width, height in [(1366, 768), (1920, 1080)]:
+    for width, height in [(393, 852), (1366, 768), (1920, 1080)]:
         ctx = browser.new_context(viewport=dict(width=width, height=height))
         page = ctx.new_page()
         state = payload()
@@ -69,12 +69,26 @@ with sync_playwright() as p:
         page.screenshot(path=str(OUT / f'live-waiting-{width}.png'))
         checks.append(dict(width=width, state='zero', teams=4, participants=105, medals=0))
 
+        # Team IDs/codes stay unchanged while every label is edited, including old events.
+        renamed = ['ครัวสร้างสรรค์สีเขียวและเพื่อนร่วมค่าย', 'Camp Together', 'ทีมอาหารสร้างสุข', 'เพื่อนร่วมแคมป์']
+        for index, name in enumerate(renamed):
+            state['teams'][index]['name'] = name
+        state['feed'].append(dict(at='2026-11-10T12:00:00Z', kind='hunt', teamId='DCAO1', team='DCAO1', text='RENAMED-EVENT'))
+        expect(page.locator('.live-name > span:first-child')).to_have_text(renamed, timeout=10000)
+        expect(page.locator('.live-feed li')).to_contain_text([renamed[0] + ' RENAMED-EVENT'])
+        expect(page.locator('.live-stats > div > b')).to_have_text(['0/105', '0', '0'])
+        expect(page.get_by_role('img', name='รอเริ่มสะสม Tokens', exact=True)).to_have_count(4)
+        check_bounds(page)
+        page.screenshot(path=str(OUT / f'live-renamed-{width}.png'), full_page=width < 900)
+        checks.append(dict(width=width, state='renamed-without-navigation', teams=4, medals=0))
+        state['feed'] = state['feed'][:1]
+
         # Exercise the existing five-second refresh without a navigation or write.
         for index, balance in enumerate([10, 20, 30, 40]):
             state['teams'][index]['balance'] = balance
-        state['feed'].append(dict(at='2026-11-10T12:00:00Z', kind='hunt', team='DCAO1', text='TEAM-UPDATE'))
-        expect(page.get_by_role('img', name='อันดับ 4', exact=True)).to_be_visible(timeout=10000)
-        expect(page.locator('.live-name > span:first-child')).to_have_text(['DCAO4', 'DCAO3', 'DCAO2', 'DCAO1'])
+        state['feed'].append(dict(at='2026-11-10T12:00:00Z', kind='hunt', teamId='DCAO1', team='DCAO1', text='TEAM-UPDATE'))
+        expect(page.get_by_role('img', name='อันดับ 4', exact=True)).to_be_attached(timeout=10000)
+        expect(page.locator('.live-name > span:first-child')).to_have_text(list(reversed(renamed)))
         expect(page.get_by_role('img', name='อันดับ 4', exact=True)).to_have_text('🎖️')
         expect(page.locator('.live-stats > div > b')).to_have_text(['0/105', '0', '100'])
         expect(page.locator('.live-feed li')).to_have_count(1)

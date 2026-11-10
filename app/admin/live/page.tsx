@@ -2,15 +2,15 @@
 
 import { useEffect, useState } from 'react';
 import { CampTent, Coin, Pot } from '@/components/Icons';
-import { isLiveTeam, liveRank, liveTeams } from '@/lib/live-board';
+import { liveRank, liveTeams } from '@/lib/live-board';
 
 type Team = {
-  id: string; name: string; balance: number; spent: number; participants: number; completed: number;
+  id: string; name: string; lineGroupCode: string | null; balance: number; spent: number; participants: number; completed: number;
   inProgress: number; huntFound: number; quizTokens: number; huntTokens: number; puzzleTokens: number; goalNeed: number; goalMet: boolean;
 };
 type Live = {
   open: boolean; huntOpen: boolean; puzzleOpen: boolean; totalSpots: number; goalPct: number; teams: Team[];
-  feed: { at: string; kind: 'hunt' | 'redeem' | 'quiz' | 'puzzle'; team: string; text: string }[];
+  feed: { at: string; kind: 'hunt' | 'redeem' | 'quiz' | 'puzzle'; teamId: string; team: string; text: string }[];
 };
 
 const ICON = { hunt: '🧭', redeem: '🛒', quiz: '✅', puzzle: '🧩' } as const;
@@ -45,7 +45,8 @@ export default function LivePage() {
   if (!d) return <div className="live"><div className="live-msg"><h1>{state === 'error' ? 'เชื่อมต่อไม่ได้ กำลังลองใหม่…' : 'กำลังโหลด…'}</h1></div><Style /></div>;
 
   const ranked = liveTeams(d.teams);
-  const feed = d.feed.filter((entry) => isLiveTeam(entry.team));
+  const names = new Map(ranked.map((team) => [team.id, team.name]));
+  const feed = d.feed.filter((entry) => names.has(entry.teamId)).map((entry) => ({ ...entry, team: names.get(entry.teamId)! }));
   const hasTokens = ranked.some((team) => team.balance > 0);
   const max = Math.max(1, ...ranked.map((t) => t.balance));
   const totalDone = ranked.reduce((n, t) => n + t.completed, 0);
@@ -77,6 +78,7 @@ export default function LivePage() {
 
       <main className="live-main">
         <section className="live-board">
+          {ranked.length === 0 && <div className="live-msg">ยังไม่พบทีมแข่งขัน<br />ให้ Admin ตรวจรหัสกลุ่ม LINE D / C / A / O ของทีม</div>}
           {ranked.map((t) => {
             const rank = liveRank(t.balance, ranked);
             const tied = rank !== null && ranked.some((other) => other.id !== t.id && other.balance === t.balance);
@@ -170,6 +172,20 @@ function Style() {
     .live-feed li time{margin-left:auto;color:#4a5a74;font-variant-numeric:tabular-nums}
     .live-empty{color:#4a5a74}
     .live-deco{position:absolute;right:1vw;bottom:0;opacity:.9;display:flex;align-items:flex-end}
+    .live-name{gap:12px;flex-wrap:wrap}.live-name>span:first-child{min-width:0;overflow-wrap:anywhere}.live-coins{flex:none}
+    .live-board{overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}.live-row{flex:1 0 auto}
+    .live-feed li>span{min-width:0;overflow-wrap:anywhere}.live-feed li time{flex:none}
+    @media(max-width:900px){
+      .live{height:auto;min-height:100dvh;overflow:visible;padding:20px 14px;gap:18px}
+      .live-top>div{min-width:0}.live-top h1{font-size:clamp(26px,6vw,38px)}
+      .live-sub{font-size:13px;line-height:1.8}.live-ranking-note{font-size:12px}
+      .live-stats{gap:16px;flex-wrap:wrap}.live-stats b{font-size:26px}.live-stats span{font-size:12px}.live-clock{font-size:22px}
+      .live-fs{min-height:44px;font-size:14px}.live-main{flex:none;grid-template-columns:minmax(0,1fr);gap:16px}
+      .live-board{overflow:visible;gap:12px}.live-row{flex:none;min-height:125px;padding:16px;gap:12px}
+      .live-rank{font-size:30px}.live-name{font-size:22px;line-height:1.4}.live-coins{font-size:24px}.live-coins svg{width:28px;height:28px}
+      .live-meta{font-size:12px;gap:4px 12px}.live-goal{font-size:12px;flex-wrap:wrap}.live-gbar{flex-basis:100%}
+      .live-feed{min-height:220px;padding:18px}.live-feed h2{font-size:22px}.live-feed li{font-size:14px}.live-deco{opacity:.3;pointer-events:none}
+    }
     `}</style>
   );
 }

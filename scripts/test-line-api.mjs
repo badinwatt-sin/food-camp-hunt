@@ -218,7 +218,7 @@ test('/api/me settings failure cannot fall through to fetching activity content'
   assert.deepEqual(r.queries.map((query) => query.table), ['game_settings']);
 });
 
-function renameRoute({ role = 'admin', dbError = null, found = true } = {}) {
+function renameRoute({ role = 'admin', dbError = null, found = true, action = 'line.group.rename' } = {}) {
   const http = httpModule();
   const writes = [], audits = [];
   const { POST } = loadModule('../app/api/admin/[action]/route.ts', {
@@ -237,12 +237,13 @@ function renameRoute({ role = 'admin', dbError = null, found = true } = {}) {
           eq(key, value) { write.filter = [key, value]; return query; },
           select() { return query; },
           async maybeSingle() { return { data: found ? { id: write.filter[1], line_group_name: write.patch.line_group_name } : null, error: dbError }; },
+          then(resolve, reject) { return Promise.resolve({ error: dbError }).then(resolve, reject); },
         };
         return query;
       } }),
     },
   });
-  return { post: (body) => POST(request({ body }), { params: Promise.resolve({ action: 'line.group.rename' }) }), writes, audits };
+  return { post: (body) => POST(request({ body }), { params: Promise.resolve({ action }) }), writes, audits };
 }
 
 test('admin can rename a scored group while only its display name is updated', async () => {
@@ -331,4 +332,36 @@ test('custom LINE display name is projected safely without leaking private team 
   assert.equal(result.groupName, 'เพื่อนร่วมค่าย');
   assert.equal(result.group, 'D');
   assert.equal(JSON.stringify(result).includes('not-for-clients'), false);
+});
+
+test('team rename updates only the existing ID label, preserving its LINE assignment and score', async () => {
+  const r = renameRoute({ action: 'team.save' });
+  const res = await r.post({ id: 'existing-team', name: '  ครัวสร้างสรรค์  ', line_group_code: 'O', balance: 9999 });
+  assert.equal(res.status, 200);
+  assert.deepEqual(r.writes, [{ table: 'teams', patch: { name: 'ครัวสร้างสรรค์' }, filter: ['id', 'existing-team'] }]);
+  assert.deepEqual(r.audits, [['admin', 'team.save', { id: 'existing-team', name: 'ครัวสร้างสรรค์' }]]);
+});
+
+test('an existing player session reads the current team label on every request', async () => {
+  let teamName = 'DCAO1';
+  const queries = [];
+  const { requirePlayer } = loadModule('../lib/player.ts', {
+    'server-only': {}, './http': httpModule(),
+    './auth': { getPlayerSession: async () => ({ pid: 'player', v: 3 }) },
+    './supabase': { db: () => ({ from(table) {
+      const query = {
+        select(columns) { queries.push({ table, columns }); return query; },
+        eq(column, value) { assert.deepEqual([column, value], ['id', 'player']); return query; },
+        async maybeSingle() { return { data: { id: 'player', team_id: 'stable-team', session_version: 3, code_hash: 'test', teams: { name: teamName } }, error: null }; },
+      };
+      return query;
+    } }) },
+  });
+  assert.equal((await requirePlayer()).teams.name, 'DCAO1');
+  teamName = 'ทีมครัวสีเขียว';
+  const player = await requirePlayer();
+  assert.equal(player.teams.name, teamName);
+  assert.equal(player.team_id, 'stable-team');
+  assert.equal(queries.length, 2);
+  assert.ok(queries.every(q => q.columns.includes('teams(name)')));
 });
