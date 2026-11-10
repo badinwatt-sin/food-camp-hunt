@@ -97,18 +97,22 @@ with sync_playwright() as p:
     page.get_by_placeholder('ID ของคุณ').fill('STACK001')
     page.get_by_role('button',name='เข้าสู่เกม',exact=True).click()
     if os.environ['FC_STACK_STAGE']=='initial':
-        popup = page.get_by_role('dialog', name='เช็กอินเข้ากลุ่ม LINE D')
+        popup = page.get_by_role('dialog', name='เช็กอินเข้ากลุ่ม LINE เพื่อนร่วมค่าย')
         popup.wait_for(state='visible',timeout=60000)
-        assert popup.get_by_role('button', name='เชื่อมต่อ LINE กลุ่ม D').is_visible()
+        assert popup.get_by_role('button', name='เชื่อมต่อ LINE กลุ่ม เพื่อนร่วมค่าย').is_visible()
         popup.get_by_role('button', name='ไว้ทีหลัง').click()
         assert page.get_by_role('button',name='เริ่มภารกิจ').is_disabled()
         assert page.get_by_role('button',name='ตลาดของ').is_disabled()
-        assert page.get_by_text('สมาชิกเข้า LINE แล้ว 0/2 คน',exact=True).is_visible()
+        assert page.get_by_role('button',name='เข้าร่วมกลุ่ม LINE เพื่อนร่วมค่าย',exact=True).is_visible()
+        assert page.locator('.line-entry .progress, .line-entry details').count()==0
     else:
-        page.get_by_text('สมาชิกเข้า LINE แล้ว 2/2 คน',exact=True).wait_for(state='visible',timeout=60000)
-        assert page.locator('.pill').filter(has_text='✅ เข้า join LINE แล้ว').is_visible()
-        assert page.get_by_text('สมาชิกเข้าครบแล้ว',exact=False).is_visible()
-        assert page.get_by_role('dialog',name='เช็กอินเข้ากลุ่ม LINE D').count()==0
+        entry = page.get_by_role('region',name='กลุ่ม LINE ของคุณ')
+        button = entry.get_by_role('button',name='เปิดกลุ่ม LINE ชาวแคมป์สายชิล',exact=True)
+        button.wait_for(state='visible',timeout=60000)
+        assert entry.get_by_text('✓ เข้า LINE แล้ว',exact=True).is_visible()
+        assert entry.locator('.progress, details, ul, .card').count()==0
+        assert page.get_by_role('dialog').count()==0
+        assert entry.bounding_box()['y'] >= page.locator('.tiles').bounding_box()['y'] + page.locator('.tiles').bounding_box()['height']
     assert not errors, json.dumps(errors,ensure_ascii=False)
     browser.close()
 print('Browser '+os.environ['FC_STACK_STAGE']+' flow passed with no page errors')
@@ -126,6 +130,8 @@ try {
   await ready('PostgreSQL', () => docker(['exec', postgres, 'pg_isready', '-h', '127.0.0.1', '-U', 'postgres', '-d', 'foodcamp']));
   await sql('create role anon; create role authenticated; create role service_role bypassrls; create schema storage; create table storage.buckets(id text primary key,name text,public boolean);');
   await sql(await readFile(path.join(root, 'supabase/schema.sql'), 'utf8'));
+  // Start on the already deployed, pre-display-name schema to verify a safe rollout.
+  await sql('alter table public.teams drop column line_group_name;');
   await sql(`insert into questions(position,prompt,options,correct_index) values (1,'STACK HIDDEN QUESTION',array['A','B','C','D'],0);
     insert into market_items(name,price,stock) values('STACK HIDDEN MARKET',5,10);
     insert into hunt_spots(position,title,hint,secret,tokens) values(1,'STACK HIDDEN SPOT','test hint','STACKSPOT',5);
@@ -179,6 +185,7 @@ try {
   const guest = new Client(), admin = new Client(), player = new Client(), player2 = new Client();
   check('player API requires a real signed-in session', (await guest.call('/api/me')).status, 401);
   check('LINE admin configuration requires admin login', (await guest.call('/api/admin/line.groups')).status, 401);
+  check('LINE display-name changes require admin login', (await guest.call('/api/admin/line.group.rename', { team_id: 'unknown', name: 'forbidden' })).status, 401);
   await admin.ok('/api/admin/login', { password: adminPassword });
   check('admin login creates the admin session', admin.cookies.has('fc_admin'));
   await admin.ok('/api/admin/team.save', { name: 'STACK Team D' });
@@ -195,6 +202,32 @@ try {
   let me = await player.ok('/api/me');
   check('home API shows assigned D group, invite, and full roster', [me.line.group, me.line.total, me.line.joinedCount, me.line.joined, me.line.url], ['D', 2, 0, false, 'https://line.me/ti/g/food-camp-local-test-D']);
   check('all default closed activity and market menus are disabled', Object.values(me.menus).every((value) => !value));
+  check('pre-name database still renders player status with stable code fallback', me.line.groupName, 'D');
+  const oldAdmin = (await admin.ok('/api/admin/line.groups')).teams.find((entry) => entry.id === team.team_id);
+  check('pre-name database still loads admin LINE groups', oldAdmin.line_group_name, null);
+  check('pre-name database still loads admin assignments', (await admin.ok('/api/admin/participants')).participants.length, 2);
+  check('health distinguishes a pending optional name upgrade', (await guest.ok('/api/health')).features.lineNames.ready, false);
+  const pending = await admin.call('/api/admin/line.group.rename', { team_id: team.team_id, name: 'เพื่อนร่วมค่าย' });
+  check('rename before database upgrade gives clear409 without breaking login', [pending.status, pending.data.error], [409, 'LINE_NAMES_NOT_READY']);
+  await sql(await readFile(path.join(root, 'supabase/line-group-names.sql'), 'utf8'));
+  await sql("notify pgrst, 'reload schema';");
+  await ready('PostgREST display-name schema refresh', async () => {
+    const response = await fetch(`http://127.0.0.1:${restPort}/teams?select=line_group_name&limit=0`, { headers: { Authorization: `Bearer ${serviceKey}` }, signal: AbortSignal.timeout(5000) });
+    assert.equal(response.status, 200);
+  });
+  check('health verifies the applied display-name upgrade', (await guest.ok('/api/health')).features.lineNames.ready, true);
+  const renamed = await admin.ok('/api/admin/line.group.rename', { team_id: team.team_id, name: '  เพื่อนร่วมค่าย  ' });
+  check('admin saves a trimmed LINE display name through the real API', renamed.name, 'เพื่อนร่วมค่าย');
+  me = await player.ok('/api/me');
+  check('member receives custom display name while group identity stays D', [me.line.groupName, me.line.group], ['เพื่อนร่วมค่าย', 'D']);
+  const staff = new Client();
+  await staff.ok('/api/admin/login', { password: 'food-camp-local-tests-only-staff' });
+  check('staff cannot rename LINE groups', (await staff.call('/api/admin/line.group.rename', { team_id: team.team_id, name: 'forbidden' })).status, 403);
+  for (const invalid of ['', '   ', 'a'.repeat(61), 'two\nlines']) {
+    const rejected = await admin.call('/api/admin/line.group.rename', { team_id: team.team_id, name: invalid });
+    check('real rename API rejects invalid name ' + JSON.stringify(invalid), [rejected.status, rejected.data.error], [400, 'BAD_LINE_GROUP_NAME']);
+  }
+
   await browser('initial');
 
   const first = await player.ok('/api/line/join', {});
@@ -210,6 +243,13 @@ try {
   check('completion renders every member as joined', me.line.members.every((member) => member.joined));
   const group = (await admin.ok('/api/admin/line.groups')).teams.find((entry) => entry.id === team.team_id);
   check('admin sees the same completed roster and rank', [group.joinedCount, group.line_finish_rank, group.line_reward_tokens], [2, 1, 20]);
+  const completedSnapshotSql = `select jsonb_build_object('team',(select to_jsonb(t)-'line_group_name' from teams t where id='${team.team_id}'), 'members',(select jsonb_agg(to_jsonb(p) order by id) from participants p where team_id='${team.team_id}'), 'ledger',(select jsonb_agg(to_jsonb(l) order by id) from token_ledger l where team_id='${team.team_id}'));`;
+  const completedSnapshot = await sql(completedSnapshotSql);
+  await admin.ok('/api/admin/line.group.rename', { team_id: team.team_id, name: 'ชาวแคมป์สายชิล' });
+  check('renaming a completed group preserves every scored team, roster and ledger field', await sql(completedSnapshotSql), completedSnapshot);
+  me = await player.ok('/api/me');
+  check('completed member gets renamed group and unchanged reward', [me.line.groupName, me.line.group, me.line.rank, me.line.tokens, me.team.balance], ['ชาวแคมป์สายชิล', 'D', 1, 20, 20]);
+
   await browser('complete');
 
   for (const [route, code] of [['/api/hunt', 'HUNT_CLOSED'], ['/api/photos', 'PUZZLE_CLOSED'], ['/api/minigames', 'MG_CLOSED']]) {
