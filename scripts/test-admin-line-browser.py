@@ -18,6 +18,8 @@ from urllib.parse import unquote, urlparse
 
 from playwright.sync_api import expect, sync_playwright
 
+expect.set_options(timeout=15000)
+
 
 BASE_URL = os.environ.get("BASE_URL", "http://localhost:3000")
 SCREENSHOT = Path("/workspace/scratch/food-camp-admin-line.png")
@@ -34,6 +36,7 @@ def team_fixture(code, *, joined=0, completed=False, configured=True):
     return {
         "id": f"team-{code}", "name": f"ทีม{code}",
         "line_group_code": code if configured else None,
+        "line_group_name": None,
         "line_group_url": f"https://line.me/ti/g/test-{code}" if configured else None,
         "line_completed_at": JOINED_AT if completed else None,
         "line_finish_rank": 1 if completed else None,
@@ -84,6 +87,7 @@ class AdminLineBrowser(unittest.TestCase):
         return [{"team_id": t["id"], "name": t["name"], "participants": t["total"],
                  "completed": 0, "in_progress": 0, "balance": t["line_reward_tokens"],
                  "spent": 0, "leader": None, "line_group_code": t["line_group_code"],
+                 "line_group_name": t["line_group_name"],
                  "line_completed_at": t["line_completed_at"]} for t in self.teams]
 
     def participants(self):
@@ -93,6 +97,7 @@ class AdminLineBrowser(unittest.TestCase):
                  "correct_count": 0, "tokens_earned": 0, "completed_at": None,
                  "is_leader": False, "has_avatar": False, "avatar_url": None,
                  "avatar_emoji": None, "line_group_code": team["line_group_code"],
+                 "line_group_name": team["line_group_name"],
                  "line_joined_at": member["joinedAt"], "line_completed_at": team["line_completed_at"]}
                 for team in self.teams for member in team["members"]]
 
@@ -122,6 +127,10 @@ class AdminLineBrowser(unittest.TestCase):
             if action == "game.set" and set(body) == {"line_open"}:
                 self.line_open = body["line_open"]
                 return self.respond(route, {"ok": True})
+            if action == "line.group.rename":
+                team = next(t for t in self.teams if t["id"] == body["team_id"])
+                team["line_group_name"] = body["name"].strip()
+                return self.respond(route, {"ok": True, "name": team["line_group_name"]})
             if action == "line.group.save":
                 team = next(t for t in self.teams if t["id"] == body["team_id"])
                 team["line_group_code"] = body["group"] or None
@@ -169,7 +178,7 @@ class AdminLineBrowser(unittest.TestCase):
     def test_saving_config_sends_assigned_team_group_and_invitation(self):
         self.open_line()
         card = self.team_card("O")
-        card.get_by_label("กลุ่ม LINE", exact=True).select_option("O")
+        card.get_by_label("รหัสกลุ่มสำหรับจัดสมาชิก", exact=True).select_option("O")
         card.get_by_label("ลิงก์เชิญเข้ากลุ่ม LINE", exact=True).fill(TEST_URL)
         card.get_by_role("button", name="บันทึกกลุ่ม LINE", exact=True).click()
         expect(self.page.get_by_role("status")).to_contain_text("บันทึกกลุ่ม LINE ของทีม ทีมO แล้ว")
@@ -190,13 +199,40 @@ class AdminLineBrowser(unittest.TestCase):
         self.open_line()
         for code in ["D", "C"]:
             card = self.team_card(code)
-            expect(card.get_by_label("กลุ่ม LINE", exact=True)).to_be_disabled()
+            expect(card.get_by_label("รหัสกลุ่มสำหรับจัดสมาชิก", exact=True)).to_be_disabled()
             expect(card.get_by_label("ลิงก์เชิญเข้ากลุ่ม LINE", exact=True)).to_be_disabled()
             expect(card.get_by_role("button", name="บันทึกกลุ่ม LINE", exact=True)).to_be_disabled()
         completed = self.team_card("D")
         expect(completed.get_by_text("🏆 อันดับ 1 · +20 โทเคน", exact=True)).to_be_visible()
-        expect(completed.get_by_text(re.compile("ล็อกกลุ่ม ลิงก์ และรายชื่อสมาชิก"))).to_be_visible()
-        expect(self.team_card("A").get_by_label("กลุ่ม LINE", exact=True)).to_be_enabled()
+        expect(completed.get_by_text(re.compile("ล็อกรหัสกลุ่ม ลิงก์ และรายชื่อสมาชิก"))).to_be_visible()
+        expect(self.team_card("A").get_by_label("รหัสกลุ่มสำหรับจัดสมาชิก", exact=True)).to_be_enabled()
+
+    def test_admin_can_rename_completed_group_without_unlocking_invitation_or_changing_score(self):
+        self.open_line()
+        card = self.team_card("D")
+        before = json.loads(json.dumps(self.teams[0]))
+        expect(card.get_by_label("ชื่อกลุ่ม LINE ที่แสดง", exact=True)).to_be_enabled()
+        card.get_by_label("ชื่อกลุ่ม LINE ที่แสดง", exact=True).fill("ทีมหมูกระทะ 🍲")
+        card.get_by_role("button", name="บันทึกชื่อกลุ่ม", exact=True).click()
+        expect(self.page.get_by_role("status")).to_contain_text("บันทึกชื่อกลุ่ม LINE แล้ว")
+        self.assertIn(("line.group.rename", {"team_id": "team-D", "name": "ทีมหมูกระทะ 🍲"}), self.posts)
+        expect(card.get_by_label("ชื่อกลุ่ม LINE ที่แสดง", exact=True)).to_have_value("ทีมหมูกระทะ 🍲")
+        board = self.page.locator(".card").filter(has=self.page.get_by_role("heading", name="สถานะทั้ง 4 กลุ่ม"))
+        expect(board.locator("tbody tr").nth(0)).to_contain_text("ทีมหมูกระทะ 🍲")
+        expect(card.get_by_label("รหัสกลุ่มสำหรับจัดสมาชิก", exact=True)).to_be_disabled()
+        expect(card.get_by_label("ลิงก์เชิญเข้ากลุ่ม LINE", exact=True)).to_be_disabled()
+        expect(card.get_by_text("🏆 อันดับ 1 · +20 โทเคน", exact=True)).to_be_visible()
+        after = {key: value for key, value in self.teams[0].items() if key != "line_group_name"}
+        self.assertEqual(after, {key: value for key, value in before.items() if key != "line_group_name"})
+        self.page.screenshot(path=str(SCREENSHOT.with_name("food-camp-admin-line-custom-name.png")), full_page=True)
+
+    def test_custom_names_are_shown_in_member_assignment(self):
+        self.teams[1]["line_group_name"] = "เพื่อนร่วมค่าย"
+        self.visit()
+        self.page.get_by_role("button", name="ทีมและผู้เล่น", exact=True).click()
+        selector = self.page.get_by_role("combobox", name="ทีมและกลุ่ม LINE ของผู้เล่น")
+        expect(selector.locator('option[value="team-C"]')).to_contain_text("LINE เพื่อนร่วมค่าย")
+        expect(self.page.get_by_role("cell", name=re.compile("เพื่อนร่วมค่าย")).first).to_be_visible()
 
     def test_completed_roster_cannot_add_move_or_delete_members(self):
         self.visit()

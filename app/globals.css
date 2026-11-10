@@ -253,3 +253,21 @@ label.lbl { display: block; font-size: 14px; color: #5d6a80; margin: 10px 0 4px;
 }
 .tile:disabled .t-icon { filter: grayscale(1); opacity: .6; }
 .tile:disabled:active, .btn:disabled:active { transform: none; }
+
+/* A small LINE shortcut sits below the main player menus. */
+.line-entry { margin-top: 14px; }
+.line-entry-button {
+  display: flex; align-items: center; gap: 12px; min-height: 64px; padding: 10px 16px;
+  background: #fff; color: var(--forest-deep); border: 1px solid #d4e6d7;
+  text-align: left; box-shadow: 0 3px 10px rgba(31,47,77,.06);
+}
+.line-entry-icon {
+  display: grid; place-items: center; flex: none; width: 36px; height: 36px;
+  background: #e7f6ec; border-radius: 12px; font-size: 22px;
+}
+.line-entry-text { display: grid; gap: 2px; min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.line-entry-title { font-size: 16px; line-height: 1.35; }
+.line-entry-status { color: #62716b; font-size: 12px; font-weight: 400; line-height: 1.35; }
+.line-entry-arrow { flex: none; font-size: 24px; }
+.line-entry-button:disabled { background: #e1e4e8; color: #69717d; border-color: #d0d5dc; box-shadow: none; }
+.line-entry-button:disabled .line-entry-icon { background: #d5dbe1; filter: grayscale(1); }

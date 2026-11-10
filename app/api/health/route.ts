@@ -19,17 +19,20 @@ export async function GET() {
     }
   }
   // Read column metadata only; never return participant records or invite URLs.
+  let lineNames = { ready: false };
   let line = { ready: false, checks: { settings: false, teams: false, participants: false } };
   if (env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY) {
     try {
-      const [settings, teams, participants] = await Promise.all([
+      const [settings, teams, participants, names] = await Promise.all([
         db().from('game_settings').select('line_open').limit(0),
         db().from('teams').select('line_group_code, line_group_url, line_completed_at, line_finish_rank, line_reward_tokens').limit(0),
         db().from('participants').select('line_joined_at').limit(0),
+        db().from('teams').select('line_group_name').limit(0),
       ]);
+      lineNames = { ready: !names.error };
       const checks = { settings: !settings.error, teams: !teams.error, participants: !participants.error };
       line = { ready: Object.values(checks).every(Boolean), checks };
     } catch { /* Keep false checks when metadata is unavailable. */ }
   }
-  return Response.json({ commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? 'local').slice(0, 7), env, database, features: { line } });
+  return Response.json({ commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? 'local').slice(0, 7), env, database, features: { line, lineNames } });
 }

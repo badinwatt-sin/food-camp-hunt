@@ -49,6 +49,7 @@ const bootstrap = `create schema storage; create table storage.buckets(id text p
 try {
   const schema = await readFile(new URL('supabase/schema.sql', root), 'utf8');
   const migration = await readFile(new URL('supabase/line-groups.sql', root), 'utf8');
+  const namesMigration = await readFile(new URL('supabase/line-group-names.sql', root), 'utf8');
   // The full schema deliberately includes the same idempotent migration verbatim.
   const migrationAt = schema.lastIndexOf(migration.trim());
   assert.ok(migrationAt >= 0, 'schema.sql must include the LINE migration');
@@ -74,6 +75,37 @@ try {
   await sql(migration, 'foodcamp_upgrade');
   await sql(migration, 'foodcamp_upgrade');
   check('existing pre-LINE schema upgrades and migration reruns safely', await sql('select line_open from public.game_settings where id=1;', 'foodcamp_upgrade'), 'f');
+
+  // Simulate a deployed pre-name database containing a completed, credited LINE group.
+  await sql('create database foodcamp_names_upgrade;');
+  await sql(bootstrap, 'foodcamp_names_upgrade');
+  await sql(baseline, 'foodcamp_names_upgrade');
+  const namesAt = migration.lastIndexOf(namesMigration.trim());
+  assert.ok(namesAt >= 0, 'full LINE migration must include the standalone name upgrade');
+  await sql(migration.slice(0, namesAt), 'foodcamp_names_upgrade');
+  const existingTeam = randomUUID(), existingMember = randomUUID();
+  await sql(`insert into teams(id,name) values(${literal(existingTeam)},'Existing scored team');
+    insert into participants(id,team_id,name) values(${literal(existingMember)},${literal(existingTeam)},'Existing joined member');
+    select configure_line_group(${literal(existingTeam)},'D','https://line.me/ti/g/existing');
+    update game_settings set line_open=true where id=1;
+    select join_line_group(${literal(existingMember)});`, 'foodcamp_names_upgrade');
+  const savedStateSql = `select jsonb_build_object('team', (select to_jsonb(t)-'line_group_name' from teams t where id=${literal(existingTeam)}),
+    'member', (select to_jsonb(p) from participants p where id=${literal(existingMember)}),
+    'ledger', (select jsonb_agg(to_jsonb(l) order by id) from token_ledger l));`;
+  const savedState = await sql(savedStateSql, 'foodcamp_names_upgrade');
+  await sql(namesMigration, 'foodcamp_names_upgrade');
+  await sql(namesMigration, 'foodcamp_names_upgrade');
+  check('standalone name migration reruns without changing existing joins, scores or invitations', await sql(savedStateSql, 'foodcamp_names_upgrade'), savedState);
+  await sql(`update teams set line_group_name='ทีมหมูกระทะ 🍲' where id=${literal(existingTeam)};`, 'foodcamp_names_upgrade');
+  check('completed group can be renamed after scores were credited', await sql(`select line_group_name from teams where id=${literal(existingTeam)};`, 'foodcamp_names_upgrade'), 'ทีมหมูกระทะ 🍲');
+  check('renaming a completed group preserves every invitation, member and ledger field', await sql(savedStateSql, 'foodcamp_names_upgrade'), savedState);
+  for (const invalid of ['', '   ', ' leading', 'trailing ', 'a'.repeat(61), 'two\nlines', 'bad\tname']) {
+    await assert.rejects(sql(`update teams set line_group_name=${literal(invalid)} where id=${literal(existingTeam)};`, 'foodcamp_names_upgrade'), /teams_line_group_name_check/);
+    check('database rejects invalid display name ' + JSON.stringify(invalid), true);
+  }
+  await sql(`update teams set line_group_name=${literal('🍲'.repeat(60))} where id=${literal(existingTeam)};`, 'foodcamp_names_upgrade');
+  check('display name limit counts 60 Unicode characters rather than UTF-16 units', await sql(`select char_length(line_group_name) from teams where id=${literal(existingTeam)};`, 'foodcamp_names_upgrade'), '60');
+
 
   const teams = ['D', 'C', 'A', 'O'].map(() => randomUUID());
   const reserveTeam = randomUUID();

@@ -514,7 +514,6 @@ export default function Page() {
           </div>
         </div>
       )}
-      <LineCheckin status={me.line} onRefresh={load} onAuthLost={fail} onPromptChange={setLinePromptOpen} />
       {editAvatar && <AvatarSheet me={me} onClose={() => setEditAvatar(false)} onSaved={() => load()} onAuthLost={fail} />}
       <div className="card">
         <div className="profile">
@@ -557,6 +556,7 @@ export default function Page() {
           <span className="t-go" aria-hidden>›</span>
         </button>
       </div>
+      <LineCheckin status={me.line} onRefresh={load} onAuthLost={fail} onPromptChange={setLinePromptOpen} />
       <p className="center" style={{ marginTop: 18 }}>
         <button className="btn small ghost" onClick={logout}>ไม่ใช่คุณ? ออกจากระบบ</button>
       </p>

@@ -14,6 +14,9 @@ from urllib.parse import urlparse
 
 from playwright.sync_api import expect, sync_playwright
 
+# Development compilation can make the initial fixture render slower than Playwright’s 5s default.
+expect.set_options(timeout=15000)
+
 
 BASE_URL = os.environ.get("BASE_URL", "http://localhost:3000")
 SCREENSHOTS = Path(os.environ.get("SCREENSHOT_DIR", "/workspace/scratch"))
@@ -35,7 +38,7 @@ def fixture(*, joined=True, menus=None):
         "isLeader": False, "leaderName": "ต้น", "marketOpen": access["market"],
         "menus": access,
         "line": {
-            "open": True, "configured": True, "group": "D", "url": LINE_URL,
+            "open": True, "configured": True, "group": "D", "groupName": None, "url": LINE_URL,
             "joined": joined, "joinedAt": "2026-11-10T09:00:00Z" if joined else None,
             "total": 2, "joinedCount": 2 if joined else 1,
             "complete": joined, "rank": 1 if joined else None, "tokens": 20 if joined else 0,
@@ -123,7 +126,8 @@ class PlayerBrowser(unittest.TestCase):
         if path == "/api/line/join":
             self.assertEqual(request.method, "POST")
             self.assertEqual(request.post_data_json, {})
-            self.me["line"] = fixture()["line"]
+            self.me["line"].update(joined=True, joinedAt="2026-11-10T09:00:00Z",
+                                    joinedCount=2, complete=True, rank=1, tokens=20)
             return self.respond(route, {"url": LINE_URL, "already": False})
         # Any unexpected request is recorded and returns a fast, visible error.
         return self.respond(route, {"error": "UNEXPECTED_TEST_REQUEST", "message": path}, 400)
@@ -150,7 +154,7 @@ class PlayerBrowser(unittest.TestCase):
         dialog.get_by_role("button", name="ไว้ทีหลัง").click()
         expect(dialog).to_have_count(0)
         self.page.evaluate("window.dispatchEvent(new Event('focus'))")
-        expect(self.page.get_by_role("button", name="เชื่อมต่อกลุ่ม LINE", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("button", name="เข้าร่วมกลุ่ม LINE D", exact=True)).to_be_visible()
         expect(dialog).to_have_count(0)
         self.assertNotIn(("POST", "/api/line/join"), self.requests)
 
@@ -163,31 +167,61 @@ class PlayerBrowser(unittest.TestCase):
                         self.requests.index(("NAVIGATE", LINE_URL)))
         self.assertTrue(self.me["line"]["joined"])
 
-    def test_joined_player_sees_progress_reward_and_member_status(self):
+    def test_joined_player_has_compact_bottom_line_button_without_details(self):
+        self.me["line"]["groupName"] = "ชาวแคมป์สายชิล"
         self.visit()
+        entry = self.page.get_by_role("region", name="กลุ่ม LINE ของคุณ")
         expect(self.page.get_by_role("dialog")).to_have_count(0)
-        expect(self.page.get_by_text("สมาชิกเข้า LINE แล้ว 2/2 คน", exact=True)).to_be_visible()
-        expect(self.page.get_by_text(re.compile("สมาชิกเข้าครบแล้ว.*อันดับ 1.*20 Tokens"))).to_be_visible()
-        self.page.get_by_text("ดูสถานะสมาชิกในกลุ่ม", exact=True).click()
-        expect(self.page.get_by_text("✅ เข้า join LINE แล้ว", exact=True)).to_have_count(3)
+        expect(entry.get_by_role("button", name="เปิดกลุ่ม LINE ชาวแคมป์สายชิล", exact=True)).to_be_enabled()
+        expect(entry.get_by_text("✓ เข้า LINE แล้ว", exact=True)).to_be_visible()
+        expect(entry.locator("details, ul, .progress, .card")).to_have_count(0)
+        expect(entry.get_by_text(re.compile("สมาชิกเข้า LINE|Tokens|อันดับ|สถานะสมาชิก"))).to_have_count(0)
+        tiles = self.page.locator(".tiles").bounding_box()
+        line_box = entry.bounding_box()
+        self.assertGreaterEqual(line_box["y"], tiles["y"] + tiles["height"])
+        self.assertLess(line_box["height"], 110)
+        self.page.screenshot(path=str(SCREENSHOTS / "food-camp-home-compact-line.png"), full_page=True)
         self.page.get_by_role("button", name=re.compile("สมาชิกในทีม")).click()
         expect(self.page.get_by_role("heading", name="👥 สมาชิกทีม D")).to_be_visible()
         expect(self.page.get_by_text("✅ เข้า join LINE แล้ว", exact=True).first).to_be_visible()
+
+    def test_custom_line_name_is_used_in_initial_popup_and_deferred_button(self):
+        self.me = fixture(joined=False)
+        self.me["line"]["groupName"] = "เพื่อนร่วมค่าย 🍲"
+        self.visit()
+        dialog = self.page.get_by_role("dialog", name="เช็กอินเข้ากลุ่ม LINE เพื่อนร่วมค่าย 🍲")
+        expect(dialog).to_be_visible()
+        expect(dialog.get_by_role("button", name="เชื่อมต่อ LINE กลุ่ม เพื่อนร่วมค่าย 🍲", exact=True)).to_be_focused()
+        dialog.get_by_role("button", name="ไว้ทีหลัง").click()
+        expect(self.page.get_by_role("button", name="เข้าร่วมกลุ่ม LINE เพื่อนร่วมค่าย 🍲", exact=True)).to_be_visible()
+        self.me["line"]["groupName"] = "ชื่อใหม่ของกลุ่ม"
+        with self.page.expect_response(re.compile(r"/api/me$")):
+            self.page.evaluate("window.dispatchEvent(new Event('focus'))")
+        expect(self.page.get_by_role("button", name="เข้าร่วมกลุ่ม LINE ชื่อใหม่ของกลุ่ม", exact=True)).to_be_visible()
+        expect(self.page.get_by_role("dialog")).to_have_count(0)
+
+    def test_joined_custom_name_button_reopens_invitation_without_popup(self):
+        self.me["line"]["groupName"] = "ทีมหมูกระทะ"
+        self.visit()
+        self.page.get_by_role("button", name="เปิดกลุ่ม LINE ทีมหมูกระทะ", exact=True).click()
+        self.page.wait_for_url(LINE_URL)
+        self.assertLess(self.requests.index(("POST", "/api/line/join")),
+                        self.requests.index(("NAVIGATE", LINE_URL)))
 
     def test_closed_line_has_no_prompt_and_disabled_gray_button(self):
         self.me = fixture(joined=False)
         self.me["line"]["open"] = False
         self.visit()
-        button = self.page.get_by_role("button", name="ยังไม่เปิดให้เชื่อมต่อ LINE", exact=True)
+        button = self.page.get_by_role("button", name="เข้าร่วมกลุ่ม LINE D", exact=True)
         expect(button).to_be_disabled()
-        expect(button).to_have_css("background-color", "rgb(226, 229, 233)")
+        expect(button).to_have_css("background-color", "rgb(225, 228, 232)")
         expect(self.page.get_by_role("dialog")).to_have_count(0)
 
     def test_unconfigured_line_has_no_prompt_and_disabled_button(self):
         self.me = fixture(joined=False)
         self.me["line"].update(configured=False, group=None, url=None)
         self.visit()
-        expect(self.page.get_by_role("button", name="รอทีมงานกำหนดกลุ่ม LINE", exact=True)).to_be_disabled()
+        expect(self.page.get_by_role("button", name="เข้าร่วมกลุ่ม LINE", exact=True)).to_be_disabled()
         expect(self.page.get_by_role("dialog")).to_have_count(0)
 
     def test_closed_home_menus_are_gray_and_native_click_cannot_open(self):

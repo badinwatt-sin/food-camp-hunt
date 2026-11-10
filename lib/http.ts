@@ -34,6 +34,8 @@ const MESSAGES: Record<string, [number, string]> = {
   LINE_CLOSED: [403, 'ยังไม่เปิดให้เชื่อมต่อกลุ่ม LINE หรือปิดแล้ว'],
   LINE_NOT_CONFIGURED: [409, 'ทีมนี้ยังไม่ได้กำหนดกลุ่ม LINE กรุณาติดต่อทีมงาน'],
   BAD_LINE_URL: [400, 'กรุณาใช้ลิงก์ HTTPS ของ LINE (line.me หรือ lin.ee)'],
+  BAD_LINE_GROUP_NAME: [400, 'กรุณาใส่ชื่อกลุ่ม LINE 1–60 ตัวอักษรในบรรทัดเดียว'],
+  LINE_NAMES_NOT_READY: [409, 'ยังบันทึกชื่อกลุ่มไม่ได้ กรุณารันไฟล์อัปเดต line-group-names.sql ใน Supabase แล้วลองอีกครั้ง'],
   BAD_LINE_GROUP: [400, 'เลือกกลุ่ม LINE D, C, A หรือ O'],
   LINE_GROUP_TAKEN: [409, 'กลุ่ม LINE นี้ถูกกำหนดให้ทีมอื่นแล้ว'],
   LINE_GROUP_IN_USE: [409, 'มีสมาชิกกดเข้า LINE แล้ว จึงเปลี่ยนกลุ่มหรือลิงก์ไม่ได้'],

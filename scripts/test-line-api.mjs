@@ -216,3 +216,117 @@ test('/api/me settings failure cannot fall through to fetching activity content'
   assert.equal(res.status, 403);
   assert.deepEqual(r.queries.map((query) => query.table), ['game_settings']);
 });
+
+function renameRoute({ role = 'admin', dbError = null, found = true } = {}) {
+  const http = httpModule();
+  const writes = [], audits = [];
+  const { POST } = loadModule('../app/api/admin/[action]/route.ts', {
+    'next/server': { NextResponse: { json: (body, init) => Response.json(body, init) } },
+    '@/lib/http': http,
+    '@/lib/auth': { getAdminRole: async () => role },
+    '@/lib/goal': {}, '@/lib/codes': {}, '@/lib/avatars': {}, '@/lib/bulk': {},
+    '@/lib/line-types': { isLineGroupUrl, LINE_GROUP_CODES: ['D', 'C', 'A', 'O'] },
+    '@/lib/supabase': {
+      audit: async (...args) => audits.push(args),
+      db: () => ({ from(table) {
+        const write = { table, patch: null, filter: null };
+        const query = {
+          update(patch) { write.patch = patch; writes.push(write); return query; },
+          eq(key, value) { write.filter = [key, value]; return query; },
+          select() { return query; },
+          async maybeSingle() { return { data: found ? { id: write.filter[1], line_group_name: write.patch.line_group_name } : null, error: dbError }; },
+        };
+        return query;
+      } }),
+    },
+  });
+  return { post: (body) => POST(request({ body }), { params: Promise.resolve({ action: 'line.group.rename' }) }), writes, audits };
+}
+
+test('admin can rename a scored group while only its display name is updated', async () => {
+  const r = renameRoute();
+  const res = await r.post({ team_id: 'completed-team', name: '  ทีมหมูกระทะ 🍲  ', group: 'X', url: 'https://evil.test' });
+  assert.equal(res.status, 200);
+  assert.deepEqual(await res.json(), { ok: true, name: 'ทีมหมูกระทะ 🍲' });
+  assert.deepEqual(r.writes, [{ table: 'teams', patch: { line_group_name: 'ทีมหมูกระทะ 🍲' }, filter: ['id', 'completed-team'] }]);
+  assert.deepEqual(r.audits, [['admin', 'line.group.rename', { team_id: 'completed-team', name: 'ทีมหมูกระทะ 🍲' }]]);
+});
+
+for (const role of [null, 'staff']) {
+  test(`LINE display-name rename rejects role ${role} before database writes`, async () => {
+    const r = renameRoute({ role });
+    const res = await r.post({ team_id: 'team', name: 'ชื่อใหม่' });
+    assert.equal(res.status, role === null ? 401 : 403);
+    assert.deepEqual(r.writes, []);
+    assert.deepEqual(r.audits, []);
+  });
+}
+
+test('LINE rename rejects missing, blank, non-string, multi-line and oversized names before saving', async () => {
+  for (const name of [undefined, null, 123, {}, '', '   ', 'a'.repeat(61), 'two\nlines', 'bad\tname', 'bad\0name']) {
+    const r = renameRoute();
+    const res = await r.post({ team_id: 'team', name });
+    assert.equal(res.status, 400, JSON.stringify(name));
+    assert.equal((await res.json()).error, 'BAD_LINE_GROUP_NAME');
+    assert.deepEqual(r.writes, []);
+  }
+});
+
+test('LINE rename accepts a 60-character Unicode display name', async () => {
+  const r = renameRoute();
+  const res = await r.post({ team_id: 'team', name: '🍲'.repeat(60) });
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).name, '🍲'.repeat(60));
+});
+
+test('LINE rename reports a pending database upgrade without claiming success or logging an edit', async () => {
+  for (const dbError of [{ code: '42703', message: 'column line_group_name does not exist' }, { code: 'PGRST204', message: 'schema cache missing line_group_name' }]) {
+    const r = renameRoute({ dbError });
+    const res = await r.post({ team_id: 'team', name: 'ชื่อใหม่' });
+    assert.equal(res.status, 409);
+    assert.equal((await res.json()).error, 'LINE_NAMES_NOT_READY');
+    assert.deepEqual(r.audits, []);
+  }
+});
+
+test('LINE rename reports an unknown team and does not claim a saved edit', async () => {
+  const r = renameRoute({ found: false });
+  const res = await r.post({ team_id: 'missing', name: 'ชื่อใหม่' });
+  assert.equal(res.status, 404);
+  assert.deepEqual(r.audits, []);
+});
+
+function lineStatusModule(team) {
+  const selections = [];
+  const sb = { from(table) {
+    const result = () => ({ data: table === 'game_settings' ? { line_open: true } : table === 'teams' ? team : [{ id: 'me', name: 'Player', line_joined_at: '2026-11-10T09:00:00Z' }], error: null });
+    const query = {
+      select(columns) { selections.push({ table, columns }); return query; },
+      eq() { return query; }, order() { return query; },
+      async single() { return result(); },
+      then(resolve, reject) { return Promise.resolve(result()).then(resolve, reject); },
+    };
+    return query;
+  } };
+  const module = loadModule('../lib/line-groups.ts', {
+    'server-only': {}, './supabase': { db: () => sb }, './line-types': { isLineGroupUrl },
+  });
+  return { get: () => module.getLineStatus({ id: 'me', team_id: 'team' }), selections };
+}
+
+test('pre-name-migration LINE reads still work and fall back to the D/C/A/O label', async () => {
+  const r = lineStatusModule({ line_group_code: 'D', line_group_url: 'https://line.me/ti/g/test', line_completed_at: null });
+  const result = await r.get();
+  assert.equal(result.group, 'D');
+  assert.equal(result.groupName, 'D');
+  assert.equal(result.configured, true);
+  assert.equal(result.joined, true);
+});
+
+test('custom LINE display name is projected safely without leaking private team columns', async () => {
+  const r = lineStatusModule({ line_group_code: 'D', line_group_name: 'เพื่อนร่วมค่าย', line_group_url: 'https://line.me/ti/g/test', private_team_setting: 'not-for-clients' });
+  const result = await r.get();
+  assert.equal(result.groupName, 'เพื่อนร่วมค่าย');
+  assert.equal(result.group, 'D');
+  assert.equal(JSON.stringify(result).includes('not-for-clients'), false);
+});
