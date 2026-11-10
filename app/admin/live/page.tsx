@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { CampTent, Coin, Pot } from '@/components/Icons';
+import { isLiveTeam, liveRank, liveTeams } from '@/lib/live-board';
 
 type Team = {
   id: string; name: string; balance: number; spent: number; participants: number; completed: number;
@@ -13,7 +14,7 @@ type Live = {
 };
 
 const ICON = { hunt: '🧭', redeem: '🛒', quiz: '✅', puzzle: '🧩' } as const;
-const MEDAL = ['🥇', '🥈', '🥉'];
+const MEDAL = ['🥇', '🥈', '🥉', '🎖️'];
 const clock = (iso: string) => new Date(iso).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
 
 export default function LivePage() {
@@ -43,12 +44,14 @@ export default function LivePage() {
   }
   if (!d) return <div className="live"><div className="live-msg"><h1>{state === 'error' ? 'เชื่อมต่อไม่ได้ กำลังลองใหม่…' : 'กำลังโหลด…'}</h1></div><Style /></div>;
 
-  const ranked = [...d.teams].sort((a, b) => b.balance - a.balance || a.name.localeCompare(b.name));
+  const ranked = liveTeams(d.teams);
+  const feed = d.feed.filter((entry) => isLiveTeam(entry.team));
+  const hasTokens = ranked.some((team) => team.balance > 0);
   const max = Math.max(1, ...ranked.map((t) => t.balance));
-  const totalDone = d.teams.reduce((n, t) => n + t.completed, 0);
-  const totalP = d.teams.reduce((n, t) => n + t.participants, 0);
-  const totalTokens = d.teams.reduce((n, t) => n + t.balance, 0);
-  const huntDone = d.teams.reduce((n, t) => n + t.huntFound, 0);
+  const totalDone = ranked.reduce((n, t) => n + t.completed, 0);
+  const totalP = ranked.reduce((n, t) => n + t.participants, 0);
+  const totalTokens = ranked.reduce((n, t) => n + t.balance, 0);
+  const huntDone = ranked.reduce((n, t) => n + t.huntFound, 0);
 
   return (
     <div className="live">
@@ -61,6 +64,7 @@ export default function LivePage() {
             <span className={`dot ${d.huntOpen ? 'on' : ''}`} style={{ marginLeft: 22 }} /> ล่าสมบัติ {d.huntOpen ? 'เปิด' : 'ปิด'}
             <span className={`dot ${d.puzzleOpen ? 'on' : ''}`} style={{ marginLeft: 22 }} /> ภารกิจทีม {d.puzzleOpen ? 'เปิด' : 'ปิด'}
           </div>
+          <div className="live-ranking-note">{hasTokens ? 'อันดับปัจจุบันตาม Tokens คงเหลือ' : 'รอเริ่มสะสม Tokens · ยังไม่จัดอันดับ'}</div>
         </div>
         <div className="live-stats">
           <div><b>{totalDone}/{totalP}</b><span>เล่นควิซจบ</span></div>
@@ -73,37 +77,44 @@ export default function LivePage() {
 
       <main className="live-main">
         <section className="live-board">
-          {ranked.map((t, i) => (
-            <div className="live-row" key={t.id}>
-              <div className="live-rank">{MEDAL[i] ?? i + 1}</div>
-              <div className="live-body">
-                <div className="live-name"><span>{t.name}</span><span className="live-coins"><Coin size={40} /> {t.balance}</span></div>
-                <div className="live-bar"><i style={{ width: `${(t.balance / max) * 100}%` }} /></div>
-                {d.goalPct > 0 && (
-                  <div className="live-goal">
-                    <div className="live-gbar">
-                      <i className={t.goalMet ? 'ok' : ''} style={{ width: `${t.participants ? Math.min(100, (t.completed / t.participants) * 100) : 0}%` }} />
-                      <b style={{ left: `${d.goalPct}%` }} />
+          {ranked.map((t) => {
+            const rank = liveRank(t.balance, ranked);
+            const tied = rank !== null && ranked.some((other) => other.id !== t.id && other.balance === t.balance);
+            return (
+              <div className="live-row" key={t.id}>
+                <div className="live-rank" role="img" aria-label={rank === null ? 'รอเริ่มสะสม Tokens' : `อันดับ ${rank}${tied ? ' ร่วม' : ''}`}>
+                  <span aria-hidden="true">{rank === null ? '🏕️' : MEDAL[rank - 1]}</span>
+                  {tied && <small aria-hidden="true">ร่วม</small>}
+                </div>
+                <div className="live-body">
+                  <div className="live-name"><span>{t.name}</span><span className="live-coins"><Coin size={40} /> {t.balance}</span></div>
+                  <div className="live-bar"><i style={{ width: `${(t.balance / max) * 100}%` }} /></div>
+                  {d.goalPct > 0 && (
+                    <div className="live-goal">
+                      <div className="live-gbar">
+                        <i className={t.goalMet ? 'ok' : ''} style={{ width: `${t.participants ? Math.min(100, (t.completed / t.participants) * 100) : 0}%` }} />
+                        <b style={{ left: `${d.goalPct}%` }} />
+                      </div>
+                      <span>{t.goalMet ? '🔓 ถึงเป้า ปลดล็อกสินค้าพิเศษแล้ว' : `🔒 เป้า ${d.goalPct}% · อีก ${t.goalNeed} คน`}</span>
                     </div>
-                    <span>{t.goalMet ? '🔓 ถึงเป้า ปลดล็อกสินค้าพิเศษแล้ว' : `🔒 เป้า ${d.goalPct}% · อีก ${t.goalNeed} คน`}</span>
+                  )}
+                  <div className="live-meta">
+                    <span>ควิซ {t.completed}/{t.participants} คน · +{t.quizTokens}</span>
+                    <span>🧭 พบ {t.huntFound} ครั้ง · +{t.huntTokens}</span>
+                    <span>🧩 ภารกิจทีม +{t.puzzleTokens}</span>
+                    <span>ใช้ไปแล้ว {t.spent}</span>
                   </div>
-                )}
-                <div className="live-meta">
-                  <span>ควิซ {t.completed}/{t.participants} คน · +{t.quizTokens}</span>
-                  <span>🧭 พบ {t.huntFound} ครั้ง · +{t.huntTokens}</span>
-                  <span>🧩 ภารกิจทีม +{t.puzzleTokens}</span>
-                  <span>ใช้ไปแล้ว {t.spent}</span>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </section>
 
         <aside className="live-feed">
           <h2>ความเคลื่อนไหวล่าสุด</h2>
-          {d.feed.length === 0 && <p className="live-empty">ยังไม่มีความเคลื่อนไหว</p>}
+          {feed.length === 0 && <p className="live-empty">ยังไม่มีความเคลื่อนไหว</p>}
           <ul>
-            {d.feed.map((f, i) => (
+            {feed.map((f, i) => (
               <li key={i}>
                 <span className="live-ic">{ICON[f.kind]}</span>
                 <span><b>{f.team}</b> {f.text}</span>
@@ -129,6 +140,7 @@ function Style() {
     .live-kicker{font-size:.55em;letter-spacing:.32em;font-weight:700;color:#2f6b4a;text-transform:uppercase}
     .live-top h1{margin:0;font-size:2.6em;line-height:1.1;color:#1f2f4d}
     .live-sub{color:#35523f;margin-top:.3em;font-weight:600}
+    .live-ranking-note{margin-top:.3em;font-size:.75em;color:#4a5a74}
     .dot{display:inline-block;width:.7em;height:.7em;border-radius:50%;background:#c2504a;margin-right:.4em}.dot.on{background:#3ea85f;box-shadow:0 0 10px #7ed49a}
     .live-stats{display:flex;gap:2.4vw;align-items:center}
     .live-stats div{text-align:center}.live-stats b{display:block;font-size:2em;line-height:1;color:#1f2f4d}.live-stats span{color:#4a5a74;font-size:.8em}
@@ -139,7 +151,8 @@ function Style() {
     @media(max-width:900px){.live-main{grid-template-columns:1fr}}
     .live-board{display:flex;flex-direction:column;gap:1.6vh;min-height:0}
     .live-row{flex:1;min-height:0;display:flex;gap:1.6vw;align-items:center;background:#fff;border-radius:22px;padding:1vh 1.8vw;box-shadow:0 8px 22px rgba(60,50,30,.12)}
-    .live-rank{font-size:2.4em;width:1.3em;text-align:center;font-weight:700}
+    .live-rank{flex:none;font-size:2.4em;width:1.3em;text-align:center;font-weight:700}
+    .live-rank small{display:block;font-size:.28em;line-height:1.2;color:#4a5a74}
     .live-body{flex:1;min-width:0}
     .live-name{display:flex;justify-content:space-between;align-items:center;font-size:1.9em;font-weight:700}
     .live-coins{display:flex;align-items:center;gap:.3em;font-variant-numeric:tabular-nums}

@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import ts from 'typescript';
 import { isLineGroupUrl } from '../lib/line-types.ts';
 import { menuAccess, MENU_SETTINGS_SELECT } from '../lib/menu-access.ts';
+import { isLiveTeam } from '../lib/live-board.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -226,6 +227,7 @@ function renameRoute({ role = 'admin', dbError = null, found = true } = {}) {
     '@/lib/auth': { getAdminRole: async () => role },
     '@/lib/goal': {}, '@/lib/codes': {}, '@/lib/avatars': {}, '@/lib/bulk': {}, '@/lib/bulk-reset': {},
     '@/lib/line-types': { isLineGroupUrl, LINE_GROUP_CODES: ['D', 'C', 'A', 'O'] },
+    '@/lib/live-board': { isLiveTeam },
     '@/lib/supabase': {
       audit: async (...args) => audits.push(args),
       db: () => ({ from(table) {

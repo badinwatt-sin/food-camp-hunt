@@ -41,9 +41,12 @@ npm run dev              # In another terminal, for browser checks below
 python scripts/test-player-browser.py
 python scripts/test-admin-line-browser.py
 python scripts/test-responsive-browser.py  # Player responsive UI + original Admin menus at 320–1920px
+python scripts/test-live-browser.py        # DCAO1–4 only; no medals at zero, shared ranks and fourth-place icon
 ```
 
 Browser checks require Python Playwright and Chromium (`/usr/bin/chromium` by default). Browser-only scripts use API fixtures. The responsive suite accepts `BASE_URL`, `WIDTHS` and `SCREENSHOT_DIR`; it checks player overflow, mobile controls, navigation and dialogs, plus all 11 original Admin menus and unchanged request payloads. Admin deliberately retains its previous layout and icons; responsive overrides are scoped to the player screen. The database test runs actual SQL, upgrades and concurrent requests on a disposable database. The full-stack test starts its own isolated Next.js server (port 3001 by default), PostgREST and PostgreSQL with dummy credentials, then checks real login/configuration/join/wallet/menu responses and browser rendering. These checks do not modify the live Supabase project or publish a deployment.
+
+The Live competition screen includes only teams DCAO1–4 in its cards, totals and activity feed. Other teams remain available in Admin. Zero balances have a neutral camp icon and no assigned place; positive balances show current ranks, tied scores share a place, and fourth place uses a ribbon icon. These are current standings, not final prize announcements.
 
 ## 0. New: Treasure Hunt mode
 

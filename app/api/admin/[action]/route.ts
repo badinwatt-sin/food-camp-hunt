@@ -9,6 +9,7 @@ import { hashCode, normalizeCode, normalizeId } from '@/lib/codes';
 import { removeAvatarFile, removePublicFile } from '@/lib/avatars';
 import { BULK_CONFIRM, BULK_PLANS, type BulkTarget } from '@/lib/bulk';
 import { resetLineForBulk } from '@/lib/bulk-reset';
+import { isLiveTeam } from '@/lib/live-board';
 import { isLineGroupUrl, LINE_GROUP_CODES } from '@/lib/line-types';
 import { checkOrigin, handler, HttpError, ok, rateLimit, readJson } from '@/lib/http';
 
@@ -214,17 +215,23 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
   if (action === 'live') {
     // Aggregated, name-free summary for the big screen (staff or admin).
     await requireRole('staff');
-    const [{ data: settings }, { data: teams }, { data: spots }, { data: claims }, { data: ledger }, { data: reds }, { data: done }, { data: psolves }] =
+    const [{ data: settings }, { data: teams }, { data: spots }] =
       await Promise.all([
         sb.from('game_settings').select('is_open, hunt_open, puzzle_open, team_goal_pct').eq('id', 1).single(),
         sb.from('team_summary').select('*').order('name'),
         sb.from('hunt_spots').select('id').eq('active', true),
-        sb.from('hunt_claims').select('team_id, squad_id, claimed_at, hunt_spots(title), teams(name), squads(name)').order('claimed_at', { ascending: false }),
-        sb.from('token_ledger').select('team_id, kind, amount').in('kind', ['quiz', 'hunt', 'puzzle', 'minigame']),
-        sb.from('redemptions').select('item_name, quantity, created_at, teams(name)').order('created_at', { ascending: false }).limit(10),
-        sb.from('participants').select('completed_at, teams(name)').eq('is_observer', false).eq('status', 'completed').order('completed_at', { ascending: false }).limit(10),
-        sb.from('photo_submissions').select('reviewed_at, teams(name), photo_missions(title)').eq('status', 'approved').order('reviewed_at', { ascending: false }).limit(10),
       ]);
+    const competing = (teams ?? []).filter((team: any) => isLiveTeam(team.name));
+    const teamIds = competing.map((team: any) => team.team_id);
+    // Scope activity queries before their limits so staff activity cannot crowd out team updates.
+    const [{ data: claims }, { data: ledger }, { data: reds }, { data: done }, { data: psolves }] = teamIds.length
+      ? await Promise.all([
+        sb.from('hunt_claims').select('team_id, squad_id, claimed_at, hunt_spots(title), teams(name), squads(name)').in('team_id', teamIds).order('claimed_at', { ascending: false }),
+        sb.from('token_ledger').select('team_id, kind, amount').in('team_id', teamIds).in('kind', ['quiz', 'hunt', 'puzzle', 'minigame']),
+        sb.from('redemptions').select('item_name, quantity, created_at, teams(name)').in('team_id', teamIds).order('created_at', { ascending: false }).limit(10),
+        sb.from('participants').select('completed_at, teams(name)').in('team_id', teamIds).eq('is_observer', false).eq('status', 'completed').order('completed_at', { ascending: false }).limit(10),
+        sb.from('photo_submissions').select('reviewed_at, teams(name), photo_missions(title)').in('team_id', teamIds).eq('status', 'approved').order('reviewed_at', { ascending: false }).limit(10),
+      ]) : Array.from({ length: 5 }, () => ({ data: [] }));
     const earned = new Map<string, { quiz: number; hunt: number; puzzle: number; minigame: number }>();
     for (const l of (ledger ?? []) as any[]) {
       const e = earned.get(l.team_id) ?? { quiz: 0, hunt: 0, puzzle: 0, minigame: 0 };
@@ -242,7 +249,7 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     return ok({
       open: !!settings?.is_open, huntOpen: !!settings?.hunt_open, puzzleOpen: !!settings?.puzzle_open, totalSpots: (spots ?? []).length,
       goalPct: settings?.team_goal_pct ?? 0,
-      teams: (teams ?? []).map((t: any) => ({
+      teams: competing.map((t: any) => ({
         id: t.team_id, name: t.name, balance: t.balance, spent: t.spent,
         participants: t.participants, completed: t.completed, inProgress: t.in_progress,
         huntFound: found.get(t.team_id) ?? 0, // spot finds by squads (a spot can count once per squad)
