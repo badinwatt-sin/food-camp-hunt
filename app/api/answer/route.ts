@@ -1,11 +1,11 @@
 import { db } from '@/lib/supabase';
-import { requirePlayer } from '@/lib/player';
+import { requireMember } from '@/lib/player';
 import { checkOrigin, handler, ok, readJson } from '@/lib/http';
 
 /** Idempotent: re-sending the same answer returns the stored result and never re-scores. */
 export const POST = handler(async (req: Request) => {
   checkOrigin(req);
-  const p = await requirePlayer();
+  const p = await requireMember();
   const body = await readJson<{ questionId?: string; selected?: number }>(req);
   const { data, error } = await db().rpc('submit_answer', {
     p_participant: p.id,

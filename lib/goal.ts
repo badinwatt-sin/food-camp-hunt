@@ -12,10 +12,12 @@ export function goalStatus(goalPct: number, completed: number, participants: num
 
 export async function teamGoal(teamId: string): Promise<TeamGoal> {
   const sb = db();
-  const [{ data: g }, { data: ps }] = await Promise.all([
+  const [{ data: g, error: settingsError }, { data: ps, error: peopleError }] = await Promise.all([
     sb.from('game_settings').select('team_goal_pct').eq('id', 1).single(),
-    sb.from('participants').select('status').eq('team_id', teamId),
+    sb.from('participants').select('*').eq('team_id', teamId),
   ]);
-  const list = ps ?? [];
+  if (settingsError) throw settingsError;
+  if (peopleError) throw peopleError;
+  const list = (ps ?? []).filter((p) => !p.is_observer);
   return goalStatus(g?.team_goal_pct ?? 0, list.filter((p: any) => p.status === 'completed').length, list.length);
 }

@@ -19,20 +19,22 @@ export const GET = handler(async () => {
   const squadId: string | null = p.squad_id ?? null;
   const [{ data: spots }, { data: claims }, { data: squads }, balance, goal, members, { data: scans }] = await Promise.all([
     sb.from('hunt_spots').select('id, position, title, hint, tokens, min_players, window_sec').eq('active', true).order('position').order('id'),
-    sb.from('hunt_claims').select('spot_id, squad_id, participants(name, nick_name)').eq('team_id', p.team_id),
+    sb.from('hunt_claims').select('spot_id, squad_id, participants(*)').eq('team_id', p.team_id),
     sb.from('squads').select('id, name').eq('team_id', p.team_id).order('name'),
     sb.rpc('team_balance', { p_team: p.team_id }),
     teamGoal(p.team_id),
     groupMembers(p),
     sb.from('hunt_scans').select('spot_id, participant_id, scanned_at, squad_id').eq('team_id', p.team_id),
   ]);
+  const eligibleClaims = (claims ?? []).filter((c: any) => !c.participants?.is_observer);
+  const memberIds = new Set(members.map((member) => member.id));
   const activeIds = new Set((spots ?? []).map((s: any) => s.id));
-  const mine = new Map((claims ?? []).filter((c: any) => (c.squad_id ?? null) === squadId).map((c: any) => [c.spot_id, c]));
+  const mine = new Map(eligibleClaims.filter((c: any) => (c.squad_id ?? null) === squadId).map((c: any) => [c.spot_id, c]));
   const list = (spots ?? []).map((s: any) => {
     const c: any = mine.get(s.id);
     // Co-op spot: several group members must scan within the time window.
     const need = Math.min(s.min_players, members.length);
-    const live = (scans ?? []).filter((x: any) => x.spot_id === s.id && (x.squad_id ?? null) === squadId
+    const live = (scans ?? []).filter((x: any) => memberIds.has(x.participant_id) && x.spot_id === s.id && (x.squad_id ?? null) === squadId
       && Date.now() - new Date(x.scanned_at).getTime() < s.window_sec * 1000);
     const coop = s.min_players > 1 && need > 1;
     return {
@@ -43,10 +45,11 @@ export const GET = handler(async () => {
   // Friendly in-team scoreboard: how many spots each squad has found.
   const board = (squads ?? []).map((s: any) => ({
     id: s.id, name: s.name, mine: s.id === squadId,
-    found: (claims ?? []).filter((c: any) => c.squad_id === s.id && activeIds.has(c.spot_id)).length,
+    found: eligibleClaims.filter((c: any) => c.squad_id === s.id && activeIds.has(c.spot_id)).length,
   })).sort((a: any, b: any) => b.found - a.found || a.name.localeCompare(b.name));
   return ok({
     open: !!settings?.hunt_open,
+    isObserver: !!p.is_observer,
     team: { name: p.teams?.name ?? '', balance: balance.data ?? 0 },
     squad: p.squads?.name ?? null,
     groupSize: members.length,

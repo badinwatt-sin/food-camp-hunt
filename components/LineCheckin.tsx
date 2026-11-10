@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { createContext, useContext, useEffect, useId, useRef, useState } from 'react';
+import LineLogo from '@/components/LineLogo';
 import { api } from '@/lib/client-api';
 import { isLineGroupUrl, type LineStatus } from '@/lib/line-types';
 
@@ -8,31 +9,41 @@ type Props = {
   status: LineStatus;
   onRefresh: () => Promise<unknown>;
   onAuthLost: (error: unknown) => void;
-  onPromptChange?: (open: boolean) => void;
 };
+type Invitation = {
+  busy: boolean;
+  error: string;
+  promptOpen: boolean;
+  isObserver: boolean;
+  open: () => void;
+};
+const LineInvitationContext = createContext<Invitation | null>(null);
+export const useLineInvitation = () => useContext(LineInvitationContext);
 
-/** The recorded check-in is the invitation click; LINE opens after the server saves it. */
-export default function LineCheckin({ status, onRefresh, onAuthLost, onPromptChange }: Props) {
-  const [dismissedGroup, setDismissedGroup] = useState<string | null>(null);
+/** Keep the invitation above every player screen, without replacing an active game. */
+export function LineInvitationProvider({ status, onRefresh, onAuthLost, children }: Omit<Props, 'status'> & {
+  status: LineStatus | null;
+  children: React.ReactNode;
+}) {
+  const [dismissed, setDismissed] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const joining = useRef(false);
-  const available = status.open && status.configured && !!status.group;
-  const showPrompt = available && !status.joined && dismissedGroup !== status.group;
-  const closePrompt = useCallback(() => setDismissedGroup(status.group), [status.group]);
-  const groupName = status.groupName || status.group;
-  const buttonTitle = groupName ? `กลุ่ม LINE · ${groupName}` : 'กลุ่ม LINE';
+  const revision = status?.revision ?? 1;
+  const identity = status?.group ? `${status.group}:${revision}` : null;
+  const available = !!status?.open && !!status.configured && !!status.group;
+  const promptOpen = available && !status?.joined && dismissed !== identity;
+  const groupName = status?.groupName || status?.group || '';
 
   useEffect(() => {
-    onPromptChange?.(showPrompt);
-    return () => onPromptChange?.(false);
-  }, [showPrompt, onPromptChange]);
+    if (!status) setDismissed(null);
+  }, [status]);
+  useEffect(() => { setError(''); }, [identity]);
 
   async function join() {
     if (!available || joining.current) return;
     joining.current = true;
-    setBusy(true);
-    setError('');
+    setBusy(true); setError('');
     try {
       const result = await api<{ url: string }>('/api/line/join', {});
       if (!isLineGroupUrl(result.url)) throw new Error('ลิงก์กลุ่ม LINE ไม่ถูกต้อง กรุณาติดต่อทีมงาน');
@@ -42,35 +53,53 @@ export default function LineCheckin({ status, onRefresh, onAuthLost, onPromptCha
       onAuthLost(err);
       setError(err instanceof Error ? err.message : 'เปิดกลุ่ม LINE ไม่สำเร็จ กรุณาลองใหม่');
       void onRefresh().catch(() => {});
-    } finally {
-      joining.current = false;
-      setBusy(false);
-    }
+    } finally { joining.current = false; setBusy(false); }
   }
+  const open = () => {
+    if (!available || busy) return;
+    if (status?.joined) void join();
+    else { setError(''); setDismissed(null); }
+  };
+  return (
+    <LineInvitationContext.Provider value={{ busy, error, promptOpen, isObserver: !!status?.isObserver, open }}>
+      {children}
+      {promptOpen && status && <JoinPrompt key={identity} group={groupName} status={status} busy={busy} error={error}
+        onJoin={join} onClose={() => setDismissed(identity)} />}
+    </LineInvitationContext.Provider>
+  );
+}
 
-  const buttonStatus = busy ? 'กำลังเชื่อมต่อ…' : !status.open ? 'ยังไม่เปิดใช้งาน'
-    : !status.configured ? 'รอทีมงานกำหนดกลุ่ม' : status.joined ? '✓ เข้า LINE แล้ว' : 'แตะเพื่อเข้าร่วมกลุ่ม';
+/** The recorded check-in is the invitation click; LINE opens after the server saves it. */
+export default function LineCheckin(props: Props) {
+  const invitation = useLineInvitation();
+  if (!invitation) return <LineInvitationProvider {...props}><LineShortcut status={props.status} /></LineInvitationProvider>;
+  return <LineShortcut status={props.status} />;
+}
 
+function LineShortcut({ status }: { status: LineStatus }) {
+  const invitation = useLineInvitation()!;
+  const available = status.open && status.configured && !!status.group;
+  const groupName = status.groupName || status.group;
+  const buttonTitle = groupName ? `กลุ่ม LINE · ${groupName}` : 'กลุ่ม LINE';
+  const buttonStatus = invitation.busy ? 'กำลังเชื่อมต่อ…' : !status.open ? 'ยังไม่เปิดใช้งาน'
+    : !status.configured ? 'รอทีมงานกำหนดกลุ่ม' : status.joined ? '✓ เข้า LINE แล้ว'
+      : status.rejoinRequired ? 'มีลิงก์ใหม่ · กรุณาเข้ากลุ่มอีกครั้ง' : 'แตะเพื่อเข้าร่วมกลุ่ม';
   return (
     <section className="line-entry" aria-label="กลุ่ม LINE ของคุณ">
-      {!showPrompt && error && <div className="error" role="alert" style={{ marginBottom: 10 }}>{error}</div>}
-      <button className="btn line-entry-button" disabled={!available || busy}
-        aria-label={`${status.joined ? 'เปิด' : 'เข้าร่วม'}กลุ่ม LINE${groupName ? ` ${groupName}` : ''}`}
-        onClick={() => { if (status.joined) void join(); else { setError(''); setDismissedGroup(null); } }}>
-        <span className="line-entry-icon" aria-hidden>💬</span>
-        <span className="line-entry-text">
-          <span className="line-entry-title">{buttonTitle}</span>
-          <span className="line-entry-status">{buttonStatus}</span>
-        </span>
+      {!invitation.promptOpen && invitation.error && <div className="error" role="alert" style={{ marginBottom: 10 }}>{invitation.error}</div>}
+      <button className="btn line-entry-button" disabled={!available || invitation.busy}
+        aria-label={`${status.joined ? 'เปิด' : 'เข้าร่วม'}กลุ่ม LINE${groupName ? ` ${groupName}` : ''}`} onClick={invitation.open}>
+        <span className="line-entry-icon" aria-hidden><LineLogo /></span>
+        <span className="line-entry-text"><span className="line-entry-title">{buttonTitle}</span><span className="line-entry-status">{buttonStatus}</span></span>
         <span className="line-entry-arrow" aria-hidden>›</span>
       </button>
-      {showPrompt && <JoinPrompt group={groupName!} busy={busy} error={error} onJoin={join} onClose={closePrompt} />}
     </section>
   );
 }
 
-function JoinPrompt({ group, busy, error, onJoin, onClose }: {
+function JoinPrompt({ group, status, busy, error, onJoin, onClose }: {
   group: string;
+  status: LineStatus;
   busy: boolean;
   error: string;
   onJoin: () => Promise<void>;
@@ -109,14 +138,22 @@ function JoinPrompt({ group, busy, error, onJoin, onClose }: {
             event.preventDefault(); first.focus();
           }
         }}>
-        <div aria-hidden style={{ fontSize: 56, lineHeight: 1 }}>💬</div>
-        <h2 id={titleId} style={{ margin: 0 }}>เช็กอินเข้ากลุ่ม LINE {group}</h2>
+        <div style={{ display: 'flex', justifyContent: 'center' }}><LineLogo size={64} /></div>
+        <h2 id={titleId} style={{ margin: 0 }}>{status.rejoinRequired ? 'ทีมงานอัปเดตลิงก์ LINE' : 'เข้ากลุ่ม LINE ของทีม'}</h2>
+        <strong className="line-group-heading">{group}</strong>
         <p id={descriptionId} className="muted" style={{ margin: 0 }}>
-          ยินดีต้อนรับสู่ Food Camp! กดเชื่อมต่อกลุ่ม LINE ที่ทีมงานจัดไว้ให้ เพื่อรับข่าวสารและทำภารกิจร่วมกับทีม
+          {status.rejoinRequired ? 'กรุณากดเปิดลิงก์ใหม่และเข้าร่วมกลุ่มอีกครั้ง เพื่อรับข่าวสารล่าสุดของทีม' : 'กดปุ่มด้านล่าง แล้วกดเข้าร่วมในแอป LINE จากนั้นกลับมาใช้งาน Food Camp ได้เลย'}
         </p>
-        <div style={{ background: '#edf6ed', padding: 12, borderRadius: 12, fontSize: 15 }}>
-          ทีมที่สมาชิกกดเข้าครบก่อน รับ 20 Tokens<br />อันดับถัดไปได้รับ 15 · 10 · 5 Tokens
-        </div>
+        {status.isObserver ? <div className="observer-note">คุณเป็นคณะทำงาน สามารถเข้ากลุ่มเพื่อติดตามทีมได้ การเข้าของคุณไม่รวมในจำนวนสมาชิกหรือคะแนนทีม</div> : (status.complete || status.rewardPreviouslyEarned) ? (
+          <div className="line-reward-note">ทีมได้รับรางวัล {status.tokens} Tokens แล้ว การเปิดลิงก์ใหม่นี้จะไม่ให้คะแนนซ้ำ</div>
+        ) : <div className="line-reward-note">
+          <strong>ทีมได้รับ Tokens เมื่อสมาชิกเข้าครบทุกคน</strong>
+          <div className="line-reward-ranks" aria-label="รางวัลตามลำดับทีมที่เข้าครบ">
+            {[20, 15, 10, 5].map((tokens, index) => <div key={tokens}><span>อันดับ {index + 1}</span><strong>{tokens}</strong><small>Tokens / ทีม</small></div>)}
+          </div>
+          {typeof status.nextRewardTokens === 'number' && status.nextRewardTokens > 0 && <p style={{ margin: '8px 0 0' }}>หากทีมเข้าครบเป็นทีมถัดไป จะได้รับ <strong>{status.nextRewardTokens} Tokens</strong></p>}
+          <p style={{ margin: '8px 0 0', fontSize: 13 }}>ให้คะแนนเข้ากระเป๋าทีมครั้งเดียว ไม่ใช่คะแนนรายคน · ไม่รวมคณะทำงานในการนับจำนวน</p>
+        </div>}
         {error && <div className="error" role="alert">{error}</div>}
         <button ref={firstButton} className="btn" disabled={busy} onClick={() => void onJoin()}>
           {busy ? 'กำลังเชื่อมต่อ…' : `เชื่อมต่อ LINE กลุ่ม ${group}`}

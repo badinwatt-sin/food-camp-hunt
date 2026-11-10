@@ -58,24 +58,27 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
   }
 
   if (action === 'minigames') {
-    const [{ data: s }, { data: rows }] = await Promise.all([
-      sb.from('game_settings').select('mg_spot_open, mg_memory_open, mg_mystery_open, mg_percent').eq('id', 1).single(),
-      sb.from('minigame_attempts').select('game, tokens, finished_at, participant_id, participants(name, nick_name, teams(name))'),
+    await requireRole('staff');
+    const [{ data: s }, { data: rows }, { data: credits }] = await Promise.all([
+      sb.from('game_settings').select('*').eq('id', 1).single(),
+      sb.from('minigame_attempts').select('game, tokens, finished_at, participant_id, participants(name, nick_name, is_observer, teams(name))'),
+      sb.from('token_ledger').select('reason, amount, participant_id, participants(name, nick_name, is_observer, teams(name))').eq('kind', 'minigame'),
     ]);
     const out: Record<string, any> = {};
     for (const g of ['spot', 'memory', 'mystery']) {
-      const r = ((rows ?? []) as any[]).filter((x) => x.game === g);
+      const r = ((rows ?? []) as any[]).filter((x) => x.game === g && !x.participants?.is_observer);
       const best = new Map<string, any>();
-      for (const x of r.filter((y) => y.finished_at)) {
-        const cur = best.get(x.participant_id);
-        if (!cur || (x.tokens ?? 0) > cur.tokens) best.set(x.participant_id, { name: x.participants?.nick_name || x.participants?.name || '', team: x.participants?.teams?.name ?? '', tokens: x.tokens ?? 0 });
+      for (const x of ((credits ?? []) as any[]).filter((entry) => entry.reason === g && !entry.participants?.is_observer)) {
+        const current = best.get(x.participant_id);
+        best.set(x.participant_id, { name: x.participants?.nick_name || x.participants?.name || '', team: x.participants?.teams?.name ?? '', tokens: (current?.tokens ?? 0) + x.amount });
       }
       out[g] = {
+        rewardTokens: (s as any)?.[`mg_${g}_tokens`] ?? 10,
         open: !!(s as any)?.[`mg_${g}_open`], players: new Set(r.map((x) => x.participant_id)).size, attempts: r.length, finished: r.filter((x) => x.finished_at).length,
         tokens: [...best.values()].reduce((a, b) => a + b.tokens, 0), top: [...best.values()].sort((a, b) => b.tokens - a.tokens).slice(0, 10),
       };
     }
-    return ok({ percent: (s as any)?.mg_percent ?? 100, games: out });
+    return ok({ games: out });
   }
 
   if (action === 'overview') {
@@ -86,7 +89,7 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
       sb.from('participants').select('team_id, name, nick_name').eq('is_leader', true),
       sb.from('redemptions').select('quantity').is('fulfilled_at', null),
       sb.from('photo_submissions').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
-      sb.from('participants').select('id', { count: 'exact', head: true }).not('checked_in_at', 'is', null),
+      sb.from('participants').select('id', { count: 'exact', head: true }).eq('is_observer', false).not('checked_in_at', 'is', null),
     ]);
     const leaderOf = new Map((leaders ?? []).map((l: any) => [l.team_id, l.nick_name || l.name]));
     return ok({
@@ -115,7 +118,7 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     const [settings, teams, people] = await Promise.all([
       sb.from('game_settings').select('line_open').eq('id', 1).single(),
       sb.from('teams').select('*').order('name'),
-      sb.from('participants').select('id, name, nick_name, team_id, line_joined_at').order('name'),
+      sb.from('participants').select('*').order('name'),
     ]);
     if (settings.error) throw settings.error;
     if (teams.error) throw teams.error;
@@ -124,11 +127,11 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
       open: !!settings.data?.line_open,
       teams: (teams.data ?? []).map((t) => {
         const members = (people.data ?? []).filter((p) => p.team_id === t.id).map((p) => ({
-          id: p.id, name: p.nick_name || p.name, fullName: p.name, joinedAt: p.line_joined_at,
+          id: p.id, name: p.nick_name || p.name, fullName: p.name, joinedAt: p.line_joined_at, isObserver: !!p.is_observer,
         }));
         return { id: t.id, name: t.name, line_group_code: t.line_group_code, line_group_name: t.line_group_name ?? null, line_group_url: t.line_group_url,
-          line_completed_at: t.line_completed_at, line_finish_rank: t.line_finish_rank, line_reward_tokens: t.line_reward_tokens,
-          members, total: members.length, joinedCount: members.filter((p) => p.joinedAt).length };
+          line_completed_at: t.line_completed_at, line_finish_rank: t.line_finish_rank, line_reward_tokens: t.line_reward_tokens, line_revision: t.line_revision ?? 1,
+          members, total: members.filter((p) => !p.isObserver).length, joinedCount: members.filter((p) => !p.isObserver && p.joinedAt).length };
       }),
     });
   }
@@ -137,12 +140,12 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     await requireRole('admin');
     const { data, error } = await sb
       .from('participants')
-      .select('id, name, nick_name, is_leader, avatar_url, avatar_emoji, team_id, squad_id, status, code_hash, correct_count, tokens_earned, completed_at, line_joined_at, teams(*), squads(name)')
+      .select('*, teams(*), squads(name)')
       .order('name');
     if (error) throw error;
     return ok({
       participants: (data ?? []).map((p: any) => ({
-        id: p.id, name: p.name, nick_name: p.nick_name ?? '', is_leader: !!p.is_leader, has_avatar: !!p.avatar_url, avatar_url: p.avatar_url ?? null, avatar_emoji: p.avatar_emoji ?? null, team_id: p.team_id, team_name: p.teams?.name ?? '',
+        id: p.id, name: p.name, nick_name: p.nick_name ?? '', is_observer: !!p.is_observer, is_leader: !!p.is_leader, has_avatar: !!p.avatar_url, avatar_url: p.avatar_url ?? null, avatar_emoji: p.avatar_emoji ?? null, team_id: p.team_id, team_name: p.teams?.name ?? '',
         squad_id: p.squad_id ?? null, squad_name: p.squads?.name ?? '',
         status: p.status, has_code: !!p.code_hash, correct_count: p.correct_count,
         tokens_earned: p.tokens_earned, completed_at: p.completed_at,
@@ -157,7 +160,7 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     await requireRole('staff');
     const [{ data: st }, { data: people }] = await Promise.all([
       sb.from('game_settings').select('checkin_open, checkin_code, checkin_announced_at').eq('id', 1).single(),
-      sb.from('participants').select('id, name, nick_name, status, checked_in_at, checked_in_by, team_id, teams(name), squads(name)').order('name'),
+      sb.from('participants').select('id, name, nick_name, status, checked_in_at, checked_in_by, team_id, teams(name), squads(name)').eq('is_observer', false).order('name'),
     ]);
     return ok({
       open: !!st?.checkin_open, code: st?.checkin_code ?? null, announcedAt: st?.checkin_announced_at ?? null,
@@ -218,7 +221,7 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
         sb.from('hunt_claims').select('team_id, squad_id, claimed_at, hunt_spots(title), teams(name), squads(name)').order('claimed_at', { ascending: false }),
         sb.from('token_ledger').select('team_id, kind, amount').in('kind', ['quiz', 'hunt', 'puzzle', 'minigame']),
         sb.from('redemptions').select('item_name, quantity, created_at, teams(name)').order('created_at', { ascending: false }).limit(10),
-        sb.from('participants').select('completed_at, teams(name)').eq('status', 'completed').order('completed_at', { ascending: false }).limit(10),
+        sb.from('participants').select('completed_at, teams(name)').eq('is_observer', false).eq('status', 'completed').order('completed_at', { ascending: false }).limit(10),
         sb.from('photo_submissions').select('reviewed_at, teams(name), photo_missions(title)').eq('status', 'approved').order('reviewed_at', { ascending: false }).limit(10),
       ]);
     const earned = new Map<string, { quiz: number; hunt: number; puzzle: number; minigame: number }>();
@@ -340,7 +343,7 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
       rows = [['Time', 'Team', 'Squad', 'Spot', 'Found by', 'Tokens'],
         ...(data ?? []).map((r: any) => [r.claimed_at, r.teams?.name, r.squads?.name ?? '', r.hunt_spots?.title, r.participants?.name, r.tokens])];
     } else if (type === 'checkin') {
-      const { data } = await sb.from('participants').select('name, nick_name, checked_in_at, checked_in_by, teams(name), squads(name)').order('name');
+      const { data } = await sb.from('participants').select('name, nick_name, checked_in_at, checked_in_by, teams(name), squads(name)').eq('is_observer', false).order('name');
       rows = [['Full name', 'Nick name', 'Team', 'Squad', 'Checked in', 'Checked in at', 'How'],
         ...(data ?? []).map((p: any) => [p.name, p.nick_name ?? '', p.teams?.name, p.squads?.name ?? '', p.checked_in_at ? 'yes' : 'no', p.checked_in_at ?? '', p.checked_in_by ?? ''])];
     } else if (type === 'photos') {
@@ -488,10 +491,11 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       if (typeof body.market_open === 'boolean') patch.market_open = body.market_open;
       if (typeof body.line_open === 'boolean') patch.line_open = body.line_open;
       for (const k of ['mg_spot_open', 'mg_memory_open', 'mg_mystery_open'] as const) if (typeof body[k] === 'boolean') patch[k] = body[k];
-      if (body.mg_percent !== undefined) {
-        const n = int(body.mg_percent);
-        if (n < 0 || n > 500) throw new HttpError(400, 'BAD_INPUT');
-        patch.mg_percent = n;
+      for (const key of ['mg_spot_tokens', 'mg_memory_tokens', 'mg_mystery_tokens'] as const) {
+        if (body[key] === undefined) continue;
+        const tokens = int(body[key]);
+        if (tokens < 0 || tokens > 100000) throw new HttpError(400, 'BAD_INPUT');
+        patch[key] = tokens;
       }
       if (body.team_goal_pct !== undefined) {
         const n = int(body.team_goal_pct);
@@ -535,7 +539,11 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       if (group && !LINE_GROUP_CODES.some((code) => code === group)) throw new HttpError(400, 'BAD_LINE_GROUP');
       if ((!group && url) || (group && !url)) throw new HttpError(400, 'BAD_LINE_GROUP');
       if (url && (url.length > 2000 || !isLineGroupUrl(url))) throw new HttpError(400, 'BAD_LINE_URL');
-      const { data, error } = await sb.rpc('configure_line_group', { p_team: teamId, p_code: group, p_url: url || null });
+      const displayName = body.name === undefined || body.name === null ? null : typeof body.name === 'string' ? body.name.trim() : '';
+      if (displayName !== null && (!displayName || Array.from(displayName).length > 60 || /[\u0000-\u001f\u007f]/.test(displayName))) throw new HttpError(400, 'BAD_LINE_GROUP_NAME');
+      const { data, error } = body.name === undefined
+        ? await sb.rpc('configure_line_group', { p_team: teamId, p_code: group, p_url: url || null })
+        : await sb.rpc('configure_line_group_details', { p_team: teamId, p_code: group, p_url: url || null, p_name: displayName });
       if (error) throw error;
       await audit(role, 'line.group.save', { team_id: teamId, group });
       return ok(data);
@@ -566,7 +574,14 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       const name = need(str(body.name, 100));
       const nick_name = str(body.nick_name, 60) || null;
       const team_id = need(str(body.team_id));
-      let squad_id: string | null = str(body.squad_id) || null;
+      if (body.is_observer !== undefined && typeof body.is_observer !== 'boolean') throw new HttpError(400, 'BAD_INPUT');
+      const current = body.id ? await sb.from('participants').select('team_id, is_observer').eq('id', body.id).maybeSingle() : { data: null, error: null };
+      if (current.error) throw current.error;
+      if (body.id && !current.data) throw new HttpError(404, 'NOT_FOUND');
+      const isObserver = typeof body.is_observer === 'boolean' ? body.is_observer : !!current.data?.is_observer;
+      if (isObserver && body.is_leader === true) throw new HttpError(403, 'OBSERVER_READ_ONLY');
+      if (current.data && !!current.data.is_observer !== isObserver && body.is_leader === true) throw new HttpError(409, 'ROLE_AND_LEADER_CHANGE');
+      const squad_id: string | null = isObserver ? null : str(body.squad_id) || null;
       if (squad_id) {
         const { data: sq } = await sb.from('squads').select('team_id').eq('id', squad_id).maybeSingle();
         if (!sq || sq.team_id !== team_id) {
@@ -574,9 +589,10 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
         }
       }
       const row: Record<string, unknown> = { name, nick_name, team_id, squad_id };
+      if (!body.id || typeof body.is_observer === 'boolean') row.is_observer = isObserver;
+      if (isObserver) row.is_leader = false;
       if (body.id) {
-        const { data: cur0 } = await sb.from('participants').select('team_id').eq('id', body.id).maybeSingle();
-        if (cur0 && cur0.team_id !== team_id) row.is_leader = false; // a leader who changes team is no longer leader
+        if (current.data && current.data.team_id !== team_id) row.is_leader = false; // a leader who changes team is no longer leader
       }
       // The player's login ID: required for a new player; optional when editing (blank = keep the current ID).
       const loginId = normalizeId(body.login_id);
@@ -589,7 +605,7 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
         row.session_version = (cur?.session_version ?? 1) + 1; // anyone logged in with the old ID is signed out
       }
       // Leader tick-box: at most one leader per team, so promoting someone demotes the current leader first.
-      const wantLeader = body.is_leader === true;
+      const wantLeader = body.is_leader === true && !isObserver;
       if (wantLeader) {
         const { error: de } = await sb.from('participants').update({ is_leader: false }).eq('team_id', team_id).eq('is_leader', true);
         if (de) throw de;
@@ -672,8 +688,9 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
     }
     case 'leader.set': {
       // Exactly one leader per team: demote the current one first, then promote the chosen player.
-      const { data: p } = await sb.from('participants').select('team_id, name').eq('id', body.id).maybeSingle();
+      const { data: p } = await sb.from('participants').select('team_id, name, is_observer').eq('id', body.id).maybeSingle();
       if (!p) throw new HttpError(404, 'NOT_FOUND');
+      if (p.is_observer) throw new HttpError(403, 'OBSERVER_READ_ONLY');
       const { error: e1 } = await sb.from('participants').update({ is_leader: false }).eq('team_id', p.team_id).eq('is_leader', true);
       if (e1) throw e1;
       const { error: e2 } = await sb.from('participants').update({ is_leader: true }).eq('id', body.id);
@@ -777,7 +794,7 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       const hashes = rows.map((r) => hashCode(r.id));
       const existing = new Map<string, any>();
       for (let k = 0; k < hashes.length; k += 100) {
-        const { data } = await sb.from('participants').select('id, team_id, status, code_hash').in('code_hash', hashes.slice(k, k + 100));
+        const { data } = await sb.from('participants').select('id, team_id, status, code_hash, is_observer').in('code_hash', hashes.slice(k, k + 100));
         for (const e of data ?? []) existing.set(e.code_hash, e);
       }
 
@@ -797,7 +814,7 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
         if (e.team_id !== team_id) {
           if (e.status === 'not_started') { patch.team_id = team_id; patch.squad_id = squad_id ?? null; }
           else skipped.push(`แถว ${r.n}: ${r.name} เริ่มเล่นแล้ว ไม่ย้ายทีม`);
-        } else if (squad_id !== undefined) patch.squad_id = squad_id;
+        } else if (squad_id !== undefined && !e.is_observer) patch.squad_id = squad_id;
         const { error } = await sb.from('participants').update(patch).eq('id', e.id);
         if (error) throw error;
         updated++;
@@ -849,9 +866,9 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       if ((used ?? 0) > 0) {
         return NextResponse.json({ error: 'BAD_INPUT', message: 'แบ่งใหม่ไม่ได้: ทีมนี้มีประวัติล่าสมบัติของสควอดแล้ว' }, { status: 409 });
       }
-      const { data: members, error: me } = await sb.from('participants').select('id').eq('team_id', team_id);
+      const { data: members, error: me } = await sb.from('participants').select('id, is_observer').eq('team_id', team_id);
       if (me) throw me;
-      const ids = (members ?? []).map((m: any) => m.id as string);
+      const ids = (members ?? []).filter((m: any) => !m.is_observer).map((m: any) => m.id as string);
       if (ids.length === 0) throw new HttpError(400, 'BAD_INPUT');
       for (let i = ids.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [ids[i], ids[j]] = [ids[j], ids[i]]; }
       const k = Math.max(1, Math.round(ids.length / size));

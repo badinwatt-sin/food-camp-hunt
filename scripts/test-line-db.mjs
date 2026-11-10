@@ -47,7 +47,12 @@ const roster = async (team, names) => {
 const bootstrap = `create schema storage; create table storage.buckets(id text primary key, name text, public boolean);`;
 
 try {
-  const schema = await readFile(new URL('supabase/schema.sql', root), 'utf8');
+  // Historical LINE-migration rules are kept separate from the event upgrade,
+  // whose current editable-link/observer behavior is tested in test-event-upgrade.mjs.
+  const fullSchema = await readFile(new URL('supabase/schema.sql', root), 'utf8');
+  const eventMigration = await readFile(new URL('supabase/event-upgrade.sql', root), 'utf8');
+  const eventAt = fullSchema.lastIndexOf(eventMigration.trim());
+  const schema = eventAt >= 0 ? fullSchema.slice(0, eventAt) : fullSchema;
   const migration = await readFile(new URL('supabase/line-groups.sql', root), 'utf8');
   const namesMigration = await readFile(new URL('supabase/line-group-names.sql', root), 'utf8');
   // The full schema deliberately includes the same idempotent migration verbatim.

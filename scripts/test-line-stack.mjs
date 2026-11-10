@@ -97,7 +97,7 @@ with sync_playwright() as p:
     page.get_by_placeholder('ID ของคุณ').fill('STACK001')
     page.get_by_role('button',name='เข้าสู่เกม',exact=True).click()
     if os.environ['FC_STACK_STAGE']=='initial':
-        popup = page.get_by_role('dialog', name='เช็กอินเข้ากลุ่ม LINE เพื่อนร่วมค่าย')
+        popup = page.get_by_role('dialog', name='เข้ากลุ่ม LINE ของทีม')
         popup.wait_for(state='visible',timeout=60000)
         assert popup.get_by_role('button', name='เชื่อมต่อ LINE กลุ่ม เพื่อนร่วมค่าย').is_visible()
         popup.get_by_role('button', name='ไว้ทีหลัง').click()

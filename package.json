@@ -10,7 +10,9 @@
     "test:db": "node scripts/test-db.mjs",
     "test": "node --test scripts/test-menu-access.mjs scripts/test-menu-api.mjs scripts/test-line-api.mjs",
     "test:line-db": "node scripts/test-line-db.mjs",
-    "test:line-stack": "node scripts/test-line-stack.mjs"
+    "test:line-stack": "node scripts/test-line-stack.mjs",
+    "test:event-db": "node scripts/test-event-upgrade.mjs",
+    "test:event-stack": "node scripts/test-event-stack.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

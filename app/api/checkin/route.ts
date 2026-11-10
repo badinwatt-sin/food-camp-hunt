@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { db } from '@/lib/supabase';
-import { requirePlayer } from '@/lib/player';
+import { requireMember } from '@/lib/player';
 import { normalizeCode } from '@/lib/codes';
 import { checkOrigin, handler, HttpError, ok, rateLimit, readJson } from '@/lib/http';
 
@@ -13,7 +13,7 @@ const safeEq = (a: string, b: string) =>
  */
 export const POST = handler(async (req: Request) => {
   checkOrigin(req);
-  const p = await requirePlayer();
+  const p = await requireMember();
   rateLimit(req, 'checkin', 20, 10 * 60 * 1000, p.id);
   const body = await readJson<{ code?: string; confirm?: boolean }>(req);
   if (body.confirm !== true) throw new HttpError(400, 'BAD_INPUT'); // the player must press the confirm button
