@@ -144,20 +144,40 @@ function Camera({ settings: s, onClose, onVerdict, onAuthLost }: { settings: Sta
   const name = colorName(s.color);
   const fileInput = useRef<HTMLInputElement>(null);
 
-  // live camera (front) + a colour meter every ~400 ms so people can move before they shoot
+  // live camera (front) + a colour meter every ~400 ms so people can move before they shoot.
+  // Phones differ a lot (iPhone, Samsung, foldables with several cameras), so the constraints go from
+  // picky to plain, the stream is restarted when the app comes back from the background, and a camera
+  // that never delivers frames falls back to the phone's own camera app.
+  const [camTry, setCamTry] = useState(0);
   useEffect(() => {
     if (mode !== 'live') return;
-    let stream: MediaStream | null = null, stop = false, raf = 0, last = 0;
+    let stream: MediaStream | null = null, stop = false, raf = 0, last = 0, frames = 0;
     const c = document.createElement('canvas');
+    const attempts: MediaStreamConstraints[] = [
+      { video: { facingMode: { ideal: 'user' }, width: { ideal: 1280 }, height: { ideal: 1280 } }, audio: false },
+      { video: { facingMode: 'user' }, audio: false },
+      { video: true, audio: false },
+    ];
+    const watchdog = setTimeout(() => { if (!stop && frames === 0) setCamErr('noframes'); }, 7000);
     (async () => {
-      if (!navigator.mediaDevices?.getUserMedia) { setCamErr('nocam'); return; }
-      try { stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: { ideal: 1080 } }, audio: false }); }
-      catch { setCamErr('denied'); return; }
+      if (!navigator.mediaDevices?.getUserMedia || !window.isSecureContext) { setCamErr('nocam'); return; }
+      let lastErr: unknown = null;
+      for (const cs of attempts) {
+        try { stream = await navigator.mediaDevices.getUserMedia(cs); break; }
+        catch (e) { lastErr = e; stream = null; }
+      }
+      if (!stream) {
+        const name = (lastErr as { name?: string } | null)?.name ?? '';
+        setCamErr(name === 'NotAllowedError' || name === 'SecurityError' ? 'denied' : name === 'NotReadableError' || name === 'AbortError' ? 'busy' : 'nocam');
+        return;
+      }
       if (stop) { stream.getTracks().forEach((t) => t.stop()); return; }
-      const v = video.current!; v.srcObject = stream; await v.play().catch(() => {});
+      const v = video.current!; v.srcObject = stream; v.muted = true; v.setAttribute('playsinline', 'true');
+      await v.play().catch(() => {});
+      stream.getVideoTracks()[0]?.addEventListener('ended', () => { if (!stop) setCamTry((n) => n + 1); });   // Android/foldables drop the track when the screen changes
       const tick = (now: number) => {
         if (stop) return; raf = requestAnimationFrame(tick);
-        if (now - last < 400 || !v.videoWidth) return; last = now;
+        if (now - last < 400 || !v.videoWidth) return; last = now; frames++;
         const w = 96, h = Math.round((v.videoHeight / v.videoWidth) * 96);
         c.width = w; c.height = h;
         const ctx = c.getContext('2d', { willReadFrequently: true })!; ctx.drawImage(v, 0, 0, w, h);
@@ -165,11 +185,15 @@ function Camera({ settings: s, onClose, onVerdict, onAuthLost }: { settings: Sta
       };
       raf = requestAnimationFrame(tick);
     })();
-    return () => { stop = true; cancelAnimationFrame(raf); stream?.getTracks().forEach((t) => t.stop()); };
-  }, [mode, target, s.tolerance]);
+    const vis = () => { if (document.visibilityState === 'visible' && !stop) setCamTry((n) => n + 1); };   // iOS stops the camera in the background
+    document.addEventListener('visibilitychange', vis);
+    return () => { stop = true; clearTimeout(watchdog); cancelAnimationFrame(raf); document.removeEventListener('visibilitychange', vis); stream?.getTracks().forEach((t) => t.stop()); };
+  }, [mode, target, s.tolerance, camTry]);
 
-  async function toJpeg(src: HTMLVideoElement | HTMLImageElement, mirror: boolean) {
-    const sw = src instanceof HTMLVideoElement ? src.videoWidth : src.naturalWidth, sh = src instanceof HTMLVideoElement ? src.videoHeight : src.naturalHeight;
+  async function toJpeg(src: HTMLVideoElement | HTMLImageElement | ImageBitmap, mirror: boolean) {
+    const sw = src instanceof HTMLVideoElement ? src.videoWidth : src instanceof HTMLImageElement ? src.naturalWidth : src.width;
+    const sh = src instanceof HTMLVideoElement ? src.videoHeight : src instanceof HTMLImageElement ? src.naturalHeight : src.height;
+    if (!sw || !sh) throw new Error('ไม่มีภาพจากกล้อง');
     const scale = Math.min(1, 1080 / Math.max(sw, sh));
     const c = canvas.current!; c.width = Math.round(sw * scale); c.height = Math.round(sh * scale);
     const ctx = c.getContext('2d')!;
@@ -187,9 +211,17 @@ function Camera({ settings: s, onClose, onVerdict, onAuthLost }: { settings: Sta
     try { setShot(await toJpeg(video.current!, true)); setMode('preview'); } catch (e) { setCamErr((e as Error).message); }
   }
   async function fromFile(f: File) {
-    const img = new Image(); img.src = URL.createObjectURL(f);
-    await new Promise((r, j) => { img.onload = r; img.onerror = j; });
-    setShot(await toJpeg(img, false)); setMode('preview');
+    try {
+      // createImageBitmap honours the EXIF orientation of phone photos; <img> is the fallback for older browsers
+      let src: HTMLImageElement | ImageBitmap;
+      try { src = await createImageBitmap(f, { imageOrientation: 'from-image' } as ImageBitmapOptions); }
+      catch {
+        const img = new Image(); img.src = URL.createObjectURL(f);
+        await new Promise((r, j) => { img.onload = r; img.onerror = j; });
+        src = img;
+      }
+      setShot(await toJpeg(src, false)); setMode('preview');
+    } catch { setCamErr('file'); }
   }
   async function send() {
     if (!shot) return;
@@ -221,8 +253,13 @@ function Camera({ settings: s, onClose, onVerdict, onAuthLost }: { settings: Sta
             {camErr ? (
               <div className="sw-cam-err">
                 <div style={{ fontSize: 44 }}>📷</div>
-                <p>{camErr === 'denied' ? 'เปิดกล้องไม่ได้ กรุณาอนุญาตการใช้กล้อง หรือใช้แอปกล้องของมือถือแทน' : 'เบราว์เซอร์นี้เปิดกล้องในแอปไม่ได้ ใช้แอปกล้องของมือถือแทนได้เลย'}</p>
-                <button className="btn" onClick={() => fileInput.current?.click()}>📷 ถ่ายด้วยแอปกล้อง</button>
+                <p>{camErr === 'denied' ? 'ยังไม่ได้อนุญาตให้ใช้กล้อง กดอนุญาตในเบราว์เซอร์ หรือถ่ายด้วยแอปกล้องของมือถือแทนได้เลย'
+                  : camErr === 'busy' ? 'กล้องถูกแอปอื่นใช้อยู่ ปิดแอปนั้นแล้วลองใหม่ หรือถ่ายด้วยแอปกล้องแทน'
+                  : camErr === 'noframes' ? 'กล้องไม่ส่งภาพมา (พบบ่อยในมือถือบางรุ่น/จอพับ) ลองใหม่ หรือถ่ายด้วยแอปกล้องแทน'
+                  : camErr === 'file' ? 'เปิดรูปนี้ไม่ได้ ลองถ่ายใหม่อีกครั้ง'
+                  : 'เบราว์เซอร์นี้เปิดกล้องในแอปไม่ได้ ถ่ายด้วยแอปกล้องของมือถือแทนได้เลย'}</p>
+                <button className="btn sw-cta" style={{ marginTop: 0 }} onClick={() => fileInput.current?.click()}>📷 ถ่ายด้วยแอปกล้อง</button>
+                {camErr !== 'nocam' && <button className="btn ghost" style={{ color: '#fff', borderColor: 'rgba(255,255,255,.4)' }} onClick={() => { setCamErr(''); setCamTry((n) => n + 1); }}>↻ ลองเปิดกล้องอีกครั้ง</button>}
               </div>
             ) : <video ref={video} playsInline muted autoPlay />}
             <div className="sw-cam-guide" aria-hidden><div className="sw-cam-face" /></div>
@@ -230,9 +267,9 @@ function Camera({ settings: s, onClose, onVerdict, onAuthLost }: { settings: Sta
           <div className="sw-cam-bar">
             <div className={`sw-meter${good ? ' ok' : ''}`}><i style={{ width: `${Math.min(100, livePct ?? 0)}%` }} /><span>{livePct === null ? 'กำลังวัดสี…' : `${name} ${livePct}% ${good ? '✅ พร้อมถ่าย' : `· ต้องถึง ${s.percent}%`}`}</span></div>
             <div className="sw-cam-actions">
-              <button className="btn ghost small" onClick={() => fileInput.current?.click()}>🖼️ เลือกรูป</button>
-              <button className="sw-shutter" onClick={snap} disabled={!!camErr} aria-label="ถ่ายภาพ"><i /></button>
-              <span style={{ width: 92 }} />
+              <button className="btn ghost small sw-alt" onClick={() => fileInput.current?.click()}>📱 แอปกล้อง</button>
+              <button className="sw-shutter" onClick={snap} disabled={!!camErr || livePct === null} aria-label="ถ่ายภาพ"><i /></button>
+              <span className="sw-alt" aria-hidden />
             </div>
             <div className="sw-cam-tip">ให้หน้าอยู่กลางวงรี และให้ฉากหลัง{name}อยู่รอบตัวมากที่สุด</div>
           </div>
@@ -255,7 +292,7 @@ function Camera({ settings: s, onClose, onVerdict, onAuthLost }: { settings: Sta
               <div className={`sw-meter${shot.pct >= s.percent ? ' ok' : ''}`}><i style={{ width: `${Math.min(100, shot.pct)}%` }} /><span>ประเมินเบื้องต้น {name} ≈ {shot.pct}%</span></div>
             )}
             <div className="sw-cam-actions">
-              <button className="btn ghost small" disabled={mode === 'sending'} onClick={() => { setShot(null); setVerdict(null); setMode('live'); }}>↺ ถ่ายใหม่</button>
+              <button className="btn ghost small sw-alt" disabled={mode === 'sending'} onClick={() => { setShot(null); setVerdict(null); setCamErr(''); setMode('live'); }}>↺ ถ่ายใหม่</button>
               {mode !== 'rejected' && <button className="btn sw-send" disabled={mode === 'sending'} onClick={send}>{mode === 'sending' ? 'กำลังตรวจ…' : '✅ ส่งภาพนี้'}</button>}
             </div>
           </div>

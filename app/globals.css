@@ -367,7 +367,10 @@ label.lbl { display: block; font-size: 14px; color: #5d6a80; margin: 10px 0 4px;
 .sw-meter i { position: absolute; inset: 0 auto 0 0; background: #c96d2f; transition: width .3s; }
 .sw-meter.ok i { background: #2f8f5b; }
 .sw-meter span { position: relative; display: grid; place-items: center; height: 100%; font-weight: 700; font-size: 14px; }
-.sw-cam-actions { display: flex; align-items: center; justify-content: space-between; }
+.sw-cam-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.sw-alt { flex: 1 1 0; min-width: 0; white-space: nowrap; }
+.sw-cam-actions .btn.ghost.small { color: #fff; border-color: rgba(255,255,255,.4); padding: 8px 10px; }
+.sw-cam-err .btn { width: 100%; }
 .sw-shutter { width: 72px; height: 72px; border-radius: 50%; border: 4px solid #fff; background: transparent; display: grid; place-items: center; cursor: pointer; }
 .sw-shutter i { width: 56px; height: 56px; border-radius: 50%; background: #fff; display: block; transition: transform .1s; }
 .sw-shutter:active i { transform: scale(.85); } .sw-shutter:disabled { opacity: .4; }
