@@ -3,9 +3,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { colorName } from '@/lib/selfie/color';
 import FitLine from '@/components/FitLine';
 
-type Member = { id: string; name: string; fullName: string; isObserver: boolean; photoId: string | null; photoUrl: string | null; pct: number | null; at: string | null; checks: any; similarTo?: string[] };
+type Member = { id: string; name: string; fullName: string; isObserver: boolean; photoId: string | null; photoUrl: string | null; pct: number | null; at: string | null; checks: any; similarTo?: string[]; faceLike?: { name: string; dist: number }[] };
 type Team = { id: string; name: string; color: string | null; active: boolean; startedAt: string | null; members: Member[]; count: number; total: number; complete: boolean; rank: number | null; tokens: number; completedAt: string | null };
-type Data = { settings: { open: boolean; live: boolean; before: boolean; after: boolean; start: string | null; end: string | null; color: string; percent: number; tolerance: number; rewards: number[]; announcedAt: string | null; audience: 'all' | 'teams' | 'judges' }; aiEnabled: boolean; allTeams: { id: string; name: string; excluded: boolean; members: number }[]; palette: string[]; judges: { members: Member[]; count: number; total: number }; teams: Team[] };
+type Data = { settings: { open: boolean; live: boolean; before: boolean; after: boolean; start: string | null; end: string | null; color: string; percent: number; tolerance: number; rewards: number[]; announcedAt: string | null; audience: 'all' | 'teams' | 'judges'; faceMode: 'off' | 'flag' | 'block'; faceDistance: number }; aiEnabled: boolean; allTeams: { id: string; name: string; excluded: boolean; members: number }[]; palette: string[]; judges: { members: Member[]; count: number; total: number }; teams: Team[] };
 type Props = { role: 'admin' | 'staff'; setMsg: (m: string) => void; call: <T = any>(action: string, body?: unknown) => Promise<T> };
 
 const PRESETS = [['#2f8f5b', 'เขียวป่า'], ['#1f3557', 'น้ำเงินเข้ม'], ['#e0573b', 'แดงอิฐ'], ['#f6d365', 'เหลือง'], ['#ffffff', 'ขาว'], ['#111111', 'ดำ'], ['#c96d2f', 'ส้มดิน'], ['#7c4dff', 'ม่วง']];
@@ -15,14 +15,14 @@ const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleString('th-TH',
 /** Admin → 🤳 Selfie Wall: window, colour, threshold, rewards, and every team's wall with moderation. */
 export default function SelfieAdmin({ role, setMsg, call }: Props) {
   const [d, setD] = useState<Data | null>(null);
-  const [f, setF] = useState<{ start: string; end: string; color: string; percent: string; tolerance: string; rewards: string[] } | null>(null);
+  const [f, setF] = useState<{ start: string; end: string; color: string; percent: string; tolerance: string; rewards: string[]; faceMode: string; faceDistance: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [zoom, setZoom] = useState<Member | null>(null);
   const [reason, setReason] = useState('');   // reject reason (hooks stay above the early return)
   const isAdmin = role === 'admin';
   const load = useCallback(() => call<Data>('selfie').then((r) => {
     setD(r);
-    setF((cur) => cur ?? { start: toLocal(r.settings.start), end: toLocal(r.settings.end), color: r.settings.color, percent: String(r.settings.percent), tolerance: String(r.settings.tolerance), rewards: [0, 1, 2, 3].map((i) => String(r.settings.rewards[i] ?? 0)) });
+    setF((cur) => cur ?? { start: toLocal(r.settings.start), end: toLocal(r.settings.end), color: r.settings.color, percent: String(r.settings.percent), tolerance: String(r.settings.tolerance), rewards: [0, 1, 2, 3].map((i) => String(r.settings.rewards[i] ?? 0)), faceMode: r.settings.faceMode, faceDistance: String(r.settings.faceDistance) });
   }).catch((e) => setMsg(e.message)), [call, setMsg]);
   useEffect(() => { load(); const t = setInterval(load, 10000); return () => clearInterval(t); }, [load]);
   if (!d || !f) return <div className="spinner" />;
@@ -34,7 +34,7 @@ export default function SelfieAdmin({ role, setMsg, call }: Props) {
   }
   const save = () => set({
     start: f!.start ? new Date(f!.start).toISOString() : '', end: f!.end ? new Date(f!.end).toISOString() : '',
-    color: f!.color, percent: Number(f!.percent), tolerance: Number(f!.tolerance), rewards: f!.rewards.map(Number),
+    color: f!.color, percent: Number(f!.percent), tolerance: Number(f!.tolerance), rewards: f!.rewards.map(Number), face_mode: f!.faceMode, face_distance: Number(f!.faceDistance),
   }, 'บันทึกการตั้งค่า Selfie Wall แล้ว');
   async function reject(m: Member) {
     const why = reason.trim();
@@ -86,11 +86,13 @@ export default function SelfieAdmin({ role, setMsg, call }: Props) {
           <div className="dlg" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520, maxHeight: '92vh', overflowY: 'auto' }}>
             <img src={zoom.photoUrl!} alt={zoom.name} style={{ width: '100%', borderRadius: 14, maxHeight: '36vh', objectFit: 'contain', background: '#111' }} />
             <div style={{ marginTop: 8 }}><strong>{zoom.name}</strong>{zoom.fullName && zoom.fullName !== zoom.name && <div className="muted">{zoom.fullName}</div>}<div className="muted" style={{ fontSize: 13 }}>{fmt(zoom.at)} · พื้นหลังตรงสี {zoom.pct ?? '—'}%</div><div className="muted" style={{ fontSize: 13 }}>ที่มาของภาพ: {zoom.checks?.source === 'gallery' ? '🖼️ เลือกจากรูปในเครื่อง (ไม่ใช่ถ่ายสด)' : zoom.checks?.source === 'camera-app' ? '📱 ถ่ายด้วยแอปกล้องของมือถือ' : '📷 ถ่ายสดในแอป'}</div></div>
+            {zoom.faceLike && zoom.faceLike.length > 0 && <div className="error" style={{ marginTop: 8 }}>🧑‍🤝‍🧑 ใบหน้าคล้ายกับ: {zoom.faceLike.map((x) => `${x.name} (ห่าง ${x.dist})`).join(', ')} — {zoom.faceLike[0].dist <= s.faceDistance ? 'น่าจะเป็นคนเดียวกัน' : 'ใกล้เคียง ควรตรวจ'}</div>}
+            {zoom.checks?.faceMissing && <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>⚠️ ตรวจใบหน้าไม่ได้ (ไม่พบใบหน้าหรือโหลดโมเดลไม่สำเร็จ) ควรดูภาพด้วยตา</div>}
             {zoom.similarTo && zoom.similarTo.length > 0 && <div className="error" style={{ marginTop: 8 }}>⚠️ ภาพนี้คล้ายกับภาพของ: {zoom.similarTo.join(', ')} (ตรวจว่าเป็นภาพซ้ำหรือไม่)</div>}
             <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>{zoom.checks?.ai ? `AI: ${zoom.checks.ai.person ? 'เห็นคน' : 'ไม่เห็นคน'} ${zoom.checks.ai.people ?? ''} คน · ${zoom.checks.ai.bg ?? ''}` : zoom.checks?.aiEnabled === false ? 'ตรวจด้วยพิกเซลอย่างเดียว (ยังไม่ตั้งค่า AI)' : ''}</div>
             <label className="lbl">ปฏิเสธภาพนี้ (ผู้ถ่ายจะได้รับ Pop-up พร้อมเหตุผล และถ่ายใหม่)</label>
             <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
-              {['ไม่ใช่ใบหน้าของคุณเอง', 'ภาพซ้ำกับของคนอื่น', 'ไม่เห็นหน้าชัดเจน', 'พื้นหลังไม่ใช่สีที่กำหนด'].map((r) => <button key={r} type="button" className={`btn small ghost${reason === r ? ' on' : ''}`} style={reason === r ? { borderColor: 'var(--forest)', background: '#e2f3dc' } : undefined} onClick={() => setReason(r)}>{r}</button>)}
+              {['ไม่ใช่ใบหน้าของคุณเอง', 'ใบหน้าซ้ำกับสมาชิกคนอื่น', 'ภาพซ้ำกับของคนอื่น', 'ไม่เห็นหน้าชัดเจน', 'พื้นหลังไม่ใช่สีที่กำหนด'].map((r) => <button key={r} type="button" className={`btn small ghost${reason === r ? ' on' : ''}`} style={reason === r ? { borderColor: 'var(--forest)', background: '#e2f3dc' } : undefined} onClick={() => setReason(r)}>{r}</button>)}
             </div>
             <input className="field" placeholder="หรือพิมพ์เหตุผลเอง" value={reason} maxLength={200} onChange={(e) => setReason(e.target.value)} />
             <div className="row" style={{ marginTop: 12 }}>
@@ -104,7 +106,7 @@ export default function SelfieAdmin({ role, setMsg, call }: Props) {
 
       <div className={`switch-card${s.live ? ' on' : ''}`} style={{ marginBottom: 14 }}>
         <div className="s-top"><div className="s-ic" style={{ background: s.color, color: '#fff' }}>🤳</div>
-          <div><div className="s-title">Selfie Wall · Agency in the Wonder Woods</div><div className="muted" style={{ fontSize: 14 }}>ภารกิจแรกหลังรวมทีม: ผู้เล่นทุกคนถ่าย Selfie กับฉากหลัง<strong>สีประจำทีม</strong> ≥ {s.percent}% ทีมที่ครบก่อนได้ {s.rewards.join(' › ')} Tokens</div></div>
+          <div><div className="s-title">Selfie Wall Mission · Agency in the Wonder Woods</div><div className="muted" style={{ fontSize: 14 }}>ภารกิจแรกหลังรวมทีม: ผู้เล่นทุกคนถ่าย Selfie กับฉากหลัง<strong>สีประจำทีม</strong> ≥ {s.percent}% ทีมที่ครบก่อนได้ {s.rewards.join(' › ')} Tokens</div></div>
           <span className="s-state">{stateText}</span></div>
         {isAdmin && (
           <div style={{ marginTop: 10 }}>
@@ -159,6 +161,16 @@ export default function SelfieAdmin({ role, setMsg, call }: Props) {
           <div className="row">
             <div><label className="lbl">พื้นหลังต้องเป็นสีนี้อย่างน้อย (%)</label><input className="field" style={{ width: 120 }} type="number" min={1} max={100} value={f.percent} onChange={(e) => setF({ ...f, percent: e.target.value })} /></div>
             <div><label className="lbl">ความยืดหยุ่นของสี (ΔE 5–100 · แนะนำ 25–40)</label><input className="field" style={{ width: 120 }} type="number" min={5} max={100} value={f.tolerance} onChange={(e) => setF({ ...f, tolerance: e.target.value })} /></div>
+          </div>
+          <label className="lbl">ตรวจใบหน้าซ้ำ (กันการส่งภาพแทนกัน)</label>
+          <div className="tabs" role="radiogroup" aria-label="โหมดตรวจใบหน้าซ้ำ" style={{ marginBottom: 6 }}>
+            {([['block', '⛔ บล็อกอัตโนมัติ'], ['flag', '⚠️ ให้ Admin ตรวจ'], ['off', '⚪ ปิด']] as const).map(([k, l]) => (
+              <button key={k} role="radio" aria-checked={f.faceMode === k} className={f.faceMode === k ? 'on' : ''} onClick={() => setF({ ...f, faceMode: k })}>{l}</button>
+            ))}
+          </div>
+          <div className="row">
+            <div><label className="lbl">เกณฑ์ความเหมือนของใบหน้า (0.25–0.65 · ยิ่งน้อยยิ่งเข้ม · แนะนำ 0.45)</label><input className="field" style={{ width: 120 }} type="number" step="0.01" min={0.25} max={0.65} value={f.faceDistance} onChange={(e) => setF({ ...f, faceDistance: e.target.value })} /></div>
+            <div className="muted" style={{ fontSize: 13, flex: 1, minWidth: 220 }}>คนเดียวกันมักห่างกัน 0.2–0.4 คนละคนมัก 0.6 ขึ้นไป · <strong>บล็อก</strong> = ส่งไม่ได้ถ้าใบหน้าซ้ำกับคนอื่น · <strong>ให้ Admin ตรวจ</strong> = ส่งได้แต่ติดป้ายเตือนให้คุณกดปฏิเสธเอง · ข้อมูลใบหน้าเป็นเพียงตัวเลข คำนวณบนมือถือผู้เล่น และถูกลบพร้อมภาพ</div>
           </div>
           <label className="lbl">รางวัลตามลำดับทีมที่ครบ (Tokens)</label>
           <div className="row">{f.rewards.map((v, i) => <div key={i}><div className="muted" style={{ fontSize: 12 }}>อันดับ {i + 1}</div><input className="field" style={{ width: 90 }} type="number" min={0} value={v} onChange={(e) => setF({ ...f, rewards: f.rewards.map((x, k) => (k === i ? e.target.value : x)) })} /></div>)}</div>
@@ -248,14 +260,14 @@ export default function SelfieAdmin({ role, setMsg, call }: Props) {
 /** One member on an admin Team Wall: photo, nickname and real name (one line each, shrunk to fit) and a flag when the picture resembles someone else's. */
 function MemberTile({ m, color, onZoom }: { m: Member; color: string; onZoom: (m: Member) => void }) {
   const real = m.fullName && m.fullName.trim() !== m.name.trim() ? m.fullName : '\u00a0';
-  const flag = (m.similarTo?.length ?? 0) > 0;
+  const flag = (m.similarTo?.length ?? 0) > 0 || (m.faceLike?.length ?? 0) > 0;
   return (
     <div style={{ textAlign: 'center', minWidth: 0 }}>
       <button type="button" onClick={() => m.photoUrl && onZoom(m)} disabled={!m.photoUrl} aria-label={m.name}
         style={{ position: 'relative', width: '100%', aspectRatio: '3 / 4', borderRadius: 10, border: flag ? '3px solid #e0573b' : m.photoUrl ? `3px solid ${color}` : '2px dashed #ccc', background: m.photoUrl ? `url(${m.photoUrl}) center/cover` : '#eee', cursor: m.photoUrl ? 'zoom-in' : 'default', padding: 0 }}>
         {!m.photoUrl && <span className="muted" style={{ fontSize: 22 }}>👤</span>}
         {m.checks?.source === 'gallery' && <span title="เลือกจากรูปในเครื่อง" style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(31,53,87,.85)', color: '#fff', borderRadius: 8, fontSize: 11, padding: '1px 5px' }}>🖼️</span>}
-        {flag && <span title={`คล้ายภาพของ ${m.similarTo!.join(', ')}`} style={{ position: 'absolute', top: 4, right: 4, background: '#e0573b', color: '#fff', borderRadius: 8, fontSize: 11, padding: '1px 5px' }}>⚠️ คล้าย</span>}
+        {flag && <span title={`คล้ายกับ ${[...(m.similarTo ?? []), ...(m.faceLike ?? []).map((x) => x.name)].join(', ')}`} style={{ position: 'absolute', top: 4, right: 4, background: '#e0573b', color: '#fff', borderRadius: 8, fontSize: 11, padding: '1px 5px' }}>{(m.faceLike?.length ?? 0) > 0 ? '👥 หน้าซ้ำ?' : '⚠️ คล้าย'}</span>}
       </button>
       <FitLine text={m.name} base={12.5} min={8} style={{ fontWeight: 700, marginTop: 3 }} />
       <FitLine text={real} base={11} min={7} className="muted" />

@@ -30,7 +30,7 @@ type Me = {
   marketOpen: boolean;
   menus: MenuAccess;
   line: LineStatus;
-  selfie: { test?: boolean; name?: string; readOnly?: boolean; rejected?: boolean; live: boolean; before: boolean; after: boolean; start: string | null; end: string | null; color: string; percent: number; pct: number; count: number; total: number; complete: boolean; rank: number | null; tokens: number; nextReward: number; mine: boolean } | null;
+  selfie: { topReward?: number; test?: boolean; name?: string; readOnly?: boolean; rejected?: boolean; live: boolean; before: boolean; after: boolean; start: string | null; end: string | null; color: string; percent: number; pct: number; count: number; total: number; complete: boolean; rank: number | null; tokens: number; nextReward: number; mine: boolean } | null;
   inventory: { item: string; image_url: string | null; qty: number; handed: number; pending: number; spent: number }[];
   game: { open: boolean; tokensPerCorrect: number };
   total: number;
@@ -391,7 +391,7 @@ function PlayerPage() {
           <div className="card" style={{ border: '3px solid #f0c36a' }}>
             <div className="mission">
               <div className="m-ic" style={{ background: me.selfie.color, fontSize: 30 }}>🤳</div>
-              <div className="m-body"><h2>{me.selfie.test ? '🧪 Selfie Wall · ทดสอบกรรมการ' : 'Selfie Wall · ภารกิจแรกของทีม'}</h2><div className="muted">{me.selfie.readOnly ? 'ดู Team Wall ของทีมได้อย่างเดียว (กรรมการ/คณะทำงาน)' : me.selfie.test ? `กรรมการถ่ายแล้ว ${me.selfie.count}/${me.selfie.total} คน · ไม่มีคะแนน` : me.selfie.complete ? `ทีมครบแล้ว อันดับ ${me.selfie.rank} · +${me.selfie.tokens} Tokens` : `ทีมทำแล้ว ${me.selfie.pct}% (${me.selfie.count}/${me.selfie.total} คน) · ได้สูงสุด ${me.selfie.nextReward} Tokens`}</div></div>
+              <div className="m-body"><h2>{me.selfie.test ? '🧪 Selfie Wall Mission · ทดสอบกรรมการ' : 'Selfie Wall Mission'}</h2><div className="muted">{me.selfie.readOnly ? 'ดู Team Wall ของทีมได้อย่างเดียว (กรรมการ/คณะทำงาน)' : me.selfie.test ? `กรรมการถ่ายแล้ว ${me.selfie.count}/${me.selfie.total} คน · ไม่มีคะแนน` : me.selfie.complete ? `ทีมครบแล้ว อันดับ ${me.selfie.rank} · +${me.selfie.tokens} Tokens` : `ทีมทำแล้ว ${me.selfie.pct}% (${me.selfie.count}/${me.selfie.total} คน) · ได้สูงสุด ${me.selfie.nextReward} Tokens`}</div></div>
             </div>
             <button className="btn sw-cta" style={{ marginTop: 12 }} onClick={() => setView('selfie')}>{me.selfie.readOnly || me.selfie.mine || me.selfie.complete ? 'ดู Team Wall' : me.selfie.live ? '📷 ถ่าย Selfie ของฉัน' : 'ดูรายละเอียดภารกิจ'}</button>
           </div>
@@ -566,14 +566,31 @@ function PlayerPage() {
           </div>
         </div>
       )}
-      {me.menus.selfie && me.selfie && me.selfie.live && !me.selfie.complete && !me.selfie.readOnly && (
-        <div className="card sw-banner">
-          <div className="row" style={{ alignItems: 'center', gap: 12 }}>
-            <div className="sw-ring" style={{ ['--sw-color' as string]: me.selfie.color, ['--p' as string]: me.selfie.pct }}><div><b>{me.selfie.pct}%</b></div></div>
-            <div style={{ flex: 1, minWidth: 0 }}><strong>{me.selfie.test ? '🧪 Selfie Wall (ทดสอบ)' : '🤳 Selfie Wall'}</strong><div style={{ fontSize: 13, opacity: .9 }}>{me.selfie.rejected ? '⚠️ ทีมงานให้ถ่ายภาพใหม่' : me.selfie.mine ? `รอเพื่อนอีก ${me.selfie.total - me.selfie.count} คน` : 'คุณยังไม่ได้ถ่าย Selfie'}{me.selfie.test ? ' · ไม่มีคะแนน' : ` · ทีมได้สูงสุด ${me.selfie.nextReward} Tokens`}</div></div>
-            <button className="btn small" style={{ flex: 'none' }} onClick={() => setView('selfie')}>{me.selfie.mine ? 'ดูทีม' : 'ถ่ายเลย'}</button>
+      {me.menus.selfie && me.selfie && me.selfie.live && !me.selfie.readOnly && (
+        <section className={`card sw-mission${me.selfie.rejected ? ' bad' : ''}`} aria-label="Selfie Wall Mission">
+          <div className="sw-mission-head">
+            <span className="sw-mission-ic" aria-hidden>🤳</span>
+            <div style={{ minWidth: 0 }}>
+              <div className="sw-mission-kicker">{me.selfie.test ? '🧪 โหมดทดสอบ · ไม่มีคะแนน' : 'ภารกิจแรกของทีม'}</div>
+              <h2 className="sw-mission-title">Selfie Wall Mission</h2>
+            </div>
           </div>
-        </div>
+          <p className="sw-mission-desc">
+            ถ่าย <strong>Selfie ของคุณ</strong> กับฉากหลังสี <span className="sw-chip sw-chip-dark"><i style={{ background: me.selfie.color }} />{colorNameClient(me.selfie.color)}</span> ให้สีพื้นหลังอย่างน้อย <strong>{me.selfie.percent}%</strong>{' '}
+            แล้วภาพจะขึ้น <strong>Team Wall</strong> ของทีม{me.selfie.test ? '' : ` · ทีมที่ถ่ายครบทุกคนก่อนได้ Token สูงสุด ${me.selfie.topReward ?? me.selfie.nextReward}`}
+          </p>
+          <div className="sw-mission-meta">
+            <div className="sw-ring" style={{ ['--sw-color' as string]: me.selfie.color, ['--p' as string]: me.selfie.pct }}><div><b>{me.selfie.pct}%</b></div></div>
+            <div className="sw-mission-state">
+              <strong>{me.selfie.complete ? (me.selfie.test ? '✅ ถ่ายครบแล้ว' : `✅ ทีมครบแล้ว${me.selfie.rank ? ` · อันดับ ${me.selfie.rank}` : ''}`) : me.selfie.rejected ? '⚠️ ทีมงานให้ถ่ายใหม่' : me.selfie.mine ? '✅ คุณถ่ายแล้ว' : '📷 คุณยังไม่ได้ถ่าย'}</strong>
+              <span>{me.selfie.complete ? (me.selfie.test ? 'ทดสอบสำเร็จ' : `ได้ ${me.selfie.tokens} Tokens`) : `ทีมถ่ายแล้ว ${me.selfie.count}/${me.selfie.total} คน`}{!me.selfie.complete && !me.selfie.test ? ` · ได้สูงสุด ${me.selfie.nextReward} Tokens` : ''}</span>
+              {me.selfie.end && <span>⏰ ภายใน {fmtTime(me.selfie.end)}</span>}
+            </div>
+          </div>
+          <button className={`btn ${me.selfie.mine || me.selfie.complete ? 'green' : 'sw-cta'}`} style={{ marginTop: 12 }} onClick={() => setView('selfie')}>
+            {me.selfie.complete || me.selfie.mine ? 'ดู Team Wall' : me.selfie.rejected ? '📷 ถ่าย Selfie ใหม่' : '📷 เริ่มภารกิจ ถ่าย Selfie'}
+          </button>
+        </section>
       )}
       {editAvatar && <AvatarSheet me={me} onClose={() => setEditAvatar(false)} onSaved={() => load()} onAuthLost={fail} />}
       <div className="card profile-card">
@@ -1026,12 +1043,12 @@ function NoticeModal() {
     const later = () => { markSeen(n.id); noticeStore.set(null); };
     const go = () => { markSeen(n.id); noticeStore.set(null); noticeStore.onSelfie?.(); };
     return (
-      <div className="player-dialog-overlay" role="alertdialog" aria-modal="true" aria-label="ภารกิจ Selfie Wall" onClick={later}
+      <div className="player-dialog-overlay" role="alertdialog" aria-modal="true" aria-label="Selfie Wall Mission" onClick={later}
         style={{ position: 'fixed', inset: 0, background: 'rgba(31,47,77,.6)', display: 'grid', placeItems: 'center', zIndex: 100 }}>
         <div className="card center stack player-dialog-panel sw-hero" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, margin: 0 }}>
           <div className="sw-leaves" aria-hidden>{['🍃', '🌿', '🍂', '🍃'].map((l, i) => <span key={i} style={{ left: `${10 + i * 24}%`, animationDelay: `${i * 1.1}s` }}>{l}</span>)}</div>
           <div style={{ fontSize: 56, position: 'relative' }}>🤳</div>
-          <h2 style={{ margin: 0, position: 'relative' }}>{n.test ? '🧪 ทดสอบ Selfie Wall (กรรมการ)' : n.mine ? 'ทีมยังไม่ครบ!' : 'ภารกิจแรกของทีม: Selfie Wall'}</h2>
+          <h2 style={{ margin: 0, position: 'relative' }}>{n.test ? '🧪 ทดสอบ Selfie Wall Mission (กรรมการ)' : n.mine ? 'ทีมยังไม่ครบ!' : 'Selfie Wall Mission'}</h2>
           <div className="sw-ring" style={{ ['--sw-color' as string]: '#f6d365', ['--p' as string]: n.pct, margin: '4px auto' }}><div><b>{n.pct}%</b><span>{n.count}/{n.total} คน</span></div></div>
           <div style={{ position: 'relative' }}>{n.test ? <>ทดลองถ่าย Selfie กับฉากหลัง <span className="sw-chip"><i style={{ background: n.color }} />{colorNameClient(n.color)}</span> เหมือนผู้เล่นจริง · ไม่มีคะแนน</> : n.mine ? `รอเพื่อนอีก ${n.total - n.count} คน ช่วยกันตามให้ครบ!` : <>ถ่าย Selfie กับฉากหลัง <span className="sw-chip"><i style={{ background: n.color }} />{colorNameClient(n.color)}</span> ให้ได้ {n.percent}%</>}</div>
           {!n.test && <div className="sw-pill" style={{ position: 'relative' }}>🪙 ทีมมีโอกาสได้สูงสุด <strong>{n.nextReward} Tokens</strong></div>}

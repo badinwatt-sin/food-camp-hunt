@@ -377,6 +377,10 @@ try {
   await sb.from('teams').update({ selfie_active: true }).eq('id', tS);
   check('a started team can upload', !(await sb.rpc('submit_selfie', { p_participant: sw1, p_url: 'https://example.invalid/ok.jpg', p_pct: 70, p_checks: {} })).error);
   await sb.from('teams').update({ selfie_active: false }).eq('id', tS);
+  // v5: duplicate-face settings exist with sane limits
+  const { data: fs5 } = await sb.from('game_settings').select('selfie_face_mode, selfie_face_distance').eq('id', 1).single();
+  check('face-check settings exist (mode off|flag|block, distance 0.25..0.65)', fs5 && ['off', 'flag', 'block'].includes(fs5.selfie_face_mode) && Number(fs5.selfie_face_distance) >= 0.25 && Number(fs5.selfie_face_distance) <= 0.65);
+  check('an out-of-range face distance is refused', !!(await sb.from('game_settings').update({ selfie_face_distance: 0.9 }).eq('id', 1)).error);
   // v4: a whole committee / test team never joins the real walls and never ranks
   await sb.from('game_settings').update({ selfie_audience: 'all' }).eq('id', 1);
   await sb.from('teams').update({ selfie_excluded: true, selfie_active: false }).eq('id', tS);

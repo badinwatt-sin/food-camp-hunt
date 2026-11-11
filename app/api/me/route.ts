@@ -56,7 +56,7 @@ export const GET = handler(async () => {
     goal,
     menus,
     line,
-    selfie: selfie ? { test: selfie.test, live: selfie.settings.live, before: selfie.settings.before, after: selfie.settings.after, start: selfie.settings.start, end: selfie.settings.end, color: selfie.settings.color, percent: selfie.settings.percent, pct: selfie.team.pct, count: selfie.team.count, total: selfie.team.total, complete: selfie.team.complete, rank: selfie.team.rank, tokens: selfie.team.tokens, nextReward: selfie.nextReward, mine: !!selfie.me.photoUrl, name: selfie.team.name, readOnly: selfie.me.readOnly, rejected: !!selfie.me.rejected } : null,
+    selfie: selfie ? { test: selfie.test, live: selfie.settings.live, before: selfie.settings.before, after: selfie.settings.after, start: selfie.settings.start, end: selfie.settings.end, color: selfie.settings.color, percent: selfie.settings.percent, pct: selfie.team.pct, count: selfie.team.count, total: selfie.team.total, complete: selfie.team.complete, rank: selfie.team.rank, tokens: selfie.team.tokens, nextReward: selfie.nextReward, topReward: selfie.settings.rewards[0] ?? 0, mine: !!selfie.me.photoUrl, name: selfie.team.name, readOnly: selfie.me.readOnly, rejected: !!selfie.me.rejected } : null,
     game: { open: !!settings?.is_open, tokensPerCorrect: settings?.tokens_per_correct ?? 10 },
     total: qs.length,
     answered,

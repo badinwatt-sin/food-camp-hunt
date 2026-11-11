@@ -452,3 +452,21 @@ label.lbl { display: block; font-size: 14px; color: #5d6a80; margin: 10px 0 4px;
 .sw-cam-2 .btn.ghost.small { width: 100%; color: #fff; border-color: rgba(255,255,255,.4); }
 .sw-cam-bar .sw-send { width: 100%; margin: 0; }
 .sw-notice { background: #5a2a24; border-radius: 10px; padding: 8px 12px; font-size: 14px; }
+
+/* home: the mission description card */
+.sw-mission { border: 3px solid #f0c36a; background: linear-gradient(180deg, #fffaf0, #fff); }
+.sw-mission.bad { border-color: #d98b86; background: linear-gradient(180deg, #fdf1ef, #fff); }
+.sw-mission-head { display: flex; gap: 12px; align-items: center; }
+.sw-mission-ic { flex: none; width: 52px; height: 52px; border-radius: 16px; display: grid; place-items: center; font-size: 28px; background: linear-gradient(135deg, #2f6b45, #1f3557); box-shadow: 0 3px 8px rgba(31,53,87,.25); }
+.sw-mission-kicker { font-size: 12.5px; font-weight: 700; color: #8a5a1c; letter-spacing: .02em; }
+.sw-mission-title { margin: 0; font-size: 22px; line-height: 1.2; color: #1f3557; overflow-wrap: anywhere; }
+.sw-mission-desc { margin: 10px 0 0; font-size: 15px; line-height: 1.55; color: #33425a; }
+.sw-mission-meta { display: flex; gap: 12px; align-items: center; margin-top: 12px; background: #f6f3ea; border-radius: 14px; padding: 10px 12px; }
+.sw-mission-meta .sw-ring { flex: none; width: 64px; height: 64px; }
+.sw-mission-meta .sw-ring > div { width: 46px; height: 46px; }
+.sw-mission-meta .sw-ring b { font-size: 14px; }
+.sw-mission-state { display: grid; gap: 2px; min-width: 0; font-size: 13.5px; color: #56675c; }
+.sw-mission-state strong { font-size: 15.5px; color: #1f3557; }
+.sw-mission .sw-chip { vertical-align: middle; }
+
+.sw-privacy { margin-top: 10px; font-size: 12.5px; line-height: 1.45; color: #5b6b7a; background: #f4f1e7; border-radius: 10px; padding: 8px 10px; }

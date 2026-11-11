@@ -898,6 +898,8 @@ revoke all on function public.mg_finish(uuid, int, jsonb) from public, anon, aut
 -- =====================================================================
 -- v2: each team has its OWN background colour (unique), and the mission can start for the judges only
 --     (observers play a score-free test wall; nobody else is notified) before it starts for everyone.
+-- v5: duplicate-face check (the phone computes a small numeric face signature; the server compares it with the other photos).
+--     mode: off | flag (admin reviews) | block (upload refused). Signatures live inside selfie_photos.checks and go away with the photo.
 -- v4: a whole team can be marked "committee / test" (selfie_excluded): it never takes part in the real walls,
 --     ranks or rewards, and its members test on the judges' wall exactly like observers.
 -- v3: start for chosen teams or all teams; committee/judges (observers) never take part in the real walls;
@@ -920,6 +922,13 @@ alter table public.game_settings add column if not exists selfie_rewards text no
 alter table public.game_settings add column if not exists selfie_announced_at timestamptz;
 alter table public.game_settings add column if not exists selfie_audience text not null default 'all';   -- 'all' = everyone, 'judges' = observers only (score-free test)
 -- 'judges' = only observers (score-free test) · 'teams' = only the teams the admin started · 'all' = every team
+alter table public.game_settings add column if not exists selfie_face_mode text not null default 'block';
+alter table public.game_settings add column if not exists selfie_face_distance numeric(3,2) not null default 0.45;
+do $$ begin
+  if not exists (select 1 from pg_constraint where conname = 'game_settings_selfie_face_check' and conrelid = 'public.game_settings'::regclass) then
+    alter table public.game_settings add constraint game_settings_selfie_face_check check (selfie_face_mode in ('off', 'flag', 'block') and selfie_face_distance between 0.25 and 0.65);
+  end if;
+end $$;
 alter table public.game_settings drop constraint if exists game_settings_selfie_audience_check;
 alter table public.game_settings add constraint game_settings_selfie_audience_check check (selfie_audience in ('all', 'teams', 'judges'));
 alter table public.teams add column if not exists selfie_excluded boolean not null default false;     -- committee / test team: not scored, not ranked, judges' wall only

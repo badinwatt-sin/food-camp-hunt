@@ -94,7 +94,7 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
     return () => { clearInterval(t); window.removeEventListener('fc-photos-changed', poll); };
   }, []);
   const tabs: [Tab, string, string, boolean][] = [
-    ['overview', '📊', 'ภาพรวม', true], ['checkin', '📍', 'เช็กอินวันงาน', true], ['selfie', '🤳', 'Selfie Wall', true], ['line', '💬', 'กลุ่ม LINE', role === 'admin'], ['market', '🛒', 'ตลาดสินค้า', true],
+    ['overview', '📊', 'ภาพรวม', true], ['checkin', '📍', 'เช็กอินวันงาน', true], ['selfie', '🤳', 'Selfie Wall Mission', true], ['line', '💬', 'กลุ่ม LINE', role === 'admin'], ['market', '🛒', 'ตลาดสินค้า', true],
     ['people', '👥', 'ทีมและผู้เล่น', role === 'admin'], ['questions', '🍜', 'คำถามควิซ', role === 'admin'], ['games', '🎮', 'ภารกิจประจำสัปดาห์', role === 'admin'],
     ['hunt', '🧭', 'ล่าสมบัติ', role === 'admin'], ['puzzles', '📸', 'ภารกิจทีม', true],
     ['history', '📜', 'ประวัติ', role === 'admin'], ['export', '⬇️', 'ส่งออก CSV', role === 'admin'],

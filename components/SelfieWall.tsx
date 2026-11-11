@@ -3,11 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/client-api';
 import { backgroundMatch, colorName, hexToRgb } from '@/lib/selfie/color';
 import FitLine from '@/components/FitLine';
+import { faceSignature, preloadFace } from '@/lib/selfie/face-client';
 
 type Member = { id: string; name: string; fullName: string; isMe: boolean; isObserver: boolean; photoUrl: string | null; at: string | null };
 type Status = {
   test: boolean;
-  settings: { open: boolean; live: boolean; before: boolean; after: boolean; start: string | null; end: string | null; color: string; percent: number; tolerance: number; rewards: number[]; announcedAt: string | null; audience: 'all' | 'teams' | 'judges' };
+  settings: { open: boolean; live: boolean; before: boolean; after: boolean; start: string | null; end: string | null; color: string; percent: number; tolerance: number; rewards: number[]; announcedAt: string | null; audience: 'all' | 'teams' | 'judges'; faceMode: 'off' | 'flag' | 'block'; faceDistance: number };
   team: { name: string; members: Member[]; count: number; total: number; pct: number; complete: boolean; rank: number | null; tokens: number; completedAt: string | null };
   me: { isObserver: boolean; readOnly: boolean; photoUrl: string | null; rejected: { id: string; reason: string; at: string } | null };
   nextReward: number; nextRank: number | null;
@@ -63,7 +64,7 @@ export default function SelfieWall({ onBalance, onAuthLost }: Props) {
       <div className="card sw-hero">
         <div className="sw-leaves" aria-hidden>{['🍃', '🌿', '🍂', '🍃', '🌱', '🍂'].map((l, i) => <span key={i} style={{ left: `${8 + i * 16}%`, animationDelay: `${i * 0.9}s` }}>{l}</span>)}</div>
         <div className="sw-kicker">{st.test ? '🧪 โหมดทดสอบสำหรับกรรมการ' : `ภารกิจแรกของทีม · ${THEME_TITLE}`}</div>
-        <h2 className="sw-title">🤳 Selfie Wall</h2>
+        <h2 className="sw-title">🤳 Selfie Wall Mission</h2>
         {st.test && <div className="sw-test-note">ทดลองเล่นเหมือนจริงทุกขั้นตอน แต่<strong>ไม่มีคะแนน ไม่มี Token และไม่แจ้งเตือนทีมอื่น</strong></div>}
         <div className="sw-meta">
           {s.live ? <Countdown end={s.end} /> : s.before ? <span className="sw-pill">⏰ เริ่ม {fmtDT(s.start)}</span> : s.after ? <span className="sw-pill off">⌛ หมดเวลาแล้ว</span> : <span className="sw-pill off">ยังไม่เปิด</span>}
@@ -99,6 +100,7 @@ export default function SelfieWall({ onBalance, onAuthLost }: Props) {
               <li><b>2</b><span>ถ่าย Selfie <strong>หน้าตรง คนเดียว</strong> ให้สีเต็มรอบตัว (ดูมิเตอร์สีตอนถ่าย)</span></li>
               <li><b>3</b><span>AI ตรวจให้ทันที ผ่านแล้วภาพขึ้น Team Wall</span></li>
             </ol>
+            {s.faceMode !== 'off' && <div className="sw-privacy">🔒 ระบบตรวจว่าไม่มีใบหน้าซ้ำกับสมาชิกคนอื่น (กันการส่งภาพแทนกัน) โดยคำนวณบนมือถือของคุณ ส่งไปเพียงตัวเลขเฉพาะ ไม่ใช่รูปหน้า และจะถูกลบเมื่อสิ้นสุดกิจกรรม</div>}
             {canShoot ? shootButtons('📷 ถ่าย Selfie ของฉัน') : <div className="banner" style={{ margin: '10px 0 0' }}>{s.before ? `ภารกิจเริ่ม ${fmtDT(s.start)}` : s.after ? 'หมดเวลาแล้ว' : 'ยังไม่เปิดให้ถ่าย'}</div>}
           </>
         )}
@@ -184,6 +186,9 @@ function Camera({ settings: s, file, onClose, onVerdict, onAuthLost }: { setting
   const [mode, setMode] = useState<'loading' | 'live' | 'preview' | 'sending' | 'rejected'>(file ? 'loading' : 'live');
   const [source, setSource] = useState<'camera' | 'gallery' | 'camera-app'>(file ? 'gallery' : 'camera');
   const [notice, setNotice] = useState('');
+  const [phase, setPhase] = useState<'face' | 'ai'>('ai');   // what the "checking" overlay says
+  // start fetching the face model while the player is still framing the shot, so it is ready when they press send
+  useEffect(() => { if (s.faceMode !== 'off') preloadFace().catch(() => {}); }, [s.faceMode]);
   const [camErr, setCamErr] = useState('');
   const [livePct, setLivePct] = useState<number | null>(null);
   const [shot, setShot] = useState<{ blob: Blob; url: string; pct: number } | null>(null);
@@ -284,6 +289,15 @@ function Camera({ settings: s, file, onClose, onVerdict, onAuthLost }: { setting
     setMode('sending');
     try {
       const fd = new FormData(); fd.append('file', shot.blob, 'selfie.jpg'); fd.append('source', source);
+      if (s.faceMode !== 'off') {
+        // the face signature is computed here on the phone; only 128 numbers are sent
+        setPhase('face');
+        const img = new Image(); img.src = shot.url;
+        await new Promise((r, j) => { img.onload = r; img.onerror = j; });
+        const sig = await faceSignature(img);
+        if (sig.descriptor) fd.append('face', JSON.stringify(sig.descriptor));
+        setPhase('ai');
+      }
       const res = await fetch('/api/selfie', { method: 'POST', body: fd });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message ?? 'ส่งภาพไม่สำเร็จ');
@@ -341,7 +355,7 @@ function Camera({ settings: s, file, onClose, onVerdict, onAuthLost }: { setting
       {(mode === 'preview' || mode === 'sending' || mode === 'rejected') && shot && (
         <>
           <div className="sw-cam-view"><img src={shot.url} alt="ภาพที่ถ่าย" />
-            {mode === 'sending' && <div className="sw-scan"><div className="sw-scan-line" /><div className="sw-scan-text">🤖 AI กำลังตรวจภาพ…</div></div>}
+            {mode === 'sending' && <div className="sw-scan"><div className="sw-scan-line" /><div className="sw-scan-text">{phase === 'face' ? '🔍 กำลังตรวจใบหน้า… (ครั้งแรกอาจใช้เวลาสักครู่)' : '🤖 AI กำลังตรวจภาพ…'}</div></div>}
           </div>
           <div className="sw-cam-bar">
             {mode === 'rejected' && verdict ? (

@@ -15,6 +15,7 @@ import { checkOrigin, handler, HttpError, ok, rateLimit, readJson } from '@/lib/
 import { SELFIE_SETTINGS_SELECT, publicSettings } from '@/lib/selfie/settings';
 import { aiEnabled } from '@/lib/selfie/ai';
 import { samePicture } from '@/lib/selfie/analyze';
+import { nearFaces, parseFace } from '@/lib/selfie/face';
 import { MIN_TEAM_COLOR_GAP, TEAM_PALETTE, colorGap, pickDistinctColors } from '@/lib/selfie/color';
 
 export const dynamic = 'force-dynamic';
@@ -104,9 +105,17 @@ export const GET = adminHandler(async (req: Request, ctx: Ctx) => {
     // Hint for the admin: pictures that look (almost) the same as someone else's are flagged. Image similarity only, no faces.
     const similar = (ph: any) => all.filter((o) => o.id !== ph.id && !!o.is_test === !!ph.is_test && samePicture(o.checks, ph.checks, 30, 25))
       .map((o) => nameOf.get(o.participant_id) ?? '');
+    // Face signatures never leave the server: the admin only gets "looks like X (distance)" hints.
+    const faceHints = (ph: any) => {
+      const f = parseFace(ph?.checks?.face);
+      if (!f) return [] as { name: string; dist: number }[];
+      const others = all.filter((o) => o.id !== ph.id && !!o.is_test === !!ph.is_test && o.participant_id !== ph.participant_id);
+      return nearFaces(f, others, settings.faceDistance + 0.1).map((n) => ({ name: nameOf.get(n.item.participant_id) ?? '', dist: n.dist }));
+    };
+    const publicChecks = (c: any) => { if (!c) return null; const { face, faceNote, hash, avg, ...rest } = c; return { ...rest, hasFace: Array.isArray(face), faceMissing: !!faceNote?.missing }; };
     const member = (m: any, test: boolean) => {
       const ph = photoOf(m.id, test);
-      return { id: m.id, name: m.nick_name || m.name, fullName: m.name, isObserver: !!m.is_observer, photoId: ph?.id ?? null, photoUrl: ph?.image_url ?? null, pct: ph?.color_pct ?? null, at: ph?.created_at ?? null, checks: ph?.checks ?? null, similarTo: ph ? similar(ph) : [] };
+      return { id: m.id, name: m.nick_name || m.name, fullName: m.name, isObserver: !!m.is_observer, photoId: ph?.id ?? null, photoUrl: ph?.image_url ?? null, pct: ph?.color_pct ?? null, at: ph?.created_at ?? null, checks: publicChecks(ph?.checks), similarTo: ph ? similar(ph) : [], faceLike: ph ? faceHints(ph) : [] };
     };
     const excluded = new Set((teams ?? []).filter((t: any) => t.selfie_excluded).map((t: any) => t.id));
     // judges = every observer + every member of a committee / test team (those teams are not on the real board at all)
@@ -769,6 +778,15 @@ export const POST = adminHandler(async (req: Request, ctx: Ctx) => {
         const c = str(body.color, 7).toLowerCase();
         if (!/^#[0-9a-f]{6}$/.test(c)) throw new HttpError(400, 'BAD_INPUT');
         patch.selfie_color = c;
+      }
+      if (body.face_mode !== undefined) {
+        if (body.face_mode !== 'off' && body.face_mode !== 'flag' && body.face_mode !== 'block') throw new HttpError(400, 'BAD_INPUT');
+        patch.selfie_face_mode = body.face_mode;
+      }
+      if (body.face_distance !== undefined) {
+        const n = Number(body.face_distance);
+        if (!Number.isFinite(n) || n < 0.25 || n > 0.65) throw new HttpError(400, 'BAD_INPUT');
+        patch.selfie_face_distance = Math.round(n * 100) / 100;
       }
       if (body.percent !== undefined) { const n = int(body.percent); if (n < 1 || n > 100) throw new HttpError(400, 'BAD_INPUT'); patch.selfie_percent = n; }
       if (body.tolerance !== undefined) { const n = int(body.tolerance); if (n < 5 || n > 100) throw new HttpError(400, 'BAD_INPUT'); patch.selfie_tolerance = n; }

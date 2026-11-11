@@ -8,6 +8,7 @@ import { SELFIE_SETTINGS_SELECT, publicSettings, selfieAccess } from '@/lib/self
 import { analyzeSelfie, samePicture } from '@/lib/selfie/analyze';
 import { aiCheckSelfie, aiEnabled } from '@/lib/selfie/ai';
 import { colorName } from '@/lib/selfie/color';
+import { nearFaces, parseFace } from '@/lib/selfie/face';
 
 export const dynamic = 'force-dynamic';
 
@@ -74,8 +75,22 @@ export const POST = handler(async (req: Request) => {
   }
   const src = String(form?.get('source') ?? '');
   const source = src === 'gallery' || src === 'camera-app' ? src : 'camera';   // for the admin's review: live camera, the phone's camera app, or a picture chosen from the phone
-  const checks = { source, hash: pix.hash, avg: pix.avg, pixel: pix, color, ai: ai ? { person: ai.person_visible, people: ai.people_count, screen: ai.is_screen_or_print, pct: ai.background_match_percent, bg: ai.background_description } : null, aiEnabled: aiEnabled() };
-  if (reason) return ok({ accepted: false, reason, pct: Math.round(pct), need: s.percent, checks });
+  // Duplicate-face check. The phone sends a numeric face signature (never the face itself); it is compared with the other photos.
+  // 'block' refuses a clear match, 'flag' lets it through and marks it for the admin. A missing signature is only noted.
+  const face = s.faceMode === 'off' ? null : parseFace(form?.get('face'));
+  let faceNote: { missing?: true; near?: { participantId: string; dist: number }[] } | null = null;
+  if (s.faceMode !== 'off') {
+    if (!face) faceNote = { missing: true };
+    else {
+      const { data: all } = await sb.from('selfie_photos').select('participant_id, checks').eq('is_test', test).neq('participant_id', p.id);
+      const near = nearFaces(face, (all ?? []) as any[], s.faceDistance + 0.1);   // a little wider than the block line: those go to the admin's review list
+      faceNote = { near: near.map((n) => ({ participantId: n.item.participant_id, dist: n.dist })) };
+      const clash = near.find((n) => n.dist <= s.faceDistance);
+      if (!reason && clash && s.faceMode === 'block') reason = 'ใบหน้าในภาพนี้ซ้ำกับสมาชิกคนอื่นที่ส่งภาพไปแล้ว ภารกิจนี้ต้องเป็น Selfie ของคุณเองเท่านั้น หากคิดว่าระบบตรวจผิด กรุณาแจ้งทีมงาน';
+    }
+  }
+  const checks = { face, faceNote, faceMode: s.faceMode, source, hash: pix.hash, avg: pix.avg, pixel: pix, color, ai: ai ? { person: ai.person_visible, people: ai.people_count, screen: ai.is_screen_or_print, pct: ai.background_match_percent, bg: ai.background_description } : null, aiEnabled: aiEnabled() };
+  if (reason) return ok({ accepted: false, reason, pct: Math.round(pct), need: s.percent });
 
   const path = `${test ? 'test' : p.team_id}/${p.id}/${randomUUID()}.jpg`;
   const { error: ue } = await sb.storage.from('selfies').upload(path, bytes, { contentType: 'image/jpeg' });
