@@ -46,6 +46,7 @@ const MESSAGES: Record<string, [number, string]> = {
   LINE_GROUP_TAKEN: [409, 'กลุ่ม LINE นี้ถูกกำหนดให้ทีมอื่นแล้ว'],
   LINE_GROUP_IN_USE: [409, 'มีสมาชิกกดเข้า LINE แล้ว จึงเปลี่ยนรหัสกลุ่มไม่ได้'],
   LINE_GROUP_COMPLETED: [409, 'ทีมนี้รับรางวัล LINE แล้ว จึงเปลี่ยนสมาชิกหรือกลุ่มไม่ได้'],
+  DUPLICATE: [409, 'ข้อมูลนี้ซ้ำกับที่มีอยู่แล้ว (เช่น สีนี้ถูกทีมอื่นใช้อยู่)'],
   MG_CLOSED: [403, 'เกมนี้ยังไม่เปิด หรือปิดแล้ว'],
   MG_NO_ATTEMPTS: [409, 'คุณเล่นเกมนี้ครบ 3 ครั้งแล้ว'],
   SELFIE_CLOSED: [403, 'ภารกิจ Selfie ยังไม่เปิด หรือหมดเวลาแล้ว'],
@@ -54,26 +55,30 @@ const MESSAGES: Record<string, [number, string]> = {
   RATE_LIMITED: [429, 'ลองผิดหลายครั้งเกินไป กรุณารอสักครู่'],
 };
 
-export function errorResponse(e: unknown) {
+/** `detail`: admin routes also return the technical reason of an unexpected error, so a problem can be diagnosed from the screen. */
+export function errorResponse(e: unknown, detail = false) {
   let code = 'SERVER_ERROR';
+  let raw = '';
   if (e instanceof HttpError) code = e.code;
   else if (e && typeof (e as any).message === 'string') {
     const m = (e as any).message as string;
+    raw = m;
     const hit = Object.keys(MESSAGES).find((k) => m.includes(k));
-    if (hit) code = hit;
+    if ((e as any).code === '23505') code = 'DUPLICATE';   // Postgres unique violation
+    else if (hit) code = hit;
     else console.error('[server error]', m);
   }
   const [status, message] = MESSAGES[code] ?? [500, 'เกิดข้อผิดพลาด กรุณาลองใหม่'];
-  return NextResponse.json({ error: code, message }, { status });
+  return NextResponse.json(detail && code === 'SERVER_ERROR' && raw ? { error: code, message, detail: raw.slice(0, 300) } : { error: code, message }, { status });
 }
 
 /** Wrap a handler so thrown errors become clean JSON responses. */
-export function handler<A extends unknown[]>(fn: (...args: A) => Promise<Response>) {
+export function handler<A extends unknown[]>(fn: (...args: A) => Promise<Response>, detail = false) {
   return async (...args: A): Promise<Response> => {
     try {
       return await fn(...args);
     } catch (e) {
-      return errorResponse(e);
+      return errorResponse(e, detail);
     }
   };
 }

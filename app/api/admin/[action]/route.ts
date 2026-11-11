@@ -53,7 +53,9 @@ function csv(rows: (string | number | null)[][]) {
 }
 
 // ----------------------------------------------------------------- GET
-export const GET = handler(async (req: Request, ctx: Ctx) => {
+const adminHandler: typeof handler = (fn) => handler(fn, true);   // admins also see the technical reason of an unexpected error
+
+export const GET = adminHandler(async (req: Request, ctx: Ctx) => {
   const { action } = await ctx.params;
   const sb = db();
   const url = new URL(req.url);
@@ -420,7 +422,7 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
 });
 
 // ---------------------------------------------------------------- POST
-export const POST = handler(async (req: Request, ctx: Ctx) => {
+export const POST = adminHandler(async (req: Request, ctx: Ctx) => {
   checkOrigin(req);
   const { action } = await ctx.params;
   const sb = db();
@@ -810,20 +812,21 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
         const { data: ph } = await sb.from('selfie_photos').select('id, image_url').eq('team_id', id).eq('is_test', false);
         for (const x of (ph ?? []) as any[]) { await sb.from('selfie_photos').delete().eq('id', x.id); await removePublicFile('selfies', x.image_url); removed++; }
       }
-      const { error } = await sb.from('teams').update(excluded ? { selfie_excluded: true, selfie_active: false, selfie_started_at: null } : { selfie_excluded: false }).eq('id', id);
+      const { error } = await sb.from('teams').update(excluded ? { selfie_excluded: true, selfie_active: false, selfie_started_at: null, selfie_color: null } : { selfie_excluded: false }).eq('id', id);
       if (error) throw error;
       await audit(role, 'selfie.team.exclude', { team_id: id, excluded, removedPhotos: removed });
       return ok({ removed });
     }
     case 'selfie.team.color': {
       // One colour per team, never the same twice, and never so close that one photo could satisfy two teams.
-      const { data: teams } = await sb.from('teams').select('id, name, selfie_color, selfie_excluded').eq('selfie_excluded', false).order('name');   // committee / test teams need no colour
-      const all = (teams ?? []) as any[];
+      const { data: every } = await sb.from('teams').select('id, name, selfie_color, selfie_excluded').order('name');
+      const all = ((every ?? []) as any[]).filter((t) => !t.selfie_excluded);   // committee / test teams need no colour
       if (body.assign === 'random') {
         const picks = pickDistinctColors(all.length);
         if (picks.length < all.length) throw new HttpError(400, 'BAD_INPUT');   // more teams than distinct colours: set them by hand
         // clear first so the unique index never trips while colours move between teams
-        const c = await sb.from('teams').update({ selfie_color: null }).eq('selfie_excluded', false);
+        // free every colour first (also any left on committee / test teams) so the unique index never trips while colours move around
+        const c = await sb.from('teams').update({ selfie_color: null }).not('id', 'is', null);
         if (c.error) throw c.error;
         for (let i = 0; i < all.length; i++) {
           const { error } = await sb.from('teams').update({ selfie_color: picks[i] }).eq('id', all[i].id);
@@ -833,7 +836,7 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
         return ok({ colors: all.map((t, i) => ({ id: t.id, color: picks[i] })) });
       }
       const id = str(body.team_id, 60);
-      const team = all.find((t) => t.id === id);
+      const team = ((every ?? []) as any[]).find((t) => t.id === id);
       if (!team) throw new HttpError(404, 'NOT_FOUND');
       if (body.color === null || body.color === '') {
         const { error } = await sb.from('teams').update({ selfie_color: null }).eq('id', id);
@@ -842,7 +845,7 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       }
       const color = str(body.color, 7).toLowerCase();
       if (!/^#[0-9a-f]{6}$/.test(color)) throw new HttpError(400, 'BAD_INPUT');
-      const clash = all.find((t) => t.id !== id && t.selfie_color && colorGap(color, t.selfie_color) < MIN_TEAM_COLOR_GAP);
+      const clash = ((every ?? []) as any[]).find((t) => t.id !== id && t.selfie_color && colorGap(color, t.selfie_color) < MIN_TEAM_COLOR_GAP);   // includes committee / test teams: the database refuses two teams with one colour
       if (clash) return NextResponse.json({ error: 'BAD_INPUT', message: `สีนี้ใกล้เคียงกับสีของทีม ${clash.name} เกินไป (ภาพเดียวอาจผ่านทั้งสองทีม) เลือกสีที่ต่างกันชัดเจนกว่านี้` }, { status: 400 });
       const { error } = await sb.from('teams').update({ selfie_color: color }).eq('id', id);
       if (error) throw error;

@@ -21,7 +21,7 @@ async function call<T = any>(action: string, body?: unknown): Promise<T> {
     signal: AbortSignal.timeout(20000),
   }).catch(() => { throw new Error('เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ลองรีเฟรชหน้า'); });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message ?? 'เกิดข้อผิดพลาด');
+  if (!res.ok) throw new Error((data.message ?? 'เกิดข้อผิดพลาด') + (data.detail ? ` [${data.detail}]` : ''));
   return data as T;
 }
 const uuid = () => crypto.randomUUID();
