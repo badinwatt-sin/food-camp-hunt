@@ -470,3 +470,39 @@ label.lbl { display: block; font-size: 14px; color: #5d6a80; margin: 10px 0 4px;
 .sw-mission .sw-chip { vertical-align: middle; }
 
 .sw-privacy { margin-top: 10px; font-size: 12.5px; line-height: 1.45; color: #5b6b7a; background: #f4f1e7; border-radius: 10px; padding: 8px 10px; }
+
+/* ---- notification bell ---- */
+.hero-row.has-bell { padding-right: 52px; }
+.hero-bell { position: absolute; top: 10px; right: 12px; z-index: 5; }
+.bell-wrap { position: relative; }
+.bell-btn { position: relative; width: 44px; height: 44px; border-radius: 50%; border: 2px solid rgba(31,47,77,.15); background: rgba(255,255,255,.92); font-size: 22px; line-height: 1; display: grid; place-items: center; cursor: pointer; padding: 0; box-shadow: 0 2px 6px rgba(31,47,77,.18); }
+.bell-btn.muted { opacity: .75; }
+.bell-badge { position: absolute; top: -4px; right: -4px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; background: #d63a3a; color: #fff; font-size: 12px; font-weight: 700; display: grid; place-items: center; border: 2px solid #fff; }
+.bell-scrim { position: fixed; inset: 0; z-index: 60; background: rgba(20,30,50,.28); }
+.bell-panel { position: fixed; z-index: 61; top: 60px; right: 10px; width: min(380px, calc(100vw - 20px)); max-height: calc(100vh - 80px); max-height: calc(100dvh - 80px); overflow-y: auto; background: #fff; color: var(--navy); border-radius: 16px; box-shadow: 0 10px 34px rgba(20,30,50,.35); padding: 12px; display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.bell-head { display: flex; align-items: center; justify-content: space-between; font-size: 16px; }
+.bell-x { border: 0; background: #eef1f5; border-radius: 50%; width: 34px; height: 34px; font-size: 15px; cursor: pointer; }
+.bell-switch { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 10px; background: #f3f7f1; border-radius: 12px; font-size: 14px; cursor: pointer; }
+.bell-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.bell-switch i { flex: none; width: 46px; height: 26px; border-radius: 13px; background: #b8c0cc; position: relative; transition: background .15s; }
+.bell-switch i::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+.bell-switch input:checked + i { background: var(--forest); }
+.bell-switch input:checked + i::after { transform: translateX(20px); }
+.bell-switch input:focus-visible + i { outline: 3px solid var(--amber); }
+.bell-note { font-size: 12.5px; color: #6b7a88; padding: 0 4px; }
+.bell-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; min-height: 60px; max-height: 46vh; }
+.bell-empty { text-align: center; color: #8a96a3; padding: 22px 0; font-size: 14px; }
+.bell-item { display: flex; gap: 9px; align-items: flex-start; text-align: left; border: 1px solid #e6ebf0; background: #fff; border-radius: 12px; padding: 9px 10px; cursor: pointer; width: 100%; font: inherit; color: inherit; }
+.bell-item.new { background: #fff7e0; border-color: #f0c36a; }
+.bi-ic { font-size: 20px; flex: none; line-height: 1.2; }
+.bi-tx { display: flex; flex-direction: column; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
+.bi-tx b { font-size: 14px; line-height: 1.3; }
+.bi-tx em { font-style: normal; font-size: 13px; color: #44546a; line-height: 1.35; }
+.bi-tx small { font-size: 11.5px; color: #8a96a3; }
+.bell-foot { display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap; }
+.bell-manage { display: flex; flex-direction: column; gap: 7px; border-top: 1px dashed #cfd6de; padding-top: 9px; }
+.bell-manage input, .bell-manage select { width: 100%; padding: 9px 10px; border: 1.5px solid #cfd6de; border-radius: 10px; font: inherit; font-size: 14px; min-height: 42px; background: #fff; }
+.bell-toast { position: fixed; top: 62px; right: 10px; width: min(290px, calc(100vw - 24px)); z-index: 62; background: var(--navy); color: #fff; border: 0; border-radius: 12px; padding: 9px 12px; text-align: left; display: flex; flex-direction: column; gap: 2px; font: inherit; font-size: 13.5px; box-shadow: 0 6px 18px rgba(20,30,50,.4); cursor: pointer; animation: bellIn .25s ease-out; }
+.bell-toast span { font-size: 12.5px; opacity: .85; }
+@keyframes bellIn { from { transform: translateY(-6px); opacity: 0; } to { transform: none; opacity: 1; } }
+.hero-actions .bell-wrap { display: flex; }

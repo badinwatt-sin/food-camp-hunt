@@ -8,6 +8,7 @@ import { ApiError, api } from '@/lib/client-api';
 import MiniGames from '@/components/MiniGames';
 import SelfieWall from '@/components/SelfieWall';
 import AppIcon from '@/components/AppIcon';
+import NotifyBell from '@/components/NotifyBell';
 import LineCheckin, { LineInvitationProvider, useLineInvitation } from '@/components/LineCheckin';
 import LineLogo from '@/components/LineLogo';
 import type { LineStatus } from '@/lib/line-types';
@@ -166,6 +167,11 @@ function PlayerPage() {
     noticeStore.onClose = () => { load(); };
     noticeStore.onCheckin = () => setView('checkin');
     noticeStore.onSelfie = () => setView('selfie');
+    noticeStore.onGo = (l) => {
+      if (l === 'hunt') { setHuntTab('hunt'); setView('hunt'); }
+      else if (l === 'activities') { setHuntTab('puzzle'); setView('hunt'); }
+      else if (l === 'selfie' || l === 'checkin' || l === 'market') setView(l);
+    };
     let stop = false;
     const tick = async () => {
       if (document.visibilityState === 'hidden' || noticeStore.get()) return;
@@ -186,7 +192,7 @@ function PlayerPage() {
     const t = setInterval(tick, 15000);
     const vis = () => { if (document.visibilityState === 'visible') tick(); };
     document.addEventListener('visibilitychange', vis);
-    return () => { stop = true; clearInterval(t); document.removeEventListener('visibilitychange', vis); noticeStore.onClose = undefined; noticeStore.onCheckin = undefined; noticeStore.onSelfie = undefined; };
+    return () => { stop = true; clearInterval(t); document.removeEventListener('visibilitychange', vis); noticeStore.onClose = undefined; noticeStore.onCheckin = undefined; noticeStore.onSelfie = undefined; noticeStore.onGo = undefined; };
   }, [loggedIn, load]);
 
   // If every question is answered but the finish step didn't run (e.g. connection dropped), finish now.
@@ -1009,6 +1015,7 @@ const noticeStore = {
   onClose: undefined as (() => void) | undefined,
   onCheckin: undefined as (() => void) | undefined,
   onSelfie: undefined as (() => void) | undefined,
+  onGo: undefined as ((link: string) => void) | undefined,
   get() { return noticeStore.current; },
   set(n: PhotoNotice | CheckinNotice | SelfieNotice | SelfieRejectNotice | null) { noticeStore.current = n; noticeStore.listeners.forEach((l) => l()); },
   subscribe(l: () => void) { noticeStore.listeners.add(l); return () => { noticeStore.listeners.delete(l); }; },
@@ -1106,7 +1113,7 @@ function Shell({ children, subtitle, onHome, suppressNotices = false }: { childr
   const invitation = useLineInvitation();
   return (
     <div className="app player-shell">
-      <Hero subtitle={subtitle} onHome={onHome} />
+      <Hero subtitle={subtitle} onHome={onHome} bell={<NotifyBell mode="player" onGo={(l) => noticeStore.onGo?.(l)} />} />
       <main className="main player-main">{invitation?.isObserver && <div className="observer-note" role="status">👁 คณะทำงาน · ดูความเคลื่อนไหวของทีม ข้อมูลของคุณไม่รวมในการนับสมาชิกและคะแนน</div>}{children}</main>
       {!suppressNotices && !invitation?.promptOpen && <NoticeModal />}
     </div>

@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto';
 import { db } from '@/lib/supabase';
 import { requireMember } from '@/lib/player';
 import { removePublicFile, sniffImage } from '@/lib/avatars';
+import { notifyAll } from '@/lib/notify';
 import { checkOrigin, handler, HttpError, ok, rateLimit } from '@/lib/http';
 
 /**
@@ -37,5 +38,13 @@ export const POST = handler(async (req: Request) => {
     if (error) throw error;
   }
   if (data?.replaced && data.old_url) await removePublicFile('mission-photos', data.old_url); // the pending photo that was swapped out
+  if (!data.already) {
+    const { data: m } = await sb.from('photo_missions').select('title').eq('id', missionId).maybeSingle();
+    const title = (m as any)?.title ?? 'ภารกิจทีม';
+    await notifyAll([
+      { audience: 'team', teamId: p.team_id, kind: 'photo', title: `📸 ส่งภาพ “${title}” แล้ว`, body: 'รอทีมงานตรวจสอบ', link: 'activities' },
+      { audience: 'admin', kind: 'photo', title: `📸 ${p.teams?.name ?? 'ทีม'} ส่งภาพรอตรวจ`, body: `${title} · โดย ${p.nick_name || p.name}` },
+    ]);
+  }
   return ok({ already: !!data.already, status: data.status, replaced: !!data.replaced, tokens: data.tokens, url: data.already ? null : url });
 });

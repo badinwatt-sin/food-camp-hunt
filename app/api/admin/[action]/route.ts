@@ -11,6 +11,7 @@ import { BULK_CONFIRM, BULK_PLANS, type BulkTarget } from '@/lib/bulk';
 import { resetLineForBulk } from '@/lib/bulk-reset';
 import { isLiveTeam } from '@/lib/live-board';
 import { isLineGroupUrl, LINE_GROUP_CODES } from '@/lib/line-types';
+import { notify, notifyAll } from '@/lib/notify';
 import { checkOrigin, handler, HttpError, ok, rateLimit, readJson } from '@/lib/http';
 import { SELFIE_SETTINGS_SELECT, publicSettings } from '@/lib/selfie/settings';
 import { aiEnabled } from '@/lib/selfie/ai';
@@ -88,6 +89,25 @@ export const GET = adminHandler(async (req: Request, ctx: Ctx) => {
       };
     }
     return ok({ games: out });
+  }
+
+  if (action === 'notify') {
+    await requireRole('staff');
+    const since = new Date(Date.now() - 3 * 24 * 3600 * 1000).toISOString();
+    const [{ data: rows }, { data: st }, { data: teams }] = await Promise.all([
+      sb.from('notifications').select('id, created_at, audience, team_id, kind, title, body').gte('created_at', since).order('id', { ascending: false }).limit(60),
+      sb.from('game_settings').select('notify_enabled').eq('id', 1).single(),
+      sb.from('teams').select('id, name').order('name'),
+    ]);
+    const tn = new Map((teams ?? []).map((t: any) => [t.id, t.name]));
+    return ok({
+      enabled: (st as any)?.notify_enabled !== false,
+      teams: (teams ?? []).map((t: any) => ({ id: t.id, name: t.name })),
+      items: ((rows ?? []) as any[]).map((r) => ({
+        id: r.id, kind: r.kind, title: r.title, body: r.body, at: r.created_at,
+        to: r.audience === 'all' ? 'ผู้เล่นทุกคน' : r.audience === 'team' ? `ทีม ${tn.get(r.team_id) ?? ''}` : r.audience === 'user' ? 'ผู้เล่น 1 คน' : 'ผู้จัด',
+      })),
+    });
   }
 
   if (action === 'selfie') {
@@ -511,6 +531,7 @@ export const POST = adminHandler(async (req: Request, ctx: Ctx) => {
     if (del.error) throw del.error;
     await removePublicFile('selfies', ph.image_url);
     await audit(r3, 'selfie.reject', { participant_id: ph.participant_id, reason });
+    await notify({ audience: 'user', participantId: ph.participant_id, kind: 'selfie', title: '🤳 Selfie ของคุณยังไม่ผ่าน', body: reason, link: 'selfie' });
     return ok();
   }
 
@@ -520,11 +541,15 @@ export const POST = adminHandler(async (req: Request, ctx: Ctx) => {
     const r2 = await requireRole('staff');
     const id = need(str(body.id));
     const approve = body.approve === true;
-    const { data: cur } = await sb.from('photo_submissions').select('status').eq('id', id).maybeSingle();
+    const { data: cur } = await sb.from('photo_submissions').select('status, team_id, photo_missions(title)').eq('id', id).maybeSingle() as { data: any };
     if (!cur) throw new HttpError(404, 'NOT_FOUND');
     if (cur.status === 'approved' && !approve && r2 !== 'admin') throw new HttpError(403, 'FORBIDDEN');
     const { data, error } = await sb.rpc('review_photo', { p_submission: id, p_approve: approve, p_reason: str(body.reason, 200), p_actor: r2 });
     if (error) throw error;
+    const mTitle = cur.photo_missions?.title ?? 'ภารกิจทีม';
+    if (cur.status !== (approve ? 'approved' : 'rejected')) await notify(approve
+      ? { audience: 'team', teamId: cur.team_id, kind: 'photo', title: `✅ ภาพ “${mTitle}” ผ่านแล้ว`, body: `ทีมได้ +${data?.tokens ?? 0} โทเคน`, link: 'activities' }
+      : { audience: 'team', teamId: cur.team_id, kind: 'photo', title: `📸 ภาพ “${mTitle}” ยังไม่ผ่าน`, body: str(body.reason, 200) || 'ลองถ่ายส่งใหม่อีกครั้ง', link: 'activities' });
     return ok(data);
   }
 
@@ -890,6 +915,36 @@ export const POST = adminHandler(async (req: Request, ctx: Ctx) => {
       await audit(role, 'selfie.remove', { participant_id: ph.participant_id });
       return ok();
     }
+    case 'notify.send': {
+      // Admin message to everyone or to one team: shows in the bell (and as a small banner while the app is open).
+      const title = need(str(body.title, 120));
+      const text = str(body.body, 300);
+      const teamId = str(body.team_id, 60);
+      if (teamId) {
+        const { data: t } = await sb.from('teams').select('id').eq('id', teamId).maybeSingle();
+        if (!t) throw new HttpError(404, 'NOT_FOUND');
+      }
+      const { error } = await sb.from('notifications').insert({
+        audience: teamId ? 'team' : 'all', team_id: teamId || null, kind: 'announce', title: `📣 ${title}`, body: text,
+      });
+      if (error) throw error;
+      await audit(role, 'notify.send', { title, team_id: teamId || null });
+      return ok();
+    }
+    case 'notify.set': {
+      // Master switch: with it off players do not see the bell at all (organisers still do).
+      if (typeof body.enabled !== 'boolean') throw new HttpError(400, 'BAD_INPUT');
+      const { error } = await sb.from('game_settings').update({ notify_enabled: body.enabled }).eq('id', 1);
+      if (error) throw error;
+      await audit(role, 'notify.set', { enabled: body.enabled });
+      return ok();
+    }
+    case 'notify.clear': {
+      const { error } = await sb.from('notifications').delete().gte('id', 0);
+      if (error) throw error;
+      await audit(role, 'notify.clear', {});
+      return ok();
+    }
     case 'checkin.set': {
       // Open/close event-day check-in, re-announce it to players, or make a new QR code (the old one stops working).
       const { data: cur } = await sb.from('game_settings').select('checkin_open, checkin_code').eq('id', 1).single();
@@ -904,6 +959,7 @@ export const POST = adminHandler(async (req: Request, ctx: Ctx) => {
       const { error } = await sb.from('game_settings').update(patch).eq('id', 1);
       if (error) throw error;
       await audit(role, 'checkin.set', { open: patch.checkin_open ?? null, announce: body.announce === true, regenerate: body.regenerate === true });
+      if (patch.checkin_open === true || body.announce === true) await notify({ audience: 'all', kind: 'checkin', title: '📍 เปิดเช็กอินวันงานแล้ว', body: 'สแกน QR ของทีมงานแล้วกดยืนยันว่าอยู่ที่งาน', link: 'checkin' });
       return ok();
     }
     case 'leader.set': {

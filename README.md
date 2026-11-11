@@ -298,3 +298,12 @@ public/placeholders/     labelled placeholder question images
 ## 11. Out of scope on purpose
 
 No leaderboards, social sharing, extra mini-games, payments or email. The first version only does this one game.
+
+## Notification bell (🔔)
+
+Players and organisers have a bell in the header: unread badge, list of the last 3 days, "mark all read" and an on/off switch
+(on/off is remembered per device). Messages are rows in `notifications` (audience `all` / `team` / `user` / `admin`).
+Written automatically for: admin announcements, check-in opened, photo missions (sent / approved / rejected), treasure spots found,
+selfie progress and rejections, shop redemptions. Admin → bell → "⚙️ ส่งประกาศ / ตั้งค่า" sends an announcement to everyone or one team,
+switches the bell off for all players (`game_settings.notify_enabled`) and clears the list.
+Existing project: run `supabase/notify.sql` once (idempotent; `schema.sql` already includes it).

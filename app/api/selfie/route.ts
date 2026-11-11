@@ -7,6 +7,7 @@ import { selfieStatus } from '@/lib/selfie/status';
 import { SELFIE_SETTINGS_SELECT, publicSettings, selfieAccess } from '@/lib/selfie/settings';
 import { analyzeSelfie, samePicture } from '@/lib/selfie/analyze';
 import { aiCheckSelfie, aiEnabled } from '@/lib/selfie/ai';
+import { notifyAll } from '@/lib/notify';
 import { colorName } from '@/lib/selfie/color';
 import { nearFaces, parseFace } from '@/lib/selfie/face';
 
@@ -99,5 +100,14 @@ export const POST = handler(async (req: Request) => {
   const { data, error } = await sb.rpc(test ? 'submit_selfie_test' : 'submit_selfie', { p_participant: p.id, p_url: url, p_pct: Math.round(pct * 10) / 10, p_checks: checks });
   if (error) { await removePublicFile('selfies', url); throw error; }
   if (data?.oldUrl) await removePublicFile('selfies', data.oldUrl);
-  return ok({ accepted: true, pct: Math.round(pct), need: s.percent, url, ...data, test, status: await selfieStatus(p) });
+  const status = await selfieStatus(p);
+  if (!test && status) {
+    const who = p.nick_name || p.name;
+    const t = status.team;
+    await notifyAll([
+      { audience: 'team', teamId: p.team_id, kind: 'selfie', title: t.complete ? '🎉 ทีมถ่าย Selfie ครบทุกคนแล้ว!' : `🤳 ${who} ส่ง Selfie แล้ว`, body: `ทีมของเรา ${t.count}/${t.total} คน`, link: 'selfie' },
+      { audience: 'admin', kind: 'selfie', title: t.complete ? `🎉 ${p.teams?.name ?? 'ทีม'} ถ่าย Selfie ครบแล้ว` : `🤳 ${p.teams?.name ?? 'ทีม'}: ${who} ส่ง Selfie`, body: `${t.count}/${t.total} คน` },
+    ]);
+  }
+  return ok({ accepted: true, pct: Math.round(pct), need: s.percent, url, ...data, test, status });
 });

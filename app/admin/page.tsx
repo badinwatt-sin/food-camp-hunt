@@ -7,6 +7,7 @@ import WeeklyMissions from '@/components/admin/WeeklyMissions';
 import LineLogo from '@/components/LineLogo';
 import { BULK_CONFIRM } from '@/lib/bulk';
 import SelfieAdmin from '@/components/SelfieAdmin';
+import NotifyBell from '@/components/NotifyBell';
 import { MARKET_CATS, marketCat } from '@/lib/market-cats';
 import { useVisibleRefresh } from '@/lib/use-visible-refresh';
 
@@ -103,6 +104,7 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
     <>
       <Hero compact title="Food Camp Hunt" subtitle={`แดชบอร์ดผู้จัด · ${role === 'admin' ? 'Admin' : 'Staff'}`}
         actions={<>
+          <NotifyBell mode="admin" call={call} />
           <a className="btn small" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }} href="/admin/live" target="_blank" rel="noreferrer">📺 จอใหญ่ (Live)</a>
           <button className="btn small" onClick={onLogout}>ออกจากระบบ</button>
         </>} />

@@ -126,7 +126,7 @@ export function CampTent({ size = 80 }: { size?: number }) {
 }
 
 /** Daytime camp header: sky, sun, clouds, green hills, pines, an earth-tone tent, a campfire pot and carrots. */
-export function Hero({ subtitle, onHome, compact, actions, title }: { subtitle?: string; onHome?: () => void; compact?: boolean; actions?: React.ReactNode; title?: string }) {
+export function Hero({ subtitle, onHome, compact, actions, title, bell }: { subtitle?: string; onHome?: () => void; compact?: boolean; actions?: React.ReactNode; title?: string; bell?: React.ReactNode }) {
   return (
     <header className={`hero${compact ? ' compact' : ''}`}>
       <svg className="hero-scene" viewBox="0 0 480 170" preserveAspectRatio="xMidYMax slice" aria-hidden>
@@ -143,7 +143,7 @@ export function Hero({ subtitle, onHome, compact, actions, title }: { subtitle?:
           <path key={k} d={`M${x} ${y - 32} ${x + 11} ${y} ${x - 11} ${y}z M${x} ${y - 21} ${x + 14} ${y + 8} ${x - 14} ${y + 8}z`} fill="#2f6b4a" />
         ))}
       </svg>
-      <div className="hero-row">
+      <div className={`hero-row${bell ? ' has-bell' : ''}`}>
         {onHome && (
           <button className="home-btn" onClick={onHome} aria-label="กลับหน้าหลัก" title="หน้าหลัก"><HomeIcon size={24} /></button>
         )}
@@ -154,6 +154,7 @@ export function Hero({ subtitle, onHome, compact, actions, title }: { subtitle?:
         </div>
         {actions && <div className="hero-actions">{actions}</div>}
       </div>
+      {bell && <div className="hero-bell">{bell}</div>}
       <div className="deco" aria-hidden>
         <Carrot size={30} />
         <CampTent size={74} />

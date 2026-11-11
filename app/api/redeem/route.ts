@@ -1,5 +1,6 @@
 import { db } from '@/lib/supabase';
 import { requireMember } from '@/lib/player';
+import { notifyAll } from '@/lib/notify';
 import { checkOrigin, handler, HttpError, ok, rateLimit, readJson } from '@/lib/http';
 
 /**
@@ -26,5 +27,11 @@ export const POST = handler(async (req: Request) => {
     p_actor: `leader:${p.nick_name || p.name}`.slice(0, 80),
   });
   if (error) throw error;
+  if (!data.already) {
+    await notifyAll([
+      { audience: 'team', teamId: p.team_id, kind: 'shop', title: '🛒 ทีมแลกของรางวัลแล้ว', body: `ใช้ ${data.total_cost} โทเคน · คงเหลือ ${data.balance}`, link: 'market' },
+      { audience: 'admin', kind: 'shop', title: `🛒 ${p.teams?.name ?? 'ทีม'} แลกของ`, body: `${data.total_cost} โทเคน · โดย ${p.nick_name || p.name}` },
+    ]);
+  }
   return ok({ already: !!data.already, totalCost: data.total_cost, balance: data.balance });
 });
