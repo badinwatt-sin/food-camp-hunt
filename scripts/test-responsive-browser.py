@@ -35,7 +35,7 @@ def me_fixture():
 
 
 def member(mid,name,leader=False,observer=False,squad=None):
-    return dict(id=mid,name=name,isLeader=leader,isMe=mid==P1,isObserver=observer,squad=squad,squadId=SQ if squad else None,lineJoined=mid!=P2,quizDone=False,avatarUrl=None,avatarEmoji='🌻')
+    return dict(id=mid,name=name,fullName=name+' ชื่อจริงทดสอบ',isLeader=leader,isMe=mid==P1,isObserver=observer,squad=squad,squadId=SQ if squad else None,lineJoined=mid!=P2,quizDone=False,avatarUrl=None,avatarEmoji='🌻')
 
 
 class Fixture:
@@ -154,6 +154,8 @@ def player_flow(browser,audit,width):
     page.goto(BASE);expect(page.get_by_role('heading',name=NAME,exact=True)).to_be_visible()
     audit.snapshot(page,'user-home',width,shot=width in [320,390,1440])
     click(page,'สมาชิกในทีม');expect(page.get_by_role('heading',name='สมาชิกทีม '+TEAM,exact=True)).to_be_visible()
+    for person in f.team['members']:
+        expect(page.get_by_text(person['fullName'],exact=True)).to_be_visible()
     audit.snapshot(page,'user-team',width,shot=width in [320,390])
     if width in [390,1440]:
         field=page.get_by_label('ชื่อ Squad ใหม่',exact=True);field.fill('กลุ่มครัวสีเขียว')

@@ -288,6 +288,7 @@ label.lbl { display: block; font-size: 14px; color: #5d6a80; margin: 10px 0 4px;
 .line-progress-status { font-size: 16px; color: #2e5140; }
 .team-member-row { align-items: flex-start !important; }
 .team-member-info { flex: 1; min-width: 0; }
+.team-member-full-name { margin-top: 2px; font-size: 13px; line-height: 1.5; color: #6b7280; overflow-wrap: anywhere; }
 .line-member-state { font-size: 13px; color: #717a86; margin-top: 3px; }
 .line-member-state.joined { color: #23834a; }
 .squad-member-control { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 7px; margin-top: 9px; font-size: 12px; }

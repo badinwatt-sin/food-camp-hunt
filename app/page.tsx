@@ -812,7 +812,7 @@ function AvatarSheet({ me, onClose, onSaved, onAuthLost }: { me: Me; onClose: ()
 
 /** The team screen leads with LINE participation and keeps staff outside every denominator. */
 function TeamView({ me, onAuthLost }: { me: Me; onAuthLost: (e: unknown) => void }) {
-  type Member = { id?: string; name: string; isLeader: boolean; isMe: boolean; isObserver?: boolean;
+  type Member = { id?: string; name: string; fullName?: string | null; isLeader: boolean; isMe: boolean; isObserver?: boolean;
     squad: string | null; squadId?: string | null; quizDone: boolean; lineJoined: boolean; avatarUrl: string | null; avatarEmoji: string | null };
   type TeamData = { team: string; total: number; quizDone: number; squads: string[]; members: Member[];
     squadOptions?: { id: string; name: string }[]; canManageSquads?: boolean; observerTotal?: number;
@@ -868,26 +868,32 @@ function TeamView({ me, onAuthLost }: { me: Me; onAuthLost: (e: unknown) => void
     ...d.squads.map((name) => ({ title: name, list: members.filter((m) => !m.isLeader && m.squad === name) })),
     { title: 'ยังไม่ได้อยู่ Squad', list: members.filter((m) => !m.isLeader && !m.squad) },
   ].filter((group) => group.list.length);
-  const row = (m: Member, index: number) => (
-    <div className="m-row team-member-row" key={m.id ?? index}>
-      <div className={`m-av ${m.isLeader ? 'leader' : ''}`} aria-hidden><Avatar url={m.avatarUrl} emoji={m.avatarEmoji} name={m.name} /></div>
-      <div className="team-member-info">
-        <strong>{m.name}</strong>{m.isMe && <span className="me-tag">คุณ</span>}
-        <div className="muted" style={{ fontSize: 13 }}>{m.isObserver ? 'คณะทำงาน · ดูความเคลื่อนไหวของทีม' : m.isLeader ? '⭐ หัวหน้าทีม' : 'สมาชิกทีม'}</div>
-        {!m.isObserver && <div className={`line-member-state ${m.lineJoined ? 'joined' : ''}`}>{m.lineJoined ? '✓ เข้า LINE แล้ว' : 'ยังไม่ได้เข้ากลุ่ม LINE'}</div>}
-        {canManage && !m.isObserver && m.id && <label className="squad-member-control">
-          <span>Squad</span>
-          <select aria-label={`Squad ของ ${m.name}`} value={m.squadId ?? ''} disabled={!!saving}
-            onChange={(event) => void assignSquad(m, event.target.value)}>
-            <option value="">ยังไม่กำหนด Squad</option>
-            {squadOptions.map((squad) => <option key={squad.id} value={squad.id}>{squad.name}</option>)}
-          </select>
-          {saving === m.id && <span className="muted">กำลังบันทึก…</span>}
-        </label>}
-        {!canManage && !m.isObserver && m.squad && <span className="muted" style={{ fontSize: 13 }}>Squad {m.squad}</span>}
+  const row = (m: Member, index: number) => {
+    const fullName = m.fullName?.trim();
+    const secondaryName = fullName && fullName !== m.name.trim() ? fullName : null;
+    const fullNameId = secondaryName && m.id ? `team-member-full-name-${m.id}` : undefined;
+    return (
+      <div className="m-row team-member-row" key={m.id ?? index}>
+        <div className={`m-av ${m.isLeader ? 'leader' : ''}`} aria-hidden><Avatar url={m.avatarUrl} emoji={m.avatarEmoji} name={m.name} /></div>
+        <div className="team-member-info">
+          <strong>{m.name}</strong>{m.isMe && <span className="me-tag">คุณ</span>}
+          {secondaryName && <div className="team-member-full-name" id={fullNameId}>{secondaryName}</div>}
+          <div className="muted" style={{ fontSize: 13 }}>{m.isObserver ? 'คณะทำงาน · ดูความเคลื่อนไหวของทีม' : m.isLeader ? '⭐ หัวหน้าทีม' : 'สมาชิกทีม'}</div>
+          {!m.isObserver && <div className={`line-member-state ${m.lineJoined ? 'joined' : ''}`}>{m.lineJoined ? '✓ เข้า LINE แล้ว' : 'ยังไม่ได้เข้ากลุ่ม LINE'}</div>}
+          {canManage && !m.isObserver && m.id && <label className="squad-member-control">
+            <span>Squad</span>
+            <select aria-label={`Squad ของ ${m.name}`} aria-describedby={fullNameId} value={m.squadId ?? ''} disabled={!!saving}
+              onChange={(event) => void assignSquad(m, event.target.value)}>
+              <option value="">ยังไม่กำหนด Squad</option>
+              {squadOptions.map((squad) => <option key={squad.id} value={squad.id}>{squad.name}</option>)}
+            </select>
+            {saving === m.id && <span className="muted">กำลังบันทึก…</span>}
+          </label>}
+          {!canManage && !m.isObserver && m.squad && <span className="muted" style={{ fontSize: 13 }}>Squad {m.squad}</span>}
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
   return (
     <>
       <div className="card team-line-summary">

@@ -365,3 +365,42 @@ test('an existing player session reads the current team label on every request',
   assert.equal(queries.length, 2);
   assert.ok(queries.every(q => q.columns.includes('teams(name)')));
 });
+
+
+test('team roster exposes full names separately without changing identity, roles, squads or activity counts', async () => {
+  const people = [
+    { id: 'leader', team_id: 'team', name: 'อรุณ ทดสอบ', nick_name: 'กอล์ฟ', is_leader: true, squad_id: 'squad', line_joined_at: '2026-11-11T09:00:00Z', status: 'completed', code_hash: 'private' },
+    { id: 'member', team_id: 'team', name: 'กานต์ ทดสอบ', nick_name: 'กอล์ฟ', squad_id: 'squad', status: 'not_started', login_id: 'PRIVATE-ID' },
+    { id: 'fallback', team_id: 'team', name: 'ชื่อจริงไม่มีชื่อเล่น', nick_name: null, status: 'not_started' },
+    { id: 'observer', team_id: 'team', name: 'คณะทำงาน ทดสอบ', nick_name: 'แอน', is_observer: true, is_leader: true, line_joined_at: '2026-11-11T09:00:00Z', status: 'completed' },
+    { id: 'outsider', team_id: 'other-team', name: 'สมาชิกทีมอื่น', nick_name: 'นอกทีม' },
+  ];
+  const filters = [];
+  const { GET } = loadModule('../app/api/team/route.ts', {
+    '@/lib/http': httpModule(),
+    '@/lib/player': { requirePlayer: async () => ({ id: 'leader', team_id: 'team', teams: { name: 'ทีมครัว' }, is_leader: true, is_observer: false }) },
+    '@/lib/supabase': { db: () => ({ from(table) {
+      let teamId;
+      const query = {
+        select() { return query; },
+        eq(key, value) { assert.equal(key, 'team_id'); filters.push([table, value]); teamId = value; return query; },
+        order() { return query; },
+        then(resolve, reject) { return Promise.resolve({ data: table === 'participants' ? people.filter(p => p.team_id === teamId) : [{ id: 'squad', name: 'ครัวหนึ่ง' }], error: null }).then(resolve, reject); },
+      };
+      return query;
+    } }) },
+  });
+  const response = await GET();
+  assert.equal(response.status, 200);
+  const data = await response.json();
+  assert.deepEqual(filters, [['participants', 'team'], ['squads', 'team']]);
+  const member = data.members.find(m => m.id === 'member');
+  assert.deepEqual([member.name, member.fullName, member.squadId, member.squad], ['กอล์ฟ', 'กานต์ ทดสอบ', 'squad', 'ครัวหนึ่ง']);
+  assert.equal(data.members[0].id, 'leader');
+  assert.equal(data.members.find(m => m.id === 'fallback').name, 'ชื่อจริงไม่มีชื่อเล่น');
+  assert.equal(data.members.find(m => m.id === 'observer').fullName, 'คณะทำงาน ทดสอบ');
+  assert.equal(data.members.find(m => m.id === 'observer').isLeader, false);
+  assert.deepEqual([data.total, data.observerTotal, data.quizDone, data.canManageSquads], [3, 1, 1, true]);
+  assert.deepEqual(data.line, { joined: 1, total: 3, missing: 2, missingPct: 66.7 });
+  assert.ok(!JSON.stringify(data).includes('private') && !JSON.stringify(data).includes('PRIVATE-ID') && !JSON.stringify(data).includes('outsider'));
+});
