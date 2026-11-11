@@ -91,7 +91,7 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     await requireRole('staff');
     const [{ data: st }, { data: teams }, { data: people }, { data: photos }] = await Promise.all([
       sb.from('game_settings').select(SELFIE_SETTINGS_SELECT).eq('id', 1).single(),
-      sb.from('teams').select('id, name, selfie_color, selfie_active, selfie_started_at, selfie_completed_at, selfie_finish_rank, selfie_reward_tokens').order('name'),
+      sb.from('teams').select('id, name, selfie_color, selfie_active, selfie_excluded, selfie_started_at, selfie_completed_at, selfie_finish_rank, selfie_reward_tokens').order('name'),
       sb.from('participants').select('id, team_id, name, nick_name, is_observer').order('name'),
       sb.from('selfie_photos').select('id, participant_id, team_id, image_url, color_pct, checks, created_at, is_test').order('created_at'),
     ]);
@@ -106,12 +106,15 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
       const ph = photoOf(m.id, test);
       return { id: m.id, name: m.nick_name || m.name, fullName: m.name, isObserver: !!m.is_observer, photoId: ph?.id ?? null, photoUrl: ph?.image_url ?? null, pct: ph?.color_pct ?? null, at: ph?.created_at ?? null, checks: ph?.checks ?? null, similarTo: ph ? similar(ph) : [] };
     };
-    const judges = (people ?? []).filter((m: any) => m.is_observer).map((m: any) => member(m, true));
+    const excluded = new Set((teams ?? []).filter((t: any) => t.selfie_excluded).map((t: any) => t.id));
+    // judges = every observer + every member of a committee / test team (those teams are not on the real board at all)
+    const judges = (people ?? []).filter((m: any) => m.is_observer || excluded.has(m.team_id)).map((m: any) => ({ ...member(m, true), isObserver: true }));
     return ok({
       settings, aiEnabled: aiEnabled(), palette: TEAM_PALETTE,
       judges: { members: judges, count: judges.filter((m: any) => m.photoUrl).length, total: judges.length },
       // real walls: competing members only. Committee/judges (observers) are never on a team's wall and never counted.
-      teams: (teams ?? []).map((t: any) => {
+      allTeams: (teams ?? []).map((t: any) => ({ id: t.id, name: t.name, excluded: !!t.selfie_excluded, members: (people ?? []).filter((m: any) => m.team_id === t.id).length })),
+      teams: (teams ?? []).filter((t: any) => !t.selfie_excluded).map((t: any) => {
         const members = (people ?? []).filter((m: any) => m.team_id === t.id && !m.is_observer).map((m: any) => member(m, false));
         const count = members.filter((m: any) => m.photoUrl).length;
         return { id: t.id, name: t.name, color: t.selfie_color ?? null, active: !!t.selfie_active, startedAt: t.selfie_started_at, members, count, total: members.length, complete: !!t.selfie_completed_at, rank: t.selfie_finish_rank, tokens: t.selfie_reward_tokens ?? 0, completedAt: t.selfie_completed_at };
@@ -782,8 +785,9 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       // 'teams' phase: start (or stop) the mission for one team. Starting announces it to that team only.
       const id = need(str(body.team_id, 60));
       const active = body.active === true;
-      const { data: t } = await sb.from('teams').select('id, name').eq('id', id).maybeSingle();
+      const { data: t } = await sb.from('teams').select('id, name, selfie_excluded').eq('id', id).maybeSingle();
       if (!t) throw new HttpError(404, 'NOT_FOUND');
+      if (t.selfie_excluded && active) return NextResponse.json({ error: 'BAD_INPUT', message: 'ทีมนี้เป็นทีมกรรมการ/ทดสอบ ไม่ร่วมภารกิจจริง' }, { status: 400 });
       const patch: Record<string, unknown> = { selfie_active: active };
       if (active) patch.selfie_started_at = new Date().toISOString();
       const { error } = await sb.from('teams').update(patch).eq('id', id);
@@ -791,15 +795,35 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       await audit(role, 'selfie.team.start', { team_id: id, active });
       return ok();
     }
+    case 'selfie.team.exclude': {
+      // Mark a whole team as committee / test: it never ranks, never earns tokens, never counts in the totals, and its members use the judges' wall.
+      const id = need(str(body.team_id, 60));
+      const excluded = body.excluded === true;
+      const { data: t } = await sb.from('teams').select('id, name, selfie_completed_at, selfie_finish_rank').eq('id', id).maybeSingle();
+      if (!t) throw new HttpError(404, 'NOT_FOUND');
+      if (excluded && (t.selfie_completed_at || t.selfie_finish_rank)) {
+        return NextResponse.json({ error: 'BAD_INPUT', message: 'ทีมนี้ถ่ายครบและได้อันดับ/รางวัลไปแล้ว กรุณาล้าง Selfie Wall (โซนอันตราย) ก่อน แล้วค่อยตั้งเป็นทีมกรรมการ' }, { status: 400 });
+      }
+      let removed = 0;
+      if (excluded) {
+        // photos taken for the real wall by this team's members do not belong to a committee team: take them down
+        const { data: ph } = await sb.from('selfie_photos').select('id, image_url').eq('team_id', id).eq('is_test', false);
+        for (const x of (ph ?? []) as any[]) { await sb.from('selfie_photos').delete().eq('id', x.id); await removePublicFile('selfies', x.image_url); removed++; }
+      }
+      const { error } = await sb.from('teams').update(excluded ? { selfie_excluded: true, selfie_active: false, selfie_started_at: null } : { selfie_excluded: false }).eq('id', id);
+      if (error) throw error;
+      await audit(role, 'selfie.team.exclude', { team_id: id, excluded, removedPhotos: removed });
+      return ok({ removed });
+    }
     case 'selfie.team.color': {
       // One colour per team, never the same twice, and never so close that one photo could satisfy two teams.
-      const { data: teams } = await sb.from('teams').select('id, name, selfie_color').order('name');
+      const { data: teams } = await sb.from('teams').select('id, name, selfie_color, selfie_excluded').eq('selfie_excluded', false).order('name');   // committee / test teams need no colour
       const all = (teams ?? []) as any[];
       if (body.assign === 'random') {
         const picks = pickDistinctColors(all.length);
         if (picks.length < all.length) throw new HttpError(400, 'BAD_INPUT');   // more teams than distinct colours: set them by hand
         // clear first so the unique index never trips while colours move between teams
-        const c = await sb.from('teams').update({ selfie_color: null }).not('id', 'is', null);
+        const c = await sb.from('teams').update({ selfie_color: null }).eq('selfie_excluded', false);
         if (c.error) throw c.error;
         for (let i = 0; i < all.length; i++) {
           const { error } = await sb.from('teams').update({ selfie_color: picks[i] }).eq('id', all[i].id);

@@ -25,7 +25,8 @@ const medal = (r: number | null | undefined) => (r === 1 ? '🥇' : r === 2 ? '�
 export default function SelfieWall({ onBalance, onAuthLost }: Props) {
   const [st, setSt] = useState<Status | null>(null);
   const [err, setErr] = useState('');
-  const [shoot, setShoot] = useState(false);
+  const [shoot, setShoot] = useState<{ file?: File } | null>(null);   // the camera screen; with `file` it opens straight on the preview of a picture picked from the gallery
+  const galleryInput = useRef<HTMLInputElement>(null);
   const [party, setParty] = useState<{ tokens: number; rank: number | null; test: boolean } | null>(null);
   const [showFrame, setShowFrame] = useState(false);
   const load = useCallback(async () => {
@@ -37,17 +38,26 @@ export default function SelfieWall({ onBalance, onAuthLost }: Props) {
   const s = st.settings, team = st.team, name = colorName(s.color);
   const onVerdict = (v: Verdict) => {
     if (v.status) setSt(v.status);
-    if (v.accepted) { setShoot(false); onBalance(); }
+    if (v.accepted) { setShoot(null); onBalance(); }
     if (v.accepted && v.justCompleted) setParty({ tokens: v.tokens ?? 0, rank: v.rank ?? null, test: !!v.test });
   };
   const canShoot = s.live && !st.me.readOnly && !team.complete;
+  /** The two ways to give a photo: take one now, or choose one that is already on the phone. */
+  const shootButtons = (label: string, primary = true) => (
+    <div className="sw-ways">
+      <button className={primary ? 'btn sw-cta' : 'btn ghost'} onClick={() => setShoot({})}>{label}</button>
+      <button className="btn ghost sw-gallery" onClick={() => galleryInput.current?.click()}>🖼️ เลือกรูปจากเครื่อง</button>
+    </div>
+  );
   const wallTitle = st.test ? 'Team Wall · ทดสอบกรรมการ' : 'Team Wall';
 
   return (
     <div className="sw" style={{ ['--sw-color' as string]: s.color }}>
       {party && <Celebration tokens={party.tokens} rank={party.rank} team={team.name} test={party.test} onDone={() => { setParty(null); setShowFrame(true); }} />}
       {showFrame && <FinalFrame st={st} onClose={() => setShowFrame(false)} />}
-      {shoot && <Camera settings={s} onClose={() => setShoot(false)} onVerdict={onVerdict} onAuthLost={onAuthLost} />}
+      <input ref={galleryInput} type="file" accept="image/*" style={{ display: 'none' }} aria-label="เลือกรูปจากเครื่อง"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) setShoot({ file: f }); e.target.value = ''; }} />
+      {shoot && <Camera key={shoot.file ? `f${shoot.file.name}${shoot.file.size}` : 'cam'} file={shoot.file} settings={s} onClose={() => setShoot(null)} onVerdict={onVerdict} onAuthLost={onAuthLost} />}
 
       {/* ---- 1) your task: the one thing to do, big and first */}
       <div className="card sw-hero">
@@ -67,7 +77,7 @@ export default function SelfieWall({ onBalance, onAuthLost }: Props) {
         ) : st.me.rejected && !st.me.photoUrl ? (
           <>
             <div className="sw-task-row"><span className="sw-task-ic">⚠️</span><div><h3>ทีมงานให้ถ่ายภาพใหม่</h3><div className="sw-why">เหตุผล: {st.me.rejected.reason}</div></div></div>
-            {canShoot && <button className="btn sw-cta" onClick={() => setShoot(true)}>📷 ถ่าย Selfie ใหม่</button>}
+            {canShoot && shootButtons('📷 ถ่าย Selfie ใหม่')}
           </>
         ) : st.me.photoUrl ? (
           <>
@@ -75,7 +85,7 @@ export default function SelfieWall({ onBalance, onAuthLost }: Props) {
               <img className="sw-task-thumb" src={st.me.photoUrl} alt="ภาพของฉัน" />
               <div><h3>✅ คุณถ่ายเสร็จแล้ว</h3><div className="muted">{team.complete ? 'ทีมของคุณครบทุกคนแล้ว' : `รอเพื่อนอีก ${team.total - team.count} คน · ภาพของคุณขึ้น Team Wall แล้ว`}</div></div>
             </div>
-            {canShoot && <button className="btn ghost sw-retake" onClick={() => setShoot(true)}>ไม่พอใจภาพ? ถ่ายใหม่</button>}
+            {canShoot && <div className="sw-retake">{shootButtons('📷 ถ่ายใหม่', false)}</div>}
           </>
         ) : (
           <>
@@ -89,7 +99,7 @@ export default function SelfieWall({ onBalance, onAuthLost }: Props) {
               <li><b>2</b><span>ถ่าย Selfie <strong>หน้าตรง คนเดียว</strong> ให้สีเต็มรอบตัว (ดูมิเตอร์สีตอนถ่าย)</span></li>
               <li><b>3</b><span>AI ตรวจให้ทันที ผ่านแล้วภาพขึ้น Team Wall</span></li>
             </ol>
-            {canShoot ? <button className="btn sw-cta" onClick={() => setShoot(true)}>📷 ถ่าย Selfie ของฉัน</button> : <div className="banner" style={{ margin: '10px 0 0' }}>{s.before ? `ภารกิจเริ่ม ${fmtDT(s.start)}` : s.after ? 'หมดเวลาแล้ว' : 'ยังไม่เปิดให้ถ่าย'}</div>}
+            {canShoot ? shootButtons('📷 ถ่าย Selfie ของฉัน') : <div className="banner" style={{ margin: '10px 0 0' }}>{s.before ? `ภารกิจเริ่ม ${fmtDT(s.start)}` : s.after ? 'หมดเวลาแล้ว' : 'ยังไม่เปิดให้ถ่าย'}</div>}
           </>
         )}
         {err && <div className="error" style={{ marginTop: 10 }}>{err}</div>}
@@ -131,7 +141,7 @@ export default function SelfieWall({ onBalance, onAuthLost }: Props) {
           {team.complete && <button className="btn small" onClick={() => setShowFrame(true)}>🎞️ ดูภาพรวมทีม</button>}
         </div>
         <div className="sw-wall">
-          {team.members.map((m, i) => <Frame key={m.id} m={m} index={i} onShoot={m.isMe && canShoot ? () => setShoot(true) : undefined} />)}
+          {team.members.map((m, i) => <Frame key={m.id} m={m} index={i} onShoot={m.isMe && canShoot ? () => setShoot({}) : undefined} />)}
         </div>
       </div>
     </div>
@@ -168,17 +178,20 @@ function Frame({ m, index, onShoot }: { m: Member; index: number; onShoot?: () =
 }
 
 // ------------------------------------------------------------------ camera + live colour check
-function Camera({ settings: s, onClose, onVerdict, onAuthLost }: { settings: Status['settings']; onClose: () => void; onVerdict: (v: Verdict) => void; onAuthLost: (e: unknown) => void }) {
+function Camera({ settings: s, file, onClose, onVerdict, onAuthLost }: { settings: Status['settings']; file?: File; onClose: () => void; onVerdict: (v: Verdict) => void; onAuthLost: (e: unknown) => void }) {
   const video = useRef<HTMLVideoElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
-  const [mode, setMode] = useState<'live' | 'preview' | 'sending' | 'rejected'>('live');
+  const [mode, setMode] = useState<'loading' | 'live' | 'preview' | 'sending' | 'rejected'>(file ? 'loading' : 'live');
+  const [source, setSource] = useState<'camera' | 'gallery' | 'camera-app'>(file ? 'gallery' : 'camera');
+  const [notice, setNotice] = useState('');
   const [camErr, setCamErr] = useState('');
   const [livePct, setLivePct] = useState<number | null>(null);
   const [shot, setShot] = useState<{ blob: Blob; url: string; pct: number } | null>(null);
   const [verdict, setVerdict] = useState<Verdict | null>(null);
   const target = useMemo(() => hexToRgb(s.color), [s.color]);
   const name = colorName(s.color);
-  const fileInput = useRef<HTMLInputElement>(null);
+  const galleryInput = useRef<HTMLInputElement>(null);   // choose a picture that is already on the phone
+  const nativeInput = useRef<HTMLInputElement>(null);    // open the phone's own camera app (fallback when the in-app camera does not work)
 
   // live camera (front) + a colour meter every ~400 ms so people can move before they shoot.
   // Phones differ a lot (iPhone, Samsung, foldables with several cameras), so the constraints go from
@@ -208,7 +221,9 @@ function Camera({ settings: s, onClose, onVerdict, onAuthLost }: { settings: Sta
         return;
       }
       if (stop) { stream.getTracks().forEach((t) => t.stop()); return; }
-      const v = video.current!; v.srcObject = stream; v.muted = true; v.setAttribute('playsinline', 'true');
+      const v = video.current;
+      if (!v) { stream.getTracks().forEach((t) => t.stop()); return; }   // the camera panel is not on screen (error / picture chosen)
+      v.srcObject = stream; v.muted = true; v.setAttribute('playsinline', 'true');
       await v.play().catch(() => {});
       stream.getVideoTracks()[0]?.addEventListener('ended', () => { if (!stop) setCamTry((n) => n + 1); });   // Android/foldables drop the track when the screen changes
       const tick = (now: number) => {
@@ -244,9 +259,10 @@ function Camera({ settings: s, onClose, onVerdict, onAuthLost }: { settings: Sta
     return { blob, url: URL.createObjectURL(blob), pct };
   }
   async function snap() {
-    try { setShot(await toJpeg(video.current!, true)); setMode('preview'); } catch (e) { setCamErr((e as Error).message); }
+    try { setShot(await toJpeg(video.current!, true)); setSource('camera'); setNotice(''); setMode('preview'); } catch (e) { setCamErr((e as Error).message); }
   }
-  async function fromFile(f: File) {
+  async function fromFile(f: File, from: 'gallery' | 'camera-app') {
+    setNotice('');
     try {
       // createImageBitmap honours the EXIF orientation of phone photos; <img> is the fallback for older browsers
       let src: HTMLImageElement | ImageBitmap;
@@ -256,14 +272,18 @@ function Camera({ settings: s, onClose, onVerdict, onAuthLost }: { settings: Sta
         await new Promise((r, j) => { img.onload = r; img.onerror = j; });
         src = img;
       }
-      setShot(await toJpeg(src, false)); setMode('preview');
-    } catch { setCamErr('file'); }
+      setShot(await toJpeg(src, false)); setSource(from); setMode('preview');
+    } catch {
+      setNotice('เปิดรูปนี้ไม่ได้ ลองเลือกรูปอื่น (JPG หรือ PNG) หรือถ่ายใหม่');
+      setMode((m) => (m === 'loading' ? 'live' : m));
+    }
   }
+  useEffect(() => { if (file) fromFile(file, 'gallery'); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
   async function send() {
     if (!shot) return;
     setMode('sending');
     try {
-      const fd = new FormData(); fd.append('file', shot.blob, 'selfie.jpg');
+      const fd = new FormData(); fd.append('file', shot.blob, 'selfie.jpg'); fd.append('source', source);
       const res = await fetch('/api/selfie', { method: 'POST', body: fd });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.message ?? 'ส่งภาพไม่สำเร็จ');
@@ -277,11 +297,16 @@ function Camera({ settings: s, onClose, onVerdict, onAuthLost }: { settings: Sta
   return (
     <div className="sw-cam" role="dialog" aria-modal="true" aria-label="ถ่าย Selfie">
       <canvas ref={canvas} style={{ display: 'none' }} />
-      <input ref={fileInput} type="file" accept="image/*" capture="user" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) fromFile(f); e.target.value = ''; }} />
+      <input ref={galleryInput} type="file" accept="image/*" style={{ display: 'none' }} aria-label="เลือกรูปจากเครื่อง" onChange={(e) => { const f = e.target.files?.[0]; if (f) fromFile(f, 'gallery'); e.target.value = ''; }} />
+      <input ref={nativeInput} type="file" accept="image/*" capture="user" style={{ display: 'none' }} aria-label="ถ่ายด้วยแอปกล้อง" onChange={(e) => { const f = e.target.files?.[0]; if (f) fromFile(f, 'camera-app'); e.target.value = ''; }} />
       <div className="sw-cam-top">
         <button className="sw-x" onClick={onClose} aria-label="ปิด">✕</button>
         <div className="sw-cam-target"><i style={{ background: s.color }} /> ฉากหลัง{name} ≥ {s.percent}%</div>
       </div>
+
+      {mode === 'loading' && (
+        <div className="sw-cam-view"><div className="sw-cam-err"><div className="spinner" style={{ margin: 0 }} /><p>กำลังเปิดรูป…</p></div></div>
+      )}
 
       {mode === 'live' && (
         <>
@@ -292,23 +317,24 @@ function Camera({ settings: s, onClose, onVerdict, onAuthLost }: { settings: Sta
                 <p>{camErr === 'denied' ? 'ยังไม่ได้อนุญาตให้ใช้กล้อง กดอนุญาตในเบราว์เซอร์ หรือถ่ายด้วยแอปกล้องของมือถือแทนได้เลย'
                   : camErr === 'busy' ? 'กล้องถูกแอปอื่นใช้อยู่ ปิดแอปนั้นแล้วลองใหม่ หรือถ่ายด้วยแอปกล้องแทน'
                   : camErr === 'noframes' ? 'กล้องไม่ส่งภาพมา (พบบ่อยในมือถือบางรุ่น/จอพับ) ลองใหม่ หรือถ่ายด้วยแอปกล้องแทน'
-                  : camErr === 'file' ? 'เปิดรูปนี้ไม่ได้ ลองถ่ายใหม่อีกครั้ง'
                   : 'เบราว์เซอร์นี้เปิดกล้องในแอปไม่ได้ ถ่ายด้วยแอปกล้องของมือถือแทนได้เลย'}</p>
-                <button className="btn sw-cta" style={{ marginTop: 0 }} onClick={() => fileInput.current?.click()}>📷 ถ่ายด้วยแอปกล้อง</button>
+                <button className="btn sw-cta" style={{ marginTop: 0 }} onClick={() => nativeInput.current?.click()}>📷 ถ่ายด้วยแอปกล้อง</button>
+                <button className="btn ghost" style={{ color: '#fff', borderColor: 'rgba(255,255,255,.4)' }} onClick={() => galleryInput.current?.click()}>🖼️ เลือกรูปจากเครื่อง</button>
                 {camErr !== 'nocam' && <button className="btn ghost" style={{ color: '#fff', borderColor: 'rgba(255,255,255,.4)' }} onClick={() => { setCamErr(''); setCamTry((n) => n + 1); }}>↻ ลองเปิดกล้องอีกครั้ง</button>}
               </div>
             ) : <video ref={video} playsInline muted autoPlay />}
-            <div className="sw-cam-guide" aria-hidden><div className="sw-cam-face" /></div>
+            {!camErr && <div className="sw-cam-guide" aria-hidden><div className="sw-cam-face" /></div>}
           </div>
-          <div className="sw-cam-bar">
+          {!camErr && <div className="sw-cam-bar">
             <div className={`sw-meter${good ? ' ok' : ''}`}><i style={{ width: `${Math.min(100, livePct ?? 0)}%` }} /><span>{livePct === null ? 'กำลังวัดสี…' : `${name} ${livePct}% ${good ? '✅ พร้อมถ่าย' : `· ต้องถึง ${s.percent}%`}`}</span></div>
-            <div className="sw-cam-actions">
-              <button className="btn ghost small sw-alt" onClick={() => fileInput.current?.click()}>📱 แอปกล้อง</button>
+            {notice && <div className="sw-notice" role="alert">{notice}</div>}
+            <div className="sw-cam-actions sw-cam-3">
+              <button className="sw-side" onClick={() => galleryInput.current?.click()} aria-label="เลือกรูปจากเครื่อง"><span aria-hidden>🖼️</span><small>เลือกรูป</small></button>
               <button className="sw-shutter" onClick={snap} disabled={!!camErr || livePct === null} aria-label="ถ่ายภาพ"><i /></button>
-              <span className="sw-alt" aria-hidden />
+              <span aria-hidden />
             </div>
             <div className="sw-cam-tip">ให้หน้าอยู่กลางวงรี และให้ฉากหลัง{name}อยู่รอบตัวมากที่สุด</div>
-          </div>
+          </div>}
         </>
       )}
 
@@ -325,11 +351,13 @@ function Camera({ settings: s, onClose, onVerdict, onAuthLost }: { settings: Sta
                 {verdict.pct > 0 && <div className="muted" style={{ fontSize: 13 }}>วัดได้ {verdict.pct}% · ต้องถึง {verdict.need}%</div>}
               </div>
             ) : (
-              <div className={`sw-meter${shot.pct >= s.percent ? ' ok' : ''}`}><i style={{ width: `${Math.min(100, shot.pct)}%` }} /><span>ประเมินเบื้องต้น {name} ≈ {shot.pct}%</span></div>
+              <div className={`sw-meter${shot.pct >= s.percent ? ' ok' : ''}`}><i style={{ width: `${Math.min(100, shot.pct)}%` }} /><span>{source === 'gallery' ? '🖼️ รูปจากเครื่อง · ' : ''}ประเมินเบื้องต้น {name} ≈ {shot.pct}%</span></div>
             )}
-            <div className="sw-cam-actions">
-              <button className="btn ghost small sw-alt" disabled={mode === 'sending'} onClick={() => { setShot(null); setVerdict(null); setCamErr(''); setMode('live'); }}>↺ ถ่ายใหม่</button>
-              {mode !== 'rejected' && <button className="btn sw-send" disabled={mode === 'sending'} onClick={send}>{mode === 'sending' ? 'กำลังตรวจ…' : '✅ ส่งภาพนี้'}</button>}
+            {notice && <div className="sw-notice" role="alert">{notice}</div>}
+            {mode !== 'rejected' && <button className="btn sw-send" disabled={mode === 'sending'} onClick={send}>{mode === 'sending' ? 'กำลังตรวจ…' : '✅ ส่งภาพนี้'}</button>}
+            <div className="sw-cam-2">
+              <button className="btn ghost small" disabled={mode === 'sending'} onClick={() => { setShot(null); setVerdict(null); setCamErr(''); setNotice(''); setMode('live'); }}>📷 ถ่ายใหม่</button>
+              <button className="btn ghost small" disabled={mode === 'sending'} onClick={() => galleryInput.current?.click()}>🖼️ เลือกรูปอื่น</button>
             </div>
           </div>
         </>

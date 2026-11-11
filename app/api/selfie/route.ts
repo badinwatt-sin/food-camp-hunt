@@ -31,8 +31,10 @@ export const POST = handler(async (req: Request) => {
   const sb = db();
   const { data: row } = await sb.from('game_settings').select(SELFIE_SETTINGS_SELECT).eq('id', 1).single();
   const s = publicSettings(row);
-  const { data: team } = await sb.from('teams').select('selfie_color, selfie_active').eq('id', p.team_id).single();
-  const access = selfieAccess(s.audience, !!p.is_observer, !!team?.selfie_active);
+  const { data: team } = await sb.from('teams').select('selfie_color, selfie_active, selfie_excluded').eq('id', p.team_id).single();
+  const judge = !!p.is_observer || !!team?.selfie_excluded;   // committee / test teams are judges as a whole
+  if (s.audience !== 'judges' && team?.selfie_excluded) throw new HttpError(403, 'SELFIE_CLOSED');
+  const access = selfieAccess(s.audience, judge, !!team?.selfie_active);
   if (!s.live || !access.eligible) throw new HttpError(403, 'SELFIE_CLOSED');
   if (access.readOnly) throw new HttpError(403, 'OBSERVER_READ_ONLY');   // committee/judges only watch the real walls
   const test = access.test;
@@ -70,7 +72,9 @@ export const POST = handler(async (req: Request) => {
     const clash = (others ?? []).find((o: any) => samePicture(o.checks, { hash: pix.hash, avg: pix.avg }, 14, 12));
     if (clash) reason = 'ภาพนี้เหมือนกับภาพที่มีคนอัปโหลดไปแล้ว ต้องเป็น Selfie ที่คุณถ่ายใหม่ด้วยตัวเองเท่านั้น';
   }
-  const checks = { hash: pix.hash, avg: pix.avg, pixel: pix, color, ai: ai ? { person: ai.person_visible, people: ai.people_count, screen: ai.is_screen_or_print, pct: ai.background_match_percent, bg: ai.background_description } : null, aiEnabled: aiEnabled() };
+  const src = String(form?.get('source') ?? '');
+  const source = src === 'gallery' || src === 'camera-app' ? src : 'camera';   // for the admin's review: live camera, the phone's camera app, or a picture chosen from the phone
+  const checks = { source, hash: pix.hash, avg: pix.avg, pixel: pix, color, ai: ai ? { person: ai.person_visible, people: ai.people_count, screen: ai.is_screen_or_print, pct: ai.background_match_percent, bg: ai.background_description } : null, aiEnabled: aiEnabled() };
   if (reason) return ok({ accepted: false, reason, pct: Math.round(pct), need: s.percent, checks });
 
   const path = `${test ? 'test' : p.team_id}/${p.id}/${randomUUID()}.jpg`;

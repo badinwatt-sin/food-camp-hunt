@@ -377,6 +377,16 @@ try {
   await sb.from('teams').update({ selfie_active: true }).eq('id', tS);
   check('a started team can upload', !(await sb.rpc('submit_selfie', { p_participant: sw1, p_url: 'https://example.invalid/ok.jpg', p_pct: 70, p_checks: {} })).error);
   await sb.from('teams').update({ selfie_active: false }).eq('id', tS);
+  // v4: a whole committee / test team never joins the real walls and never ranks
+  await sb.from('game_settings').update({ selfie_audience: 'all' }).eq('id', 1);
+  await sb.from('teams').update({ selfie_excluded: true, selfie_active: false }).eq('id', tS);
+  check('a member of a committee/test team cannot upload to a real wall', !!(await sb.rpc('submit_selfie', { p_participant: sw1, p_url: 'https://example.invalid/c.jpg', p_pct: 70, p_checks: {} })).error);
+  await sb.from('game_settings').update({ selfie_audience: 'judges' }).eq('id', 1);
+  const balX0 = (await sb.rpc('team_balance', { p_team: tS })).data;
+  const tx = (await sb.rpc('submit_selfie_test', { p_participant: sw1, p_url: 'https://example.invalid/ct.jpg', p_pct: 70, p_checks: {} })).data;
+  check('...but may test on the judges wall, which pays nothing and ranks nothing', tx && tx.tokens === 0 && tx.rank === null && (await sb.rpc('team_balance', { p_team: tS })).data === balX0);
+  await sb.from('selfie_photos').delete().eq('is_test', true);
+  await sb.from('teams').update({ selfie_excluded: false }).eq('id', tS);
   await sb.from('game_settings').update({ selfie_audience: 'all' }).eq('id', 1);
   await sb.from('teams').update({ selfie_color: null }).eq('id', tS);
   if (sBefore) await sb.from('game_settings').update(sBefore).eq('id', 1);

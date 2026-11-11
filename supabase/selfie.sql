@@ -1,6 +1,8 @@
 -- =====================================================================
 -- v2: each team has its OWN background colour (unique), and the mission can start for the judges only
 --     (observers play a score-free test wall; nobody else is notified) before it starts for everyone.
+-- v4: a whole team can be marked "committee / test" (selfie_excluded): it never takes part in the real walls,
+--     ranks or rewards, and its members test on the judges' wall exactly like observers.
 -- v3: start for chosen teams or all teams; committee/judges (observers) never take part in the real walls;
 --     admins can reject a photo with a reason (the player is told and retakes); copies of a photo are caught.
 -- Team Selfie Wall ("Agency in the Wonder Woods") — first mission after the teams are formed.
@@ -23,6 +25,7 @@ alter table public.game_settings add column if not exists selfie_audience text n
 -- 'judges' = only observers (score-free test) · 'teams' = only the teams the admin started · 'all' = every team
 alter table public.game_settings drop constraint if exists game_settings_selfie_audience_check;
 alter table public.game_settings add constraint game_settings_selfie_audience_check check (selfie_audience in ('all', 'teams', 'judges'));
+alter table public.teams add column if not exists selfie_excluded boolean not null default false;     -- committee / test team: not scored, not ranked, judges' wall only
 alter table public.teams add column if not exists selfie_active boolean not null default false;     -- started in 'teams' mode
 alter table public.teams add column if not exists selfie_started_at timestamptz;                      -- that team's own announcement
 -- every team gets its own colour (NULL = use the default colour in game_settings.selfie_color); never the same twice
@@ -84,8 +87,8 @@ begin
   if not selfie_window_open() then raise exception 'SELFIE_CLOSED'; end if;
   select * into v_part from participants where id = p_participant;
   if not found then raise exception 'NOT_FOUND'; end if;
-  if v_part.is_observer then raise exception 'OBSERVER_READ_ONLY'; end if;                      -- committee/judges never join the real walls
   select * into v_team from teams where id = v_part.team_id for update;   -- serialise with other wallet writers
+  if v_part.is_observer or v_team.selfie_excluded then raise exception 'OBSERVER_READ_ONLY'; end if;   -- committee / judges / test teams never join the real walls
   select selfie_audience into v_aud from game_settings where id = 1;
   if v_aud = 'judges' or (v_aud = 'teams' and not v_team.selfie_active) then raise exception 'SELFIE_CLOSED'; end if;
   select image_url into v_old from selfie_photos where participant_id = p_participant and not is_test;
@@ -128,13 +131,14 @@ begin
   if not selfie_window_open() then raise exception 'SELFIE_CLOSED'; end if;
   select * into v_part from participants where id = p_participant;
   if not found then raise exception 'NOT_FOUND'; end if;
-  if not v_part.is_observer then raise exception 'FORBIDDEN'; end if;
+  if not (v_part.is_observer or exists (select 1 from teams where id = v_part.team_id and selfie_excluded)) then raise exception 'FORBIDDEN'; end if;
   select image_url into v_old from selfie_photos where participant_id = p_participant and is_test;
   insert into selfie_photos (participant_id, team_id, image_url, color_pct, checks, is_test)
   values (p_participant, v_part.team_id, p_url, coalesce(p_pct, 0), coalesce(p_checks, '{}'::jsonb), true)
   on conflict (participant_id, is_test) do update
     set image_url = excluded.image_url, color_pct = excluded.color_pct, checks = excluded.checks, created_at = now();
-  select (select count(*) from participants where is_observer), (select count(*) from selfie_photos where is_test) into v_total, v_have;
+  select (select count(*) from participants p where p.is_observer or exists (select 1 from teams t where t.id = p.team_id and t.selfie_excluded)),
+         (select count(*) from selfie_photos where is_test) into v_total, v_have;
   return jsonb_build_object('oldUrl', v_old, 'total', v_total, 'count', v_have,
     'complete', v_total > 0 and v_have >= v_total, 'justCompleted', v_total > 0 and v_have >= v_total and v_old is null,
     'rank', null, 'tokens', 0);

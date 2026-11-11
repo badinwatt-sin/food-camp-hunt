@@ -19,15 +19,31 @@ export async function selfieStatus(p: { id: string; team_id: string; is_observer
   if (se) throw se;
   const s = publicSettings(row);
   const { data: team, error: te } = await sb.from('teams')
-    .select('id, name, selfie_color, selfie_active, selfie_started_at, selfie_completed_at, selfie_finish_rank, selfie_reward_tokens').eq('id', p.team_id).single();
+    .select('id, name, selfie_color, selfie_active, selfie_excluded, selfie_started_at, selfie_completed_at, selfie_finish_rank, selfie_reward_tokens').eq('id', p.team_id).single();
   if (te) throw te;
-  const access = selfieAccess(s.audience, !!p.is_observer, !!team.selfie_active);
+  const judge = !!p.is_observer || !!team.selfie_excluded;   // a committee / test team counts as judges as a whole
+  // a committee / test team has no real wall: in the real phases it simply sees nothing
+  if (s.audience !== 'judges' && team.selfie_excluded) return null;
+  const access = selfieAccess(s.audience, judge, !!team.selfie_active);
   if (!access.eligible) return null;
   const test = access.test;
 
+  // judges' wall = every observer + every member of a committee / test team
+  let judgeRows: any[] = [];
+  if (test) {
+    const { data: ex } = await sb.from('teams').select('id').eq('selfie_excluded', true);
+    const exIds = (ex ?? []).map((t: any) => t.id);
+    const [obs, inEx] = await Promise.all([
+      sb.from('participants').select('id, name, nick_name, is_observer').eq('is_observer', true),
+      exIds.length ? sb.from('participants').select('id, name, nick_name, is_observer').in('team_id', exIds) : Promise.resolve({ data: [] as any[], error: null }),
+    ]);
+    if (obs.error) throw obs.error;
+    const seen = new Set<string>();
+    judgeRows = [...(obs.data ?? []), ...(inEx.data ?? [])].filter((m: any) => (seen.has(m.id) ? false : (seen.add(m.id), true))).sort((a: any, b: any) => String(a.name).localeCompare(String(b.name), 'th'));
+  }
   const [people, photos, ranks, rej] = await Promise.all([
     test
-      ? sb.from('participants').select('id, name, nick_name, is_observer').eq('is_observer', true).order('name').order('id')
+      ? Promise.resolve({ data: judgeRows, error: null })
       : sb.from('participants').select('id, name, nick_name, is_observer').eq('team_id', p.team_id).eq('is_observer', false).order('name').order('id'),
     test
       ? sb.from('selfie_photos').select('participant_id, image_url, created_at').eq('is_test', true)
@@ -40,7 +56,7 @@ export async function selfieStatus(p: { id: string; team_id: string; is_observer
   const photoOf = new Map((photos.data ?? []).map((x: any) => [x.participant_id, x]));
   const members: SelfieMember[] = (people.data ?? []).map((m: any) => {
     const ph: any = photoOf.get(m.id);
-    return { id: m.id, name: m.nick_name || m.name, fullName: m.name, isMe: m.id === p.id, isObserver: !!m.is_observer, photoUrl: ph?.image_url ?? null, at: ph?.created_at ?? null };
+    return { id: m.id, name: m.nick_name || m.name, fullName: m.name, isMe: m.id === p.id, isObserver: test ? true : !!m.is_observer, photoUrl: ph?.image_url ?? null, at: ph?.created_at ?? null };
   });
   const count = members.filter((m) => m.photoUrl).length;
   const total = members.length;
@@ -58,7 +74,7 @@ export async function selfieStatus(p: { id: string; team_id: string; is_observer
       complete, rank: test ? null : team.selfie_finish_rank, tokens: test ? 0 : team.selfie_reward_tokens ?? 0,
       completedAt: test ? null : team.selfie_completed_at,
     },
-    me: { isObserver: !!p.is_observer, readOnly: access.readOnly, photoUrl: mine?.image_url ?? null, rejected },
+    me: { isObserver: judge, readOnly: access.readOnly, photoUrl: mine?.image_url ?? null, rejected },
     nextReward: test || complete ? 0 : (s.rewards[taken] ?? 0), nextRank: test || complete ? null : taken + 1,
     standings: test ? [] : (ranks.data ?? []).map((t: any) => ({ team: t.name, rank: t.selfie_finish_rank, tokens: t.selfie_reward_tokens, at: t.selfie_completed_at })),
   };

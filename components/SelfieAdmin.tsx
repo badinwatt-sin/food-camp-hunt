@@ -5,7 +5,7 @@ import FitLine from '@/components/FitLine';
 
 type Member = { id: string; name: string; fullName: string; isObserver: boolean; photoId: string | null; photoUrl: string | null; pct: number | null; at: string | null; checks: any; similarTo?: string[] };
 type Team = { id: string; name: string; color: string | null; active: boolean; startedAt: string | null; members: Member[]; count: number; total: number; complete: boolean; rank: number | null; tokens: number; completedAt: string | null };
-type Data = { settings: { open: boolean; live: boolean; before: boolean; after: boolean; start: string | null; end: string | null; color: string; percent: number; tolerance: number; rewards: number[]; announcedAt: string | null; audience: 'all' | 'teams' | 'judges' }; aiEnabled: boolean; palette: string[]; judges: { members: Member[]; count: number; total: number }; teams: Team[] };
+type Data = { settings: { open: boolean; live: boolean; before: boolean; after: boolean; start: string | null; end: string | null; color: string; percent: number; tolerance: number; rewards: number[]; announcedAt: string | null; audience: 'all' | 'teams' | 'judges' }; aiEnabled: boolean; allTeams: { id: string; name: string; excluded: boolean; members: number }[]; palette: string[]; judges: { members: Member[]; count: number; total: number }; teams: Team[] };
 type Props = { role: 'admin' | 'staff'; setMsg: (m: string) => void; call: <T = any>(action: string, body?: unknown) => Promise<T> };
 
 const PRESETS = [['#2f8f5b', 'เขียวป่า'], ['#1f3557', 'น้ำเงินเข้ม'], ['#e0573b', 'แดงอิฐ'], ['#f6d365', 'เหลือง'], ['#ffffff', 'ขาว'], ['#111111', 'ดำ'], ['#c96d2f', 'ส้มดิน'], ['#7c4dff', 'ม่วง']];
@@ -40,6 +40,13 @@ export default function SelfieAdmin({ role, setMsg, call }: Props) {
     const why = reason.trim();
     if (!m.photoId || !why) { setMsg('กรุณาเลือกหรือพิมพ์เหตุผลก่อนปฏิเสธภาพ'); return; }
     try { await call('selfie.reject', { id: m.photoId, reason: why }); setZoom(null); setReason(''); await load(); setMsg(`ปฏิเสธภาพของ ${m.name} แล้ว ระบบแจ้งให้ถ่ายใหม่`); } catch (e) { setMsg((e as Error).message); }
+  }
+  async function exclude(t: { id: string; name: string; excluded: boolean }, excluded: boolean) {
+    const q = excluded
+      ? `ตั้งทีม "${t.name}" เป็นทีมกรรมการ/ทดสอบ?\n• ไม่นับคะแนน ไม่มีอันดับ ไม่ได้ Token ไม่อยู่ในยอดรวม\n• ไม่ได้รับ Pop-up ในช่วงจริง และเล่นได้เฉพาะโหมด "ทดสอบกรรมการ"\n• ภาพที่ทีมนี้ถ่ายไว้บน Team Wall จริงจะถูกนำออก`
+      : `เปลี่ยนทีม "${t.name}" กลับเป็นทีมผู้เล่นปกติ? (จะนับคะแนนและอันดับตามปกติ)`;
+    if (!confirm(q)) return;
+    try { const r = await call<{ removed: number }>('selfie.team.exclude', { team_id: t.id, excluded }); await load(); setMsg(excluded ? `ตั้งทีม ${t.name} เป็นทีมกรรมการ/ทดสอบแล้ว${r.removed ? ` (นำภาพออก ${r.removed} ภาพ)` : ''}` : `ทีม ${t.name} กลับเป็นทีมปกติแล้ว`); } catch (e) { setMsg((e as Error).message); }
   }
   async function startTeam(t: Team, active: boolean) {
     if (active && !s.open && !confirm('ภารกิจยังปิดอยู่ ทีมจะยังไม่เห็นอะไรจนกว่าจะกด "เปิดภารกิจ" เริ่มทีมนี้ไว้ก่อนไหม?')) return;
@@ -78,7 +85,7 @@ export default function SelfieAdmin({ role, setMsg, call }: Props) {
         <div className="dlg-back" role="dialog" aria-label="ตรวจภาพ Selfie" onClick={() => setZoom(null)}>
           <div className="dlg" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520, maxHeight: '92vh', overflowY: 'auto' }}>
             <img src={zoom.photoUrl!} alt={zoom.name} style={{ width: '100%', borderRadius: 14, maxHeight: '36vh', objectFit: 'contain', background: '#111' }} />
-            <div style={{ marginTop: 8 }}><strong>{zoom.name}</strong>{zoom.fullName && zoom.fullName !== zoom.name && <div className="muted">{zoom.fullName}</div>}<div className="muted" style={{ fontSize: 13 }}>{fmt(zoom.at)} · พื้นหลังตรงสี {zoom.pct ?? '—'}%</div></div>
+            <div style={{ marginTop: 8 }}><strong>{zoom.name}</strong>{zoom.fullName && zoom.fullName !== zoom.name && <div className="muted">{zoom.fullName}</div>}<div className="muted" style={{ fontSize: 13 }}>{fmt(zoom.at)} · พื้นหลังตรงสี {zoom.pct ?? '—'}%</div><div className="muted" style={{ fontSize: 13 }}>ที่มาของภาพ: {zoom.checks?.source === 'gallery' ? '🖼️ เลือกจากรูปในเครื่อง (ไม่ใช่ถ่ายสด)' : zoom.checks?.source === 'camera-app' ? '📱 ถ่ายด้วยแอปกล้องของมือถือ' : '📷 ถ่ายสดในแอป'}</div></div>
             {zoom.similarTo && zoom.similarTo.length > 0 && <div className="error" style={{ marginTop: 8 }}>⚠️ ภาพนี้คล้ายกับภาพของ: {zoom.similarTo.join(', ')} (ตรวจว่าเป็นภาพซ้ำหรือไม่)</div>}
             <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>{zoom.checks?.ai ? `AI: ${zoom.checks.ai.person ? 'เห็นคน' : 'ไม่เห็นคน'} ${zoom.checks.ai.people ?? ''} คน · ${zoom.checks.ai.bg ?? ''}` : zoom.checks?.aiEnabled === false ? 'ตรวจด้วยพิกเซลอย่างเดียว (ยังไม่ตั้งค่า AI)' : ''}</div>
             <label className="lbl">ปฏิเสธภาพนี้ (ผู้ถ่ายจะได้รับ Pop-up พร้อมเหตุผล และถ่ายใหม่)</label>
@@ -187,10 +194,26 @@ export default function SelfieAdmin({ role, setMsg, call }: Props) {
         </div>
       </div>
 
+      {isAdmin && (
+        <div className="card">
+          <h2 style={{ margin: 0 }}>🧪 ทีมกรรมการ / ทีมทดสอบ <span className="muted" style={{ fontWeight: 400, fontSize: 15 }}>(ไม่นับคะแนน)</span></h2>
+          <p className="muted" style={{ margin: '6px 0 10px', fontSize: 14 }}>ทีมที่ติ๊กไว้ เช่น กลุ่ม Committee ที่มีหลายคน จะ <strong>ไม่มีอันดับ ไม่ได้ Token ไม่อยู่ในยอดรวม ไม่ได้รับ Pop-up ในช่วงจริง และไม่ขึ้น Team Wall</strong> สมาชิกทุกคนทดสอบบน Team Wall ของกรรมการแทน (เหมือนคณะทำงาน)</p>
+          <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+            {d.allTeams.map((t) => (
+              <button key={t.id} type="button" role="switch" aria-checked={t.excluded} onClick={() => exclude(t, !t.excluded)}
+                style={{ border: t.excluded ? '2px solid #7c4dff' : '2px solid #dcd6c6', background: t.excluded ? '#efe9ff' : '#fff', borderRadius: 12, padding: '8px 12px', cursor: 'pointer', textAlign: 'left', minHeight: 44 }}>
+                <strong>{t.excluded ? '🧪 ' : ''}{t.name}</strong>
+                <div className="muted" style={{ fontSize: 12 }}>{t.members} คน · {t.excluded ? 'ทีมกรรมการ/ทดสอบ (ไม่นับคะแนน)' : 'ทีมผู้เล่นปกติ'}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {d.judges.total > 0 && (
         <div className="card">
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2 style={{ margin: 0 }}>🧪 Team Wall ทดสอบ (กรรมการ/Committee) <span className="muted" style={{ fontWeight: 400, fontSize: 15 }}>{d.judges.count}/{d.judges.total} คน · ไม่มีคะแนน</span></h2>
+            <h2 style={{ margin: 0 }}>🧪 Team Wall ทดสอบ (กรรมการ/Committee/ทีมทดสอบ) <span className="muted" style={{ fontWeight: 400, fontSize: 15 }}>{d.judges.count}/{d.judges.total} คน · ไม่มีคะแนน</span></h2>
             {isAdmin && d.judges.count > 0 && <button className="btn small ghost" onClick={clearTest}>ล้างภาพทดสอบ</button>}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 8, marginTop: 10 }}>
@@ -231,6 +254,7 @@ function MemberTile({ m, color, onZoom }: { m: Member; color: string; onZoom: (m
       <button type="button" onClick={() => m.photoUrl && onZoom(m)} disabled={!m.photoUrl} aria-label={m.name}
         style={{ position: 'relative', width: '100%', aspectRatio: '3 / 4', borderRadius: 10, border: flag ? '3px solid #e0573b' : m.photoUrl ? `3px solid ${color}` : '2px dashed #ccc', background: m.photoUrl ? `url(${m.photoUrl}) center/cover` : '#eee', cursor: m.photoUrl ? 'zoom-in' : 'default', padding: 0 }}>
         {!m.photoUrl && <span className="muted" style={{ fontSize: 22 }}>👤</span>}
+        {m.checks?.source === 'gallery' && <span title="เลือกจากรูปในเครื่อง" style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(31,53,87,.85)', color: '#fff', borderRadius: 8, fontSize: 11, padding: '1px 5px' }}>🖼️</span>}
         {flag && <span title={`คล้ายภาพของ ${m.similarTo!.join(', ')}`} style={{ position: 'absolute', top: 4, right: 4, background: '#e0573b', color: '#fff', borderRadius: 8, fontSize: 11, padding: '1px 5px' }}>⚠️ คล้าย</span>}
       </button>
       <FitLine text={m.name} base={12.5} min={8} style={{ fontWeight: 700, marginTop: 3 }} />
