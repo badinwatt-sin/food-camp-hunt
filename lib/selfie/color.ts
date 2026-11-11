@@ -61,3 +61,20 @@ export function colorName(hex: string): string {
   if (hue < 290) return 'สีม่วง';
   return 'สีชมพู';
 }
+
+/** Backgrounds that are easy to find in a camp and far from skin tones (so a face alone never "matches"). */
+export const TEAM_PALETTE = ['#2f9e5b', '#2f6fd6', '#d63a3a', '#8a55d6', '#12a4a4', '#1f3557'];
+/** Minimum perceptual distance (ΔE) between two teams' colours, so a photo can never satisfy two teams at once. */
+export const MIN_TEAM_COLOR_GAP = 30;
+export const colorGap = (a: string, b: string) => deltaE(rgbToLab(hexToRgb(a)), rgbToLab(hexToRgb(b)));
+
+/** Picks `n` different palette colours in random order, each at least MIN_TEAM_COLOR_GAP away from `taken` and from each other. */
+export function pickDistinctColors(n: number, taken: string[] = [], rnd: () => number = Math.random): string[] {
+  const pool = [...TEAM_PALETTE].sort(() => rnd() - 0.5);
+  const out: string[] = [];
+  for (const c of pool) {
+    if (out.length >= n) break;
+    if ([...taken, ...out].every((t) => colorGap(c, t) >= MIN_TEAM_COLOR_GAP)) out.push(c);
+  }
+  return out;   // shorter than n only if the palette ran out
+}

@@ -340,8 +340,8 @@ try {
   const sw1 = await mkMember(tS), sw2 = await mkMember(tS);
   const { data: sObs } = await sb.from('participants').insert({ team_id: tS, name: 'test selfie observer', is_observer: true }).select('id').single();
   if (sObs) created.participants.push(sObs.id);
-  const { data: sBefore } = await sb.from('game_settings').select('selfie_open, selfie_start, selfie_end, selfie_rewards').eq('id', 1).single();
-  await sb.from('game_settings').update({ selfie_open: true, selfie_start: null, selfie_end: null, selfie_rewards: '20,15,10,5' }).eq('id', 1);
+  const { data: sBefore } = await sb.from('game_settings').select('selfie_open, selfie_start, selfie_end, selfie_rewards, selfie_audience').eq('id', 1).single();
+  await sb.from('game_settings').update({ selfie_open: true, selfie_audience: 'all', selfie_start: null, selfie_end: null, selfie_rewards: '20,15,10,5' }).eq('id', 1);
   const balS0 = (await sb.rpc('team_balance', { p_team: tS })).data;
   const sr1 = (await sb.rpc('submit_selfie', { p_participant: sw1, p_url: 'https://example.invalid/s1.jpg', p_pct: 70, p_checks: {} })).data;
   check('first photo counts 1 of 2', sr1?.count === 1 && sr1?.total === 2 && sr1?.complete === false);
@@ -358,6 +358,21 @@ try {
   await sb.from('selfie_photos').delete().eq('team_id', tS);
   await sb.from('token_ledger').delete().eq('idempotency_key', `selfie:${tS}`);
   await sb.from('teams').update({ selfie_completed_at: null, selfie_finish_rank: null, selfie_reward_tokens: 0 }).eq('id', tS);
+  // ---- v2: judges-only test phase and per-team colours
+  const { data: tc } = await sb.from('teams').select('selfie_color').eq('id', tS).single();
+  check('team colour column exists', tc && 'selfie_color' in tc);
+  await sb.from('teams').update({ selfie_color: '#2f6fd6' }).eq('id', tS);
+  const { data: tOther } = await sb.from('teams').insert({ name: 'test selfie other' }).select('id').single();
+  if (tOther) { created.teams.push(tOther.id); check('the same colour on a second team is refused', !!(await sb.from('teams').update({ selfie_color: '#2f6fd6' }).eq('id', tOther.id)).error); }
+  await sb.from('game_settings').update({ selfie_open: true, selfie_start: null, selfie_end: null, selfie_audience: 'judges' }).eq('id', 1);
+  check('real submit is blocked during the judges-only phase', !!(await sb.rpc('submit_selfie', { p_participant: sw1, p_url: 'https://example.invalid/blocked.jpg', p_pct: 70, p_checks: {} })).error);
+  check('a non-judge cannot use the test wall', !!(await sb.rpc('submit_selfie_test', { p_participant: sw1, p_url: 'https://example.invalid/x.jpg', p_pct: 70, p_checks: {} })).error);
+  const balT0 = (await sb.rpc('team_balance', { p_team: tS })).data;
+  const tj = sObs ? (await sb.rpc('submit_selfie_test', { p_participant: sObs.id, p_url: 'https://example.invalid/judge.jpg', p_pct: 80, p_checks: {} })).data : null;
+  check('a judge photo lands on the test wall and pays nothing', !sObs || (tj?.tokens === 0 && tj?.rank === null && (await sb.rpc('team_balance', { p_team: tS })).data === balT0));
+  await sb.from('selfie_photos').delete().eq('is_test', true);
+  await sb.from('game_settings').update({ selfie_audience: 'all' }).eq('id', 1);
+  await sb.from('teams').update({ selfie_color: null }).eq('id', tS);
   if (sBefore) await sb.from('game_settings').update(sBefore).eq('id', 1);
 
   console.log('\n9. Public (anon) access to the new features is blocked');

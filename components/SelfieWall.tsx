@@ -5,13 +5,14 @@ import { backgroundMatch, colorName, hexToRgb } from '@/lib/selfie/color';
 
 type Member = { id: string; name: string; fullName: string; isMe: boolean; isObserver: boolean; photoUrl: string | null; at: string | null };
 type Status = {
-  settings: { open: boolean; live: boolean; before: boolean; after: boolean; start: string | null; end: string | null; color: string; percent: number; tolerance: number; rewards: number[]; announcedAt: string | null };
+  test: boolean;
+  settings: { open: boolean; live: boolean; before: boolean; after: boolean; start: string | null; end: string | null; color: string; percent: number; tolerance: number; rewards: number[]; announcedAt: string | null; audience: 'all' | 'judges' };
   team: { name: string; members: Member[]; count: number; total: number; pct: number; complete: boolean; rank: number | null; tokens: number; completedAt: string | null };
   me: { isObserver: boolean; photoUrl: string | null };
   nextReward: number; nextRank: number | null;
   standings: { team: string; rank: number; tokens: number; at: string }[];
 };
-type Verdict = { accepted: boolean; reason?: string; pct: number; need: number; justCompleted?: boolean; rank?: number | null; tokens?: number; status?: Status };
+type Verdict = { accepted: boolean; reason?: string; pct: number; need: number; justCompleted?: boolean; rank?: number | null; tokens?: number; test?: boolean; status?: Status };
 type Props = { onBalance: () => void; onAuthLost: (e: unknown) => void };
 
 const THEME_TITLE = 'Agency in the Wonder Woods';
@@ -24,7 +25,7 @@ export default function SelfieWall({ onBalance, onAuthLost }: Props) {
   const [st, setSt] = useState<Status | null>(null);
   const [err, setErr] = useState('');
   const [shoot, setShoot] = useState(false);
-  const [party, setParty] = useState<{ tokens: number; rank: number | null } | null>(null);
+  const [party, setParty] = useState<{ tokens: number; rank: number | null; test: boolean } | null>(null);
   const [showFrame, setShowFrame] = useState(false);
   const load = useCallback(async () => {
     try { setSt(await api<Status>('/api/selfie')); setErr(''); } catch (e) { onAuthLost(e); setErr((e as Error).message); }
@@ -36,21 +37,22 @@ export default function SelfieWall({ onBalance, onAuthLost }: Props) {
   const onVerdict = (v: Verdict) => {
     if (v.status) setSt(v.status);
     if (v.accepted) { setShoot(false); onBalance(); }
-    if (v.accepted && v.justCompleted) setParty({ tokens: v.tokens ?? 0, rank: v.rank ?? null });
+    if (v.accepted && v.justCompleted) setParty({ tokens: v.tokens ?? 0, rank: v.rank ?? null, test: !!v.test });
   };
 
   return (
     <div className="sw" style={{ ['--sw-color' as string]: s.color }}>
-      {party && <Celebration tokens={party.tokens} rank={party.rank} team={team.name} onDone={() => { setParty(null); setShowFrame(true); }} />}
+      {party && <Celebration tokens={party.tokens} rank={party.rank} team={team.name} test={party.test} onDone={() => { setParty(null); setShowFrame(true); }} />}
       {showFrame && <FinalFrame st={st} onClose={() => setShowFrame(false)} />}
       {shoot && <Camera settings={s} onClose={() => setShoot(false)} onVerdict={onVerdict} onAuthLost={onAuthLost} />}
 
       {/* ---- hero / brief */}
       <div className="card sw-hero">
         <div className="sw-leaves" aria-hidden>{['🍃', '🌿', '🍂', '🍃', '🌱', '🍂'].map((l, i) => <span key={i} style={{ left: `${8 + i * 16}%`, animationDelay: `${i * 0.9}s` }}>{l}</span>)}</div>
-        <div className="sw-kicker">ภารกิจแรกของทีม · {THEME_TITLE}</div>
+        <div className="sw-kicker">{st.test ? '🧪 โหมดทดสอบสำหรับกรรมการ' : `ภารกิจแรกของทีม · ${THEME_TITLE}`}</div>
         <h2 className="sw-title">🤳 Selfie Wall</h2>
-        <p className="sw-brief">ทุกคนในทีมถ่าย <strong>Selfie</strong> กับฉากหลัง <span className="sw-chip"><i style={{ background: s.color }} />{name}</span> ให้พื้นหลังเป็นสีนี้อย่างน้อย <strong>{s.percent}%</strong> ระบบ AI จะตรวจภาพให้ทันที</p>
+        {st.test && <div className="sw-test-note">ทดลองเล่นเหมือนจริงทุกขั้นตอน แต่<strong>ไม่มีคะแนน ไม่มี Token และไม่แจ้งเตือนทีมอื่น</strong></div>}
+        <p className="sw-brief">{st.test ? 'กรรมการทุกคนถ่าย' : 'ทุกคนในทีมถ่าย'} <strong>Selfie</strong> กับฉากหลัง <span className="sw-chip"><i style={{ background: s.color }} />{name}</span> ให้พื้นหลังเป็นสีนี้อย่างน้อย <strong>{s.percent}%</strong> ระบบ AI จะตรวจภาพให้ทันที</p>
         <div className="sw-meta">
           {s.live ? <Countdown end={s.end} /> : s.before ? <span className="sw-pill">⏰ เริ่ม {fmtDT(s.start)}</span> : s.after ? <span className="sw-pill off">⌛ หมดเวลาแล้ว {fmtDT(s.end)}</span> : <span className="sw-pill off">ยังไม่เปิด</span>}
           {s.end && s.live && <span className="sw-pill">ถึง {fmtDT(s.end)}</span>}
@@ -63,25 +65,27 @@ export default function SelfieWall({ onBalance, onAuthLost }: Props) {
           <div><b>{team.pct}%</b><span>{team.count}/{team.total} คน</span></div>
         </div>
         <div className="sw-progress-text">
-          <h3>ทีม {team.name}</h3>
-          {team.complete ? (
+          <h3>{st.test ? team.name : `ทีม ${team.name}`}</h3>
+          {st.test ? (
+            <div className="muted">{team.complete ? '✅ กรรมการถ่ายครบทุกคนแล้ว (ทดสอบ)' : `เหลืออีก ${team.total - team.count} คน · โหมดทดสอบ ไม่มีคะแนน`}</div>
+          ) : team.complete ? (
             <div className="sw-done">{medal(team.rank)} ทีมคุณทำครบเป็นอันดับ {team.rank} · ได้ <strong>{team.tokens}</strong> Tokens</div>
           ) : (
             <div className="muted">เหลืออีก {team.total - team.count} คน · ถ้าครบตอนนี้ทีมจะได้ <strong className="sw-gold">{st.nextReward} Tokens</strong> (อันดับ {st.nextRank})</div>
           )}
-          <div className="sw-ranks" aria-label="รางวัลตามลำดับทีมที่ครบ">
+          {!st.test && <div className="sw-ranks" aria-label="รางวัลตามลำดับทีมที่ครบ">
             {s.rewards.map((t, i) => {
               const taken = st.standings.find((x) => x.rank === i + 1);
               return <div key={i} className={taken ? 'taken' : st.nextRank === i + 1 ? 'next' : ''}><span>{medal(i + 1)}</span><strong>{t}</strong><small>{taken ? taken.team : 'Tokens'}</small></div>;
             })}
-          </div>
+          </div>}
         </div>
       </div>
 
       {/* ---- the wall */}
       <div className="card sw-wall-card">
         <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ margin: 0 }}>🖼️ กำแพงภาพของทีม</h3>
+          <h3 style={{ margin: 0 }}>{st.test ? '🖼️ กำแพงภาพกรรมการ' : '🖼️ กำแพงภาพของทีม'}</h3>
           {team.complete && <button className="btn small" onClick={() => setShowFrame(true)}>🎞️ ดูภาพรวมทีม</button>}
         </div>
         <div className="sw-wall">
@@ -91,11 +95,11 @@ export default function SelfieWall({ onBalance, onAuthLost }: Props) {
           <button className="btn sw-cta" onClick={() => setShoot(true)}>📷 ถ่าย Selfie ของฉัน</button>
         )}
         {st.me.photoUrl && s.live && !team.complete && <button className="btn ghost" onClick={() => setShoot(true)}>ถ่ายใหม่</button>}
-        {st.me.isObserver && <div className="observer-note" style={{ marginTop: 10 }}>👁 คณะทำงานร่วมติดภาพได้ แต่ไม่นับเป็นคะแนนของทีม</div>}
+        {st.me.isObserver && !st.test && <div className="observer-note" style={{ marginTop: 10 }}>👁 คณะทำงานร่วมติดภาพได้ แต่ไม่นับเป็นคะแนนของทีม</div>}
         {err && <div className="error" style={{ marginTop: 10 }}>{err}</div>}
       </div>
 
-      {st.standings.length > 0 && (
+      {!st.test && st.standings.length > 0 && (
         <div className="card">
           <h3 style={{ margin: '0 0 8px' }}>🏁 ทีมที่ทำครบแล้ว</h3>
           <ol className="sw-standings">{st.standings.map((x) => <li key={x.rank}><span>{medal(x.rank)} {x.team}</span><strong>+{x.tokens}</strong><small>{fmtDT(x.at)}</small></li>)}</ol>
@@ -115,6 +119,7 @@ function Countdown({ end }: { end: string | null }) {
 }
 
 /** One slot on the wall: grey placeholder with the name until a photo arrives, then it flips in. */
+const hasReal = (m: { name: string; fullName: string }) => !!m.fullName && m.fullName.trim() !== m.name.trim();
 function Frame({ m, index, onShoot }: { m: Member; index: number; onShoot?: () => void }) {
   return (
     <div className={`sw-frame${m.photoUrl ? ' has' : ''}${m.isMe ? ' me' : ''}${m.isObserver ? ' obs' : ''}`} style={{ animationDelay: `${index * 60}ms` }}>
@@ -127,6 +132,7 @@ function Frame({ m, index, onShoot }: { m: Member; index: number; onShoot?: () =
         )}
       </div>
       <div className="sw-frame-name">{m.isObserver ? '👁 ' : ''}{m.name}{m.isMe ? ' (ฉัน)' : ''}</div>
+      {hasReal(m) && <div className="sw-frame-real">{m.fullName}</div>}
     </div>
   );
 }
@@ -303,7 +309,7 @@ function Camera({ settings: s, onClose, onVerdict, onAuthLost }: { settings: Sta
 }
 
 // ------------------------------------------------------------------ celebration (team just completed)
-function Celebration({ tokens, rank, team, onDone }: { tokens: number; rank: number | null; team: string; onDone: () => void }) {
+function Celebration({ tokens, rank, team, test, onDone }: { tokens: number; rank: number | null; team: string; test: boolean; onDone: () => void }) {
   const [n, setN] = useState(0);
   useEffect(() => {
     const start = performance.now(), dur = 1400;
@@ -319,10 +325,20 @@ function Celebration({ tokens, rank, team, onDone }: { tokens: number; rank: num
       <div className="sw-confetti" aria-hidden>{bits.map((b, i) => <i key={i} style={{ left: `${b.l}%`, animationDelay: `${b.d}s`, background: b.c, width: b.s, height: b.s * 0.6, transform: `rotate(${b.r}deg)` }} />)}</div>
       <div className="sw-party-card">
         <div className="sw-coin3d" aria-hidden><div className="face front">🪙</div><div className="face back">🪙</div></div>
-        <div className="sw-party-kicker">ทีม {team} ครบทุกคนแล้ว!</div>
-        <div className="sw-party-rank">{medal(rank)} อันดับ {rank}</div>
-        <div className="sw-party-tokens">+{n}</div>
-        <div className="sw-party-sub">Tokens เข้ากระเป๋าทีม</div>
+        {test ? (
+          <>
+            <div className="sw-party-kicker">🧪 โหมดทดสอบกรรมการ</div>
+            <div className="sw-party-rank">ถ่ายครบทุกคนแล้ว!</div>
+            <div className="sw-party-sub">ระบบทำงานปกติ · ไม่มีคะแนน ไม่มี Token</div>
+          </>
+        ) : (
+          <>
+            <div className="sw-party-kicker">ทีม {team} ครบทุกคนแล้ว!</div>
+            <div className="sw-party-rank">{medal(rank)} อันดับ {rank}</div>
+            <div className="sw-party-tokens">+{n}</div>
+            <div className="sw-party-sub">Tokens เข้ากระเป๋าทีม</div>
+          </>
+        )}
         <button className="btn sw-cta" onClick={onDone}>🎞️ ดูภาพรวมทีม</button>
       </div>
     </div>
@@ -352,11 +368,12 @@ function FinalFrame({ st, onClose }: { st: Status; onClose: () => void }) {
   }
   return (
     <div className="sw-final" role="dialog" aria-modal="true" aria-label="ภาพรวมทีม">
-      <div className="sw-final-top"><button className="sw-x" onClick={onClose} aria-label="ปิด">✕</button><strong>ภาพรวมทีม {st.team.name}</strong></div>
+      <div className="sw-final-top"><button className="sw-x" onClick={onClose} aria-label="ปิด">✕</button><strong>{st.test ? st.team.name : `ภาพรวมทีม ${st.team.name}`}</strong></div>
       <div className="sw-final-body">
         {err && <div className="error">{err}</div>}
         {url ? <img src={url} alt={`ภาพรวมทีม ${st.team.name}`} className="sw-final-img" /> : <div className="spinner" />}
         {!st.team.complete && <div className="banner" style={{ margin: '10px 0 0' }}>ยังไม่ครบทุกคน ช่องที่ว่างจะเติมเมื่อเพื่อนถ่ายเสร็จ</div>}
+        {st.test && <div className="banner" style={{ margin: '10px 0 0' }}>🧪 ภาพทดสอบของกรรมการ (ไม่มีคะแนน)</div>}
       </div>
       <div className="sw-final-actions">
         <button className="btn" disabled={!blob} onClick={share}>📤 แชร์ / โพสต์ Facebook</button>
@@ -368,6 +385,13 @@ function FinalFrame({ st, onClose }: { st: Status; onClose: () => void }) {
 }
 
 const loadImg = (src: string) => new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => res(i); i.onerror = () => rej(new Error('โหลดรูปไม่สำเร็จ')); i.src = src; });
+/** Shortens text with … so it never runs outside its frame. */
+function fitText(ctx: CanvasRenderingContext2D, text: string, maxW: number) {
+  if (ctx.measureText(text).width <= maxW) return text;
+  let t = text;
+  while (t.length > 1 && ctx.measureText(t + '…').width > maxW) t = t.slice(0, -1);
+  return t + '…';
+}
 const rr = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) => { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); };
 
 /** Draws the collage: logo header, a grid of portrait photos with names, team name, footer line. 1080 px wide JPEG. */
@@ -376,8 +400,8 @@ async function renderFrame(st: Status) {
   const n = Math.max(1, members.length);
   const cols = n <= 2 ? 2 : n <= 6 ? 3 : n <= 12 ? 4 : 5;
   const rows = Math.ceil(n / cols);
-  const W = 1080, pad = 44, gap = 16, cellW = Math.floor((W - pad * 2 - gap * (cols - 1)) / cols), cellH = Math.round(cellW * 4 / 3), nameH = 40;
-  const headH = 400, footH = 150;
+  const W = 1080, pad = 44, gap = 16, cellW = Math.floor((W - pad * 2 - gap * (cols - 1)) / cols), cellH = Math.round(cellW * 4 / 3), nameH = 68;
+  const headH = 400, footH = 190;
   const H = headH + rows * (cellH + nameH + gap) + footH;
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const ctx = c.getContext('2d')!;
@@ -390,7 +414,7 @@ async function renderFrame(st: Status) {
   try { const logo = await loadImg('/kv-logo.png'); const lw = 460, lh = lw * logo.height / logo.width; ctx.drawImage(logo, (W - lw) / 2, 52, lw, lh); }
   catch { ctx.fillStyle = '#4c6b3c'; ctx.font = 'bold 44px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(THEME_TITLE, W / 2, 140); }
   ctx.textAlign = 'center'; ctx.fillStyle = '#b4532a'; ctx.font = 'bold 46px "Noto Sans Thai", "Sarabun", sans-serif';
-  ctx.fillText(`ทีม ${st.team.name}`, W / 2, headH - 36);
+  ctx.fillText(st.test ? st.team.name : `ทีม ${st.team.name}`, W / 2, headH - 36);
   // photos
   for (let i = 0; i < members.length; i++) {
     const m = members[i], col = i % cols, row = Math.floor(i / cols);
@@ -403,14 +427,18 @@ async function renderFrame(st: Status) {
     } else { ctx.fillStyle = '#9aa39c'; ctx.font = `${Math.round(cellW * 0.5)}px sans-serif`; ctx.fillText('👤', x + cellW / 2, y + cellH * 0.62); }
     ctx.restore();
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; rr(ctx, x, y, cellW, cellH, 18); ctx.stroke();
-    ctx.fillStyle = '#1f3557'; ctx.font = `600 ${cellW > 240 ? 24 : 20}px "Noto Sans Thai", "Sarabun", sans-serif`;
-    ctx.fillText(`${m.isObserver ? '👁 ' : ''}${m.name}`.slice(0, 22), x + cellW / 2, y + cellH + 28, cellW);
+    ctx.fillStyle = '#1f3557'; ctx.font = `700 ${cellW > 240 ? 25 : 21}px "Noto Sans Thai", "Sarabun", sans-serif`;
+    ctx.fillText(fitText(ctx, `${m.isObserver ? '👁 ' : ''}${m.name}`, cellW), x + cellW / 2, y + cellH + 30);
+    if (hasReal(m)) {   // real name in small type under the nickname
+      ctx.fillStyle = '#5b6b7a'; ctx.font = `${cellW > 240 ? 19 : 16}px "Noto Sans Thai", "Sarabun", sans-serif`;
+      ctx.fillText(fitText(ctx, m.fullName, cellW), x + cellW / 2, y + cellH + 56);
+    }
   }
   // footer
   ctx.fillStyle = '#4c6b3c'; ctx.font = 'bold 34px "Noto Sans Thai", "Sarabun", sans-serif';
-  ctx.fillText(THEME_FOOT, W / 2, H - 70);
+  ctx.fillText(THEME_FOOT, W / 2, H - 92);
   ctx.fillStyle = '#7a8a74'; ctx.font = '22px sans-serif';
-  ctx.fillText(st.team.complete ? `${medal(st.team.rank)} อันดับ ${st.team.rank} · +${st.team.tokens} Tokens` : 'Food Camp Hunt', W / 2, H - 36);
+  if (st.test) ctx.fillText('🧪 ภาพทดสอบของกรรมการ', W / 2, H - 58);   // the shared picture stays clean: theme, team name, event line
   const blob = await new Promise<Blob | null>((r) => c.toBlob(r, 'image/jpeg', 0.92));
   if (!blob) throw new Error('สร้างภาพไม่สำเร็จ');
   return { blob, url: URL.createObjectURL(blob) };

@@ -14,9 +14,12 @@ export const GET = handler(async () => {
   const sb = db();
 
   const { data: settings, error: settingsError } = await sb.from('game_settings')
-    .select(`${MENU_SETTINGS_SELECT}, tokens_per_correct`).eq('id', 1).single();
+    .select(`${MENU_SETTINGS_SELECT}, tokens_per_correct, selfie_audience`).eq('id', 1).single();
   if (settingsError) throw settingsError;
   const menus = menuAccess(settings);
+  // judges-only test phase: the selfie menu stays closed for everybody except observers
+  const judgesOnly = (settings as any)?.selfie_audience === 'judges';
+  if (judgesOnly && !p.is_observer) menus.selfie = false;
 
   const [{ data: questions }, { data: answers }, balance, { data: reds }, { data: items }, goal, { data: leaderRow }, line, selfie] =
     await Promise.all([
@@ -53,7 +56,7 @@ export const GET = handler(async () => {
     goal,
     menus,
     line,
-    selfie: selfie ? { live: selfie.settings.live, before: selfie.settings.before, after: selfie.settings.after, start: selfie.settings.start, end: selfie.settings.end, color: selfie.settings.color, percent: selfie.settings.percent, pct: selfie.team.pct, count: selfie.team.count, total: selfie.team.total, complete: selfie.team.complete, rank: selfie.team.rank, tokens: selfie.team.tokens, nextReward: selfie.nextReward, mine: !!selfie.me.photoUrl } : null,
+    selfie: selfie ? { test: selfie.test, live: selfie.settings.live, before: selfie.settings.before, after: selfie.settings.after, start: selfie.settings.start, end: selfie.settings.end, color: selfie.settings.color, percent: selfie.settings.percent, pct: selfie.team.pct, count: selfie.team.count, total: selfie.team.total, complete: selfie.team.complete, rank: selfie.team.rank, tokens: selfie.team.tokens, nextReward: selfie.nextReward, mine: !!selfie.me.photoUrl, name: selfie.team.name } : null,
     game: { open: !!settings?.is_open, tokensPerCorrect: settings?.tokens_per_correct ?? 10 },
     total: qs.length,
     answered,

@@ -14,6 +14,7 @@ import { isLineGroupUrl, LINE_GROUP_CODES } from '@/lib/line-types';
 import { checkOrigin, handler, HttpError, ok, rateLimit, readJson } from '@/lib/http';
 import { SELFIE_SETTINGS_SELECT, publicSettings } from '@/lib/selfie/settings';
 import { aiEnabled } from '@/lib/selfie/ai';
+import { MIN_TEAM_COLOR_GAP, TEAM_PALETTE, colorGap, pickDistinctColors } from '@/lib/selfie/color';
 
 export const dynamic = 'force-dynamic';
 
@@ -87,23 +88,27 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
 
   if (action === 'selfie') {
     await requireRole('staff');
-    const [{ data: s }, { data: teams }, { data: people }, { data: photos }] = await Promise.all([
+    const [{ data: st }, { data: teams }, { data: people }, { data: photos }] = await Promise.all([
       sb.from('game_settings').select(SELFIE_SETTINGS_SELECT).eq('id', 1).single(),
-      sb.from('teams').select('id, name, selfie_completed_at, selfie_finish_rank, selfie_reward_tokens').order('name'),
+      sb.from('teams').select('id, name, selfie_color, selfie_completed_at, selfie_finish_rank, selfie_reward_tokens').order('name'),
       sb.from('participants').select('id, team_id, name, nick_name, is_observer').order('name'),
-      sb.from('selfie_photos').select('id, participant_id, team_id, image_url, color_pct, checks, created_at').order('created_at'),
+      sb.from('selfie_photos').select('id, participant_id, team_id, image_url, color_pct, checks, created_at, is_test').order('created_at'),
     ]);
-    const photoOf = new Map((photos ?? []).map((x: any) => [x.participant_id, x]));
+    const settings = publicSettings(st);
+    const photoOf = (id: string, test: boolean) => (photos ?? []).find((x: any) => x.participant_id === id && !!x.is_test === test) as any;
+    const member = (m: any, test: boolean) => {
+      const ph = photoOf(m.id, test);
+      return { id: m.id, name: m.nick_name || m.name, fullName: m.name, isObserver: !!m.is_observer, photoId: ph?.id ?? null, photoUrl: ph?.image_url ?? null, pct: ph?.color_pct ?? null, at: ph?.created_at ?? null, checks: ph?.checks ?? null };
+    };
+    const judges = (people ?? []).filter((m: any) => m.is_observer).map((m: any) => member(m, true));
     return ok({
-      settings: publicSettings(s), aiEnabled: aiEnabled(),
+      settings, aiEnabled: aiEnabled(), palette: TEAM_PALETTE,
+      judges: { members: judges, count: judges.filter((m: any) => m.photoUrl).length, total: judges.length },
       teams: (teams ?? []).map((t: any) => {
-        const members = (people ?? []).filter((m: any) => m.team_id === t.id).map((m: any) => {
-          const ph: any = photoOf.get(m.id);
-          return { id: m.id, name: m.nick_name || m.name, fullName: m.name, isObserver: !!m.is_observer, photoId: ph?.id ?? null, photoUrl: ph?.image_url ?? null, pct: ph?.color_pct ?? null, at: ph?.created_at ?? null, checks: ph?.checks ?? null };
-        });
+        const members = (people ?? []).filter((m: any) => m.team_id === t.id).map((m: any) => member(m, false));
         const competing = members.filter((m: any) => !m.isObserver);
         const count = competing.filter((m: any) => m.photoUrl).length;
-        return { id: t.id, name: t.name, members, count, total: competing.length, complete: !!t.selfie_completed_at, rank: t.selfie_finish_rank, tokens: t.selfie_reward_tokens ?? 0, completedAt: t.selfie_completed_at };
+        return { id: t.id, name: t.name, color: t.selfie_color ?? null, members, count, total: competing.length, complete: !!t.selfie_completed_at, rank: t.selfie_finish_rank, tokens: t.selfie_reward_tokens ?? 0, completedAt: t.selfie_completed_at };
       }),
     });
   }
@@ -720,6 +725,13 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       const patch: Record<string, unknown> = {};
       if (typeof body.open === 'boolean') { patch.selfie_open = body.open; if (body.open) patch.selfie_announced_at = new Date().toISOString(); }
       if (body.announce === true) patch.selfie_announced_at = new Date().toISOString();
+      if (body.audience !== undefined) {
+        if (body.audience !== 'all' && body.audience !== 'judges') throw new HttpError(400, 'BAD_INPUT');
+        const { data: cur } = await sb.from('game_settings').select('selfie_audience, selfie_open').eq('id', 1).single();
+        patch.selfie_audience = body.audience;
+        // widening the mission to everyone is the real announcement: players get the pop-up now
+        if (body.audience === 'all' && cur?.selfie_audience !== 'all' && (cur?.selfie_open || body.open === true)) patch.selfie_announced_at = new Date().toISOString();
+      }
       for (const k of ['start', 'end'] as const) {
         if (body[k] === undefined) continue;
         const v = str(body[k], 40);
@@ -743,6 +755,49 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       if (error) throw error;
       await audit(role, 'selfie.set', patch);
       return ok();
+    }
+    case 'selfie.team.color': {
+      // One colour per team, never the same twice, and never so close that one photo could satisfy two teams.
+      const { data: teams } = await sb.from('teams').select('id, name, selfie_color').order('name');
+      const all = (teams ?? []) as any[];
+      if (body.assign === 'random') {
+        const picks = pickDistinctColors(all.length);
+        if (picks.length < all.length) throw new HttpError(400, 'BAD_INPUT');   // more teams than distinct colours: set them by hand
+        // clear first so the unique index never trips while colours move between teams
+        const c = await sb.from('teams').update({ selfie_color: null }).not('id', 'is', null);
+        if (c.error) throw c.error;
+        for (let i = 0; i < all.length; i++) {
+          const { error } = await sb.from('teams').update({ selfie_color: picks[i] }).eq('id', all[i].id);
+          if (error) throw error;
+        }
+        await audit(role, 'selfie.team.color', { assign: 'random' });
+        return ok({ colors: all.map((t, i) => ({ id: t.id, color: picks[i] })) });
+      }
+      const id = str(body.team_id, 60);
+      const team = all.find((t) => t.id === id);
+      if (!team) throw new HttpError(404, 'NOT_FOUND');
+      if (body.color === null || body.color === '') {
+        const { error } = await sb.from('teams').update({ selfie_color: null }).eq('id', id);
+        if (error) throw error;
+        return ok();
+      }
+      const color = str(body.color, 7).toLowerCase();
+      if (!/^#[0-9a-f]{6}$/.test(color)) throw new HttpError(400, 'BAD_INPUT');
+      const clash = all.find((t) => t.id !== id && t.selfie_color && colorGap(color, t.selfie_color) < MIN_TEAM_COLOR_GAP);
+      if (clash) return NextResponse.json({ error: 'BAD_INPUT', message: `สีนี้ใกล้เคียงกับสีของทีม ${clash.name} เกินไป (ภาพเดียวอาจผ่านทั้งสองทีม) เลือกสีที่ต่างกันชัดเจนกว่านี้` }, { status: 400 });
+      const { error } = await sb.from('teams').update({ selfie_color: color }).eq('id', id);
+      if (error) throw error;
+      await audit(role, 'selfie.team.color', { team_id: id, color });
+      return ok();
+    }
+    case 'selfie.clearTest': {
+      // Removes only the judges' test photos; real team photos, ranks and rewards are untouched.
+      const { data: ph } = await sb.from('selfie_photos').select('id, image_url').eq('is_test', true);
+      const { error } = await sb.from('selfie_photos').delete().eq('is_test', true);
+      if (error) throw error;
+      for (const x of (ph ?? []) as any[]) await removePublicFile('selfies', x.image_url);
+      await audit(role, 'selfie.clearTest', { count: (ph ?? []).length });
+      return ok({ cleared: (ph ?? []).length });
     }
     case 'selfie.remove': {
       // Moderation: take one photo off the wall (the player can upload again; a reward already paid stays).

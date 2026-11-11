@@ -2,8 +2,9 @@
 export type SelfieSettingsRow = {
   selfie_open?: boolean | null; selfie_start?: string | null; selfie_end?: string | null; selfie_color?: string | null;
   selfie_percent?: number | null; selfie_tolerance?: number | null; selfie_rewards?: string | null; selfie_announced_at?: string | null;
+  selfie_audience?: string | null;
 };
-export const SELFIE_SETTINGS_SELECT = 'selfie_open, selfie_start, selfie_end, selfie_color, selfie_percent, selfie_tolerance, selfie_rewards, selfie_announced_at';
+export const SELFIE_SETTINGS_SELECT = 'selfie_open, selfie_start, selfie_end, selfie_color, selfie_percent, selfie_tolerance, selfie_rewards, selfie_announced_at, selfie_audience';
 
 export const parseRewards = (s: string | null | undefined): number[] =>
   (s ?? '20,15,10,5').split(',').map((x) => Math.max(0, parseInt(x.trim(), 10) || 0)).slice(0, 8);
@@ -23,5 +24,10 @@ export function publicSettings(s: SelfieSettingsRow | null | undefined) {
     open: w.on, live: w.live, before: w.before, after: w.after, start: w.start, end: w.end,
     color: (s?.selfie_color ?? '#2f8f5b').toLowerCase(), percent: s?.selfie_percent ?? 60, tolerance: s?.selfie_tolerance ?? 32,
     rewards: parseRewards(s?.selfie_rewards), announcedAt: s?.selfie_announced_at ?? null,
+    /** 'all' = everyone plays for the team; 'judges' = only observers play, as a score-free test */
+    audience: (s?.selfie_audience === 'judges' ? 'judges' : 'all') as 'all' | 'judges',
   };
 }
+
+/** Who may see and play the mission right now. In the judges-only phase nobody else is notified or sees the menu. */
+export const selfieEligible = (audience: 'all' | 'judges', isObserver: boolean) => audience === 'all' || isObserver;

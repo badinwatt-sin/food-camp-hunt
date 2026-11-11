@@ -30,7 +30,7 @@ type Me = {
   marketOpen: boolean;
   menus: MenuAccess;
   line: LineStatus;
-  selfie: { live: boolean; before: boolean; after: boolean; start: string | null; end: string | null; color: string; percent: number; pct: number; count: number; total: number; complete: boolean; rank: number | null; tokens: number; nextReward: number; mine: boolean } | null;
+  selfie: { test?: boolean; name?: string; live: boolean; before: boolean; after: boolean; start: string | null; end: string | null; color: string; percent: number; pct: number; count: number; total: number; complete: boolean; rank: number | null; tokens: number; nextReward: number; mine: boolean } | null;
   inventory: { item: string; image_url: string | null; qty: number; handed: number; pending: number; spent: number }[];
   game: { open: boolean; tokensPerCorrect: number };
   total: number;
@@ -46,7 +46,7 @@ type PhotoData = {
     submission: { status: 'pending' | 'approved' | 'rejected'; url: string; tokens: number; reason: string | null; at: string; reviewedAt: string | null; by: string } | null }[];
 };
 type CheckinNotice = { kind: 'checkin'; id: string };
-type SelfieNotice = { kind: 'selfie'; id: string; pct: number; count: number; total: number; mine: boolean; nextReward: number; end: string | null; color: string; percent: number };
+type SelfieNotice = { kind: 'selfie'; id: string; test?: boolean; pct: number; count: number; total: number; mine: boolean; nextReward: number; end: string | null; color: string; percent: number };
 type PhotoNotice = { id: string; status: 'approved' | 'rejected'; tokens: number; reason: string | null; at: string; title: string };
 type HuntData = {
   open: boolean;
@@ -388,7 +388,7 @@ function PlayerPage() {
           <div className="card" style={{ border: '3px solid #f0c36a' }}>
             <div className="mission">
               <div className="m-ic" style={{ background: me.selfie.color, fontSize: 30 }}>🤳</div>
-              <div className="m-body"><h2>Selfie Wall · ภารกิจแรกของทีม</h2><div className="muted">{me.selfie.complete ? `ทีมครบแล้ว อันดับ ${me.selfie.rank} · +${me.selfie.tokens} Tokens` : `ทีมทำแล้ว ${me.selfie.pct}% (${me.selfie.count}/${me.selfie.total} คน) · ได้สูงสุด ${me.selfie.nextReward} Tokens`}</div></div>
+              <div className="m-body"><h2>{me.selfie.test ? '🧪 Selfie Wall · ทดสอบกรรมการ' : 'Selfie Wall · ภารกิจแรกของทีม'}</h2><div className="muted">{me.selfie.test ? `กรรมการถ่ายแล้ว ${me.selfie.count}/${me.selfie.total} คน · ไม่มีคะแนน` : me.selfie.complete ? `ทีมครบแล้ว อันดับ ${me.selfie.rank} · +${me.selfie.tokens} Tokens` : `ทีมทำแล้ว ${me.selfie.pct}% (${me.selfie.count}/${me.selfie.total} คน) · ได้สูงสุด ${me.selfie.nextReward} Tokens`}</div></div>
             </div>
             <button className="btn sw-cta" style={{ marginTop: 12 }} onClick={() => setView('selfie')}>{me.selfie.mine || me.selfie.complete ? 'ดูกำแพงภาพของทีม' : me.selfie.live ? '📷 ถ่าย Selfie ของฉัน' : 'ดูรายละเอียดภารกิจ'}</button>
           </div>
@@ -567,7 +567,7 @@ function PlayerPage() {
         <div className="card sw-banner">
           <div className="row" style={{ alignItems: 'center', gap: 12 }}>
             <div className="sw-ring" style={{ ['--sw-color' as string]: me.selfie.color, ['--p' as string]: me.selfie.pct }}><div><b>{me.selfie.pct}%</b></div></div>
-            <div style={{ flex: 1, minWidth: 0 }}><strong>🤳 Selfie Wall</strong><div style={{ fontSize: 13, opacity: .9 }}>{me.selfie.mine ? `รอเพื่อนอีก ${me.selfie.total - me.selfie.count} คน` : 'คุณยังไม่ได้ถ่าย Selfie'} · ทีมได้สูงสุด {me.selfie.nextReward} Tokens</div></div>
+            <div style={{ flex: 1, minWidth: 0 }}><strong>{me.selfie.test ? '🧪 Selfie Wall (ทดสอบ)' : '🤳 Selfie Wall'}</strong><div style={{ fontSize: 13, opacity: .9 }}>{me.selfie.mine ? `รอเพื่อนอีก ${me.selfie.total - me.selfie.count} คน` : 'คุณยังไม่ได้ถ่าย Selfie'}{me.selfie.test ? ' · ไม่มีคะแนน' : ` · ทีมได้สูงสุด ${me.selfie.nextReward} Tokens`}</div></div>
             <button className="btn small" style={{ flex: 'none' }} onClick={() => setView('selfie')}>{me.selfie.mine ? 'ดูทีม' : 'ถ่ายเลย'}</button>
           </div>
         </div>
@@ -1011,10 +1011,10 @@ function NoticeModal() {
         <div className="card center stack player-dialog-panel sw-hero" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, margin: 0 }}>
           <div className="sw-leaves" aria-hidden>{['🍃', '🌿', '🍂', '🍃'].map((l, i) => <span key={i} style={{ left: `${10 + i * 24}%`, animationDelay: `${i * 1.1}s` }}>{l}</span>)}</div>
           <div style={{ fontSize: 56, position: 'relative' }}>🤳</div>
-          <h2 style={{ margin: 0, position: 'relative' }}>{n.mine ? 'ทีมยังไม่ครบ!' : 'ภารกิจแรกของทีม: Selfie Wall'}</h2>
+          <h2 style={{ margin: 0, position: 'relative' }}>{n.test ? '🧪 ทดสอบ Selfie Wall (กรรมการ)' : n.mine ? 'ทีมยังไม่ครบ!' : 'ภารกิจแรกของทีม: Selfie Wall'}</h2>
           <div className="sw-ring" style={{ ['--sw-color' as string]: '#f6d365', ['--p' as string]: n.pct, margin: '4px auto' }}><div><b>{n.pct}%</b><span>{n.count}/{n.total} คน</span></div></div>
-          <div style={{ position: 'relative' }}>{n.mine ? `รอเพื่อนอีก ${n.total - n.count} คน ช่วยกันตามให้ครบ!` : <>ถ่าย Selfie กับฉากหลัง <span className="sw-chip"><i style={{ background: n.color }} />{colorNameClient(n.color)}</span> ให้ได้ {n.percent}%</>}</div>
-          <div className="sw-pill" style={{ position: 'relative' }}>🪙 ทีมมีโอกาสได้สูงสุด <strong>{n.nextReward} Tokens</strong></div>
+          <div style={{ position: 'relative' }}>{n.test ? <>ทดลองถ่าย Selfie กับฉากหลัง <span className="sw-chip"><i style={{ background: n.color }} />{colorNameClient(n.color)}</span> เหมือนผู้เล่นจริง · ไม่มีคะแนน</> : n.mine ? `รอเพื่อนอีก ${n.total - n.count} คน ช่วยกันตามให้ครบ!` : <>ถ่าย Selfie กับฉากหลัง <span className="sw-chip"><i style={{ background: n.color }} />{colorNameClient(n.color)}</span> ให้ได้ {n.percent}%</>}</div>
+          {!n.test && <div className="sw-pill" style={{ position: 'relative' }}>🪙 ทีมมีโอกาสได้สูงสุด <strong>{n.nextReward} Tokens</strong></div>}
           {n.end && <div style={{ fontSize: 13, opacity: .9, position: 'relative' }}>หมดเวลา {fmtTime(n.end)}</div>}
           <button className="btn sw-cta" style={{ position: 'relative' }} onClick={go}>{n.mine ? 'ดูกำแพงภาพของทีม' : '📷 ถ่าย Selfie เลย'}</button>
           <button className="btn ghost" style={{ color: '#fff', borderColor: 'rgba(255,255,255,.5)', position: 'relative' }} onClick={later}>ไว้ทีหลัง</button>
