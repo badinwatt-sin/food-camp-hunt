@@ -3,12 +3,14 @@
  * Each plan deletes tables in an order that respects the foreign keys, so a run can simply be repeated if it is interrupted.
  */
 export type BulkStep = { table: string; eq?: [string, string] };
-export type BulkPlan = { steps: BulkStep[]; resetPlayers?: boolean; switchesOff?: boolean; resetLine?: boolean };
-export type BulkTarget = 'minigames' | 'missions' | 'items' | 'teams' | 'questions' | 'spots' | 'playdata';
+export type BulkPlan = { steps: BulkStep[]; resetPlayers?: boolean; switchesOff?: boolean; resetLine?: boolean; resetSelfie?: boolean };
+export type BulkTarget = 'selfie' | 'minigames' | 'missions' | 'items' | 'teams' | 'questions' | 'spots' | 'playdata';
 
 export const BULK_CONFIRM = 'ลบทั้งหมด';
 
 export const BULK_PLANS: Record<BulkTarget, BulkPlan> = {
+  // the selfie wall: every photo, the finishing order and the paid rewards (done inside reset_selfie_wall)
+  selfie: { resetSelfie: true, steps: [] },
   // every solo mini-game attempt and the tokens they gave (the wallet goes back down by that amount)
   minigames: { steps: [{ table: 'token_ledger', eq: ['kind', 'minigame'] }, { table: 'minigame_attempts' }] },
   // photo missions and every photo the teams sent (tokens already earned stay in the ledger)
@@ -22,6 +24,7 @@ export const BULK_PLANS: Record<BulkTarget, BulkPlan> = {
   // all teams WITH their players, squads, tokens and history: start from nothing
   teams: {
     resetLine: true,
+    resetSelfie: true,
     switchesOff: true,
     steps: [
       { table: 'photo_submissions' }, { table: 'hunt_scans' }, { table: 'hunt_claims' }, { table: 'puzzle_attempts' }, { table: 'puzzle_solves' },
@@ -31,6 +34,7 @@ export const BULK_PLANS: Record<BulkTarget, BulkPlan> = {
   // wipe the results of a test run but keep everything that was set up (teams, players + IDs, questions, items, missions, spots)
   playdata: {
     resetLine: true,
+    resetSelfie: true,
     steps: [
       { table: 'answers' }, { table: 'hunt_scans' }, { table: 'hunt_claims' }, { table: 'photo_submissions' }, { table: 'puzzle_attempts' }, { table: 'puzzle_solves' }, { table: 'minigame_attempts' },
       { table: 'token_ledger' }, { table: 'redemptions' }, { table: 'audit_log' },

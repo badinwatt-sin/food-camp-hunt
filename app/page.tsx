@@ -6,12 +6,14 @@ import { AVATAR_EMOJIS } from '@/lib/avatar-list';
 import jsQR from 'jsqr';
 import { ApiError, api } from '@/lib/client-api';
 import MiniGames from '@/components/MiniGames';
+import SelfieWall from '@/components/SelfieWall';
 import AppIcon from '@/components/AppIcon';
 import LineCheckin, { LineInvitationProvider, useLineInvitation } from '@/components/LineCheckin';
 import LineLogo from '@/components/LineLogo';
 import type { LineStatus } from '@/lib/line-types';
 import type { MenuAccess } from '@/lib/menu-access';
 import { MARKET_CATS, marketCat } from '@/lib/market-cats';
+import { colorName as colorNameClient } from '@/lib/selfie/color';
 
 type Question = { id: string; position: number; prompt: string; image_url: string | null; options: string[] };
 type Goal = { goalPct: number; completed: number; participants: number; met: boolean; need: number };
@@ -28,6 +30,7 @@ type Me = {
   marketOpen: boolean;
   menus: MenuAccess;
   line: LineStatus;
+  selfie: { live: boolean; before: boolean; after: boolean; start: string | null; end: string | null; color: string; percent: number; pct: number; count: number; total: number; complete: boolean; rank: number | null; tokens: number; nextReward: number; mine: boolean } | null;
   inventory: { item: string; image_url: string | null; qty: number; handed: number; pending: number; spent: number }[];
   game: { open: boolean; tokensPerCorrect: number };
   total: number;
@@ -43,6 +46,7 @@ type PhotoData = {
     submission: { status: 'pending' | 'approved' | 'rejected'; url: string; tokens: number; reason: string | null; at: string; reviewedAt: string | null; by: string } | null }[];
 };
 type CheckinNotice = { kind: 'checkin'; id: string };
+type SelfieNotice = { kind: 'selfie'; id: string; pct: number; count: number; total: number; mine: boolean; nextReward: number; end: string | null; color: string; percent: number };
 type PhotoNotice = { id: string; status: 'approved' | 'rejected'; tokens: number; reason: string | null; at: string; title: string };
 type HuntData = {
   open: boolean;
@@ -74,7 +78,7 @@ function PlayerPage() {
   const [busy, setBusy] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
-  const [view, setView] = useState<'home' | 'missions' | 'quiz' | 'hunt' | 'team' | 'market' | 'checkin' | 'games'>('home');
+  const [view, setView] = useState<'home' | 'missions' | 'quiz' | 'hunt' | 'team' | 'market' | 'checkin' | 'games' | 'selfie'>('home');
   const [pendingCheckin, setPendingCheckin] = useState('');
   const [huntTab, setHuntTab] = useState<'hunt' | 'puzzle'>('hunt');
   const [editAvatar, setEditAvatar] = useState(false);
@@ -160,15 +164,18 @@ function PlayerPage() {
     if (!loggedIn) return;
     noticeStore.onClose = () => { load(); };
     noticeStore.onCheckin = () => setView('checkin');
+    noticeStore.onSelfie = () => setView('selfie');
     let stop = false;
     const tick = async () => {
       if (document.visibilityState === 'hidden' || noticeStore.get()) return;
       try {
-        const r = await api<{ photos: PhotoNotice[]; checkin: { announcedAt: string } | null }>('/api/notices', undefined, 1);
+        const r = await api<{ photos: PhotoNotice[]; checkin: { announcedAt: string } | null; selfie: (Omit<SelfieNotice, 'kind' | 'id'> & { announcedAt: string }) | null }>('/api/notices', undefined, 1);
         if (stop) return;
         const seen = readSeen();
         const ci = r.checkin ? { kind: 'checkin' as const, id: `checkin:${r.checkin.announcedAt}` } : null;
-        const next: PhotoNotice | CheckinNotice | undefined = (ci && !seen.has(ci.id) ? ci : undefined) ?? r.photos.find((x) => !seen.has(x.id));
+        // the selfie pop-up comes back once per announcement, and again whenever the team's progress changes
+        const sf: SelfieNotice | null = r.selfie ? { kind: 'selfie', id: `selfie:${r.selfie.announcedAt}:${r.selfie.count}`, ...r.selfie } : null;
+        const next: PhotoNotice | CheckinNotice | SelfieNotice | undefined = (sf && !seen.has(sf.id) ? sf : undefined) ?? (ci && !seen.has(ci.id) ? ci : undefined) ?? r.photos.find((x) => !seen.has(x.id));
         if (next && !noticeStore.get()) noticeStore.set(next);
       } catch { /* offline or logged out: try again later */ }
     };
@@ -176,7 +183,7 @@ function PlayerPage() {
     const t = setInterval(tick, 15000);
     const vis = () => { if (document.visibilityState === 'visible') tick(); };
     document.addEventListener('visibilitychange', vis);
-    return () => { stop = true; clearInterval(t); document.removeEventListener('visibilitychange', vis); noticeStore.onClose = undefined; noticeStore.onCheckin = undefined; };
+    return () => { stop = true; clearInterval(t); document.removeEventListener('visibilitychange', vis); noticeStore.onClose = undefined; noticeStore.onCheckin = undefined; noticeStore.onSelfie = undefined; };
   }, [loggedIn, load]);
 
   // If every question is answered but the finish step didn't run (e.g. connection dropped), finish now.
@@ -279,6 +286,7 @@ function PlayerPage() {
   const closed = (view === 'missions' && !me.menus.missions)
     || (view === 'quiz' && !me.menus.quiz)
     || (view === 'games' && !me.menus.games)
+    || (view === 'selfie' && !me.menus.selfie)
     || (view === 'hunt' && !(huntTab === 'hunt' ? me.menus.hunt : me.menus.photos))
     || (view === 'market' && !me.menus.market)
     || (view === 'checkin' && !me.menus.checkin);
@@ -291,6 +299,16 @@ function PlayerPage() {
       </div>
     </Shell>
   );
+
+  // ---- Team selfie wall (first mission after the teams are formed)
+  if (view === 'selfie') {
+    return (
+      <Shell subtitle={subtitle} onHome={goHome}>
+        <SelfieWall onBalance={() => load()} onAuthLost={fail} />
+        <QuizBack />
+      </Shell>
+    );
+  }
 
   // ---- Solo mini-games
   if (view === 'games') {
@@ -366,6 +384,15 @@ function PlayerPage() {
           <h2 className="page-heading" style={{ fontSize: 22 }}><AppIcon name="missions" />เลือกภารกิจ</h2>
           <div className="muted">ทำภารกิจเพื่อสะสมโทเคนเข้ากระเป๋าทีม</div>
         </div>
+        {me.menus.selfie && me.selfie && (
+          <div className="card" style={{ border: '3px solid #f0c36a' }}>
+            <div className="mission">
+              <div className="m-ic" style={{ background: me.selfie.color, fontSize: 30 }}>🤳</div>
+              <div className="m-body"><h2>Selfie Wall · ภารกิจแรกของทีม</h2><div className="muted">{me.selfie.complete ? `ทีมครบแล้ว อันดับ ${me.selfie.rank} · +${me.selfie.tokens} Tokens` : `ทีมทำแล้ว ${me.selfie.pct}% (${me.selfie.count}/${me.selfie.total} คน) · ได้สูงสุด ${me.selfie.nextReward} Tokens`}</div></div>
+            </div>
+            <button className="btn sw-cta" style={{ marginTop: 12 }} onClick={() => setView('selfie')}>{me.selfie.mine || me.selfie.complete ? 'ดูกำแพงภาพของทีม' : me.selfie.live ? '📷 ถ่าย Selfie ของฉัน' : 'ดูรายละเอียดภารกิจ'}</button>
+          </div>
+        )}
         <div className="card">
           <div className="mission">
             <div className="m-ic" style={{ background: '#fde7b0' }}><AppIcon name="quiz" size={32} /></div>
@@ -533,6 +560,15 @@ function PlayerPage() {
           <div className="row checkin-prompt-row" style={{ justifyContent: 'space-between' }}>
             <div><strong className="action-icon"><AppIcon name="checkin" size={22} />ถึงสถานที่จัดงานแล้วใช่ไหม?</strong><div className="muted" style={{ fontSize: 14 }}>เช็กอินกับทีมงานหน้างาน: สแกน QR แล้วกดยืนยันการเข้าร่วม</div></div>
             <button className="btn small" style={{ flex: 'none' }} onClick={() => setView('checkin')}>เช็กอิน</button>
+          </div>
+        </div>
+      )}
+      {me.menus.selfie && me.selfie && me.selfie.live && !me.selfie.complete && (
+        <div className="card sw-banner">
+          <div className="row" style={{ alignItems: 'center', gap: 12 }}>
+            <div className="sw-ring" style={{ ['--sw-color' as string]: me.selfie.color, ['--p' as string]: me.selfie.pct }}><div><b>{me.selfie.pct}%</b></div></div>
+            <div style={{ flex: 1, minWidth: 0 }}><strong>🤳 Selfie Wall</strong><div style={{ fontSize: 13, opacity: .9 }}>{me.selfie.mine ? `รอเพื่อนอีก ${me.selfie.total - me.selfie.count} คน` : 'คุณยังไม่ได้ถ่าย Selfie'} · ทีมได้สูงสุด {me.selfie.nextReward} Tokens</div></div>
+            <button className="btn small" style={{ flex: 'none' }} onClick={() => setView('selfie')}>{me.selfie.mine ? 'ดูทีม' : 'ถ่ายเลย'}</button>
           </div>
         </div>
       )}
@@ -948,12 +984,13 @@ function GoalCard({ goal, mine }: { goal: Goal; mine?: boolean }) {
 // ---- pop-up for staff decisions on team photos (shown on whatever page the player is on)
 const SEEN_KEY = 'fc_seen_photos';
 const noticeStore = {
-  current: null as PhotoNotice | CheckinNotice | null,
+  current: null as PhotoNotice | CheckinNotice | SelfieNotice | null,
   listeners: new Set<() => void>(),
   onClose: undefined as (() => void) | undefined,
   onCheckin: undefined as (() => void) | undefined,
+  onSelfie: undefined as (() => void) | undefined,
   get() { return noticeStore.current; },
-  set(n: PhotoNotice | CheckinNotice | null) { noticeStore.current = n; noticeStore.listeners.forEach((l) => l()); },
+  set(n: PhotoNotice | CheckinNotice | SelfieNotice | null) { noticeStore.current = n; noticeStore.listeners.forEach((l) => l()); },
   subscribe(l: () => void) { noticeStore.listeners.add(l); return () => { noticeStore.listeners.delete(l); }; },
 };
 function readSeen(): Set<string> {
@@ -965,6 +1002,26 @@ function markSeen(id: string) {
 function NoticeModal() {
   const n = useSyncExternalStore(noticeStore.subscribe, noticeStore.get, () => null);
   if (!n) return null;
+  if ('kind' in n && n.kind === 'selfie') {   // the selfie wall is live and the team is not finished yet
+    const later = () => { markSeen(n.id); noticeStore.set(null); };
+    const go = () => { markSeen(n.id); noticeStore.set(null); noticeStore.onSelfie?.(); };
+    return (
+      <div className="player-dialog-overlay" role="alertdialog" aria-modal="true" aria-label="ภารกิจ Selfie Wall" onClick={later}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(31,47,77,.6)', display: 'grid', placeItems: 'center', zIndex: 100 }}>
+        <div className="card center stack player-dialog-panel sw-hero" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, margin: 0 }}>
+          <div className="sw-leaves" aria-hidden>{['🍃', '🌿', '🍂', '🍃'].map((l, i) => <span key={i} style={{ left: `${10 + i * 24}%`, animationDelay: `${i * 1.1}s` }}>{l}</span>)}</div>
+          <div style={{ fontSize: 56, position: 'relative' }}>🤳</div>
+          <h2 style={{ margin: 0, position: 'relative' }}>{n.mine ? 'ทีมยังไม่ครบ!' : 'ภารกิจแรกของทีม: Selfie Wall'}</h2>
+          <div className="sw-ring" style={{ ['--sw-color' as string]: '#f6d365', ['--p' as string]: n.pct, margin: '4px auto' }}><div><b>{n.pct}%</b><span>{n.count}/{n.total} คน</span></div></div>
+          <div style={{ position: 'relative' }}>{n.mine ? `รอเพื่อนอีก ${n.total - n.count} คน ช่วยกันตามให้ครบ!` : <>ถ่าย Selfie กับฉากหลัง <span className="sw-chip"><i style={{ background: n.color }} />{colorNameClient(n.color)}</span> ให้ได้ {n.percent}%</>}</div>
+          <div className="sw-pill" style={{ position: 'relative' }}>🪙 ทีมมีโอกาสได้สูงสุด <strong>{n.nextReward} Tokens</strong></div>
+          {n.end && <div style={{ fontSize: 13, opacity: .9, position: 'relative' }}>หมดเวลา {fmtTime(n.end)}</div>}
+          <button className="btn sw-cta" style={{ position: 'relative' }} onClick={go}>{n.mine ? 'ดูกำแพงภาพของทีม' : '📷 ถ่าย Selfie เลย'}</button>
+          <button className="btn ghost" style={{ color: '#fff', borderColor: 'rgba(255,255,255,.5)', position: 'relative' }} onClick={later}>ไว้ทีหลัง</button>
+        </div>
+      </div>
+    );
+  }
   if ('kind' in n) {   // admin opened event-day check-in
     const later = () => { markSeen(n.id); noticeStore.set(null); };
     const go = () => { markSeen(n.id); noticeStore.set(null); noticeStore.onCheckin?.(); };

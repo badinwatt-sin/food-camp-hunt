@@ -8,6 +8,7 @@ export type MenuSettings = {
   mg_spot_open?: boolean | null;
   mg_memory_open?: boolean | null;
   mg_mystery_open?: boolean | null;
+  selfie_open?: boolean | null;
 };
 
 export type MenuAccess = {
@@ -18,9 +19,10 @@ export type MenuAccess = {
   market: boolean;
   missions: boolean;
   checkin: boolean;
+  selfie: boolean;
 };
 
-export const MENU_SETTINGS_SELECT = 'is_open, hunt_open, puzzle_open, market_open, checkin_open, mg_spot_open, mg_memory_open, mg_mystery_open';
+export const MENU_SETTINGS_SELECT = 'is_open, hunt_open, puzzle_open, market_open, checkin_open, mg_spot_open, mg_memory_open, mg_mystery_open, selfie_open';
 
 /** Missing settings fail closed. Completing a mission does not bypass its switch. */
 export function menuAccess(settings: MenuSettings | null | undefined): MenuAccess {
@@ -36,5 +38,6 @@ export function menuAccess(settings: MenuSettings | null | undefined): MenuAcces
     market: settings?.market_open === true,
     missions: quiz || hunt || photos || games,
     checkin: settings?.checkin_open === true,
+    selfie: settings?.selfie_open === true,
   };
 }

@@ -4,6 +4,7 @@ import { handler, ok } from '@/lib/http';
 import { teamGoal } from '@/lib/goal';
 import { menuAccess, MENU_SETTINGS_SELECT } from '@/lib/menu-access';
 import { getLineStatus } from '@/lib/line-groups';
+import { selfieStatus } from '@/lib/selfie/status';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +18,7 @@ export const GET = handler(async () => {
   if (settingsError) throw settingsError;
   const menus = menuAccess(settings);
 
-  const [{ data: questions }, { data: answers }, balance, { data: reds }, { data: items }, goal, { data: leaderRow }, line] =
+  const [{ data: questions }, { data: answers }, balance, { data: reds }, { data: items }, goal, { data: leaderRow }, line, selfie] =
     await Promise.all([
       sb.from('questions').select(menus.quiz ? 'id, position, prompt, image_url, options' : 'id, position').eq('active', true).order('position').order('id'),
       sb.from('answers').select('question_id').eq('participant_id', p.id),
@@ -27,6 +28,7 @@ export const GET = handler(async () => {
       teamGoal(p.team_id),
       sb.from('participants').select('*').eq('team_id', p.team_id).eq('is_leader', true).maybeSingle(),
       getLineStatus(p),
+      menus.selfie ? selfieStatus(p) : Promise.resolve(null),
     ]);
 
   // Team inventory: everything the team has bought, with what is still waiting to be handed over.
@@ -51,6 +53,7 @@ export const GET = handler(async () => {
     goal,
     menus,
     line,
+    selfie: selfie ? { live: selfie.settings.live, before: selfie.settings.before, after: selfie.settings.after, start: selfie.settings.start, end: selfie.settings.end, color: selfie.settings.color, percent: selfie.settings.percent, pct: selfie.team.pct, count: selfie.team.count, total: selfie.team.total, complete: selfie.team.complete, rank: selfie.team.rank, tokens: selfie.team.tokens, nextReward: selfie.nextReward, mine: !!selfie.me.photoUrl } : null,
     game: { open: !!settings?.is_open, tokensPerCorrect: settings?.tokens_per_correct ?? 10 },
     total: qs.length,
     answered,

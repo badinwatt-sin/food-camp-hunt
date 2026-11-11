@@ -6,7 +6,7 @@
 // Requires the full schema (schema.sql, or hunt.sql + squads.sql + coop.sql on an older database) and at least one
 // ACTIVE question (the seed provides 5). The test briefly opens the quiz/hunt/puzzle switches and restores them at the end.
 //
-//   1 quiz  2 market  3 anon (quiz)  4 hunt  5 squads  6 co-op spots  7 team goal  8 team photo missions  10 leaders/hand-over  11 check-in  12 solo mini-games  9 anon (new features)
+//   1 quiz  2 market  3 anon (quiz)  4 hunt  5 squads  6 co-op spots  7 team goal  8 team photo missions  10 leaders/hand-over  11 check-in  12 solo mini-games  13 selfie wall  9 anon (new features)
 import { createClient } from '@supabase/supabase-js';
 import { randomUUID } from 'node:crypto';
 
@@ -334,6 +334,31 @@ try {
   check('another game has its own 3 attempts', !(await sb.from('minigame_attempts').insert({ participant_id: m1, game: 'memory', n: 1 })).error);
   const { data: mgs } = await sb.from('game_settings').select('mg_spot_open, mg_memory_open, mg_mystery_open, mg_percent').eq('id', 1).single();
   check('mini-game switches exist and are off by default / percent is 0..500', mgs && typeof mgs.mg_spot_open === 'boolean' && mgs.mg_percent >= 0);
+
+  console.log('\n13. Selfie Wall (one photo per player, observers never count, rank rewards paid once)');
+  const tS = await mkTeam('selfie');
+  const sw1 = await mkMember(tS), sw2 = await mkMember(tS);
+  const { data: sObs } = await sb.from('participants').insert({ team_id: tS, name: 'test selfie observer', is_observer: true }).select('id').single();
+  if (sObs) created.participants.push(sObs.id);
+  const { data: sBefore } = await sb.from('game_settings').select('selfie_open, selfie_start, selfie_end, selfie_rewards').eq('id', 1).single();
+  await sb.from('game_settings').update({ selfie_open: true, selfie_start: null, selfie_end: null, selfie_rewards: '20,15,10,5' }).eq('id', 1);
+  const balS0 = (await sb.rpc('team_balance', { p_team: tS })).data;
+  const sr1 = (await sb.rpc('submit_selfie', { p_participant: sw1, p_url: 'https://example.invalid/s1.jpg', p_pct: 70, p_checks: {} })).data;
+  check('first photo counts 1 of 2', sr1?.count === 1 && sr1?.total === 2 && sr1?.complete === false);
+  const srObs = sObs ? (await sb.rpc('submit_selfie', { p_participant: sObs.id, p_url: 'https://example.invalid/obs.jpg', p_pct: 70, p_checks: {} })).data : null;
+  check('observer photo is stored but does not count', !sObs || (srObs?.count === 1 && srObs?.total === 2));
+  const sr2 = (await sb.rpc('submit_selfie', { p_participant: sw2, p_url: 'https://example.invalid/s2.jpg', p_pct: 70, p_checks: {} })).data;
+  check('team completes with a rank and a reward', sr2?.complete === true && sr2?.justCompleted === true && sr2?.rank >= 1 && sr2?.tokens >= 0);
+  const sPaid = sr2?.tokens ?? 0;
+  const sr2b = (await sb.rpc('submit_selfie', { p_participant: sw2, p_url: 'https://example.invalid/s2b.jpg', p_pct: 80, p_checks: {} })).data;
+  check('re-upload replaces the photo and pays nothing more', sr2b?.oldUrl === 'https://example.invalid/s2.jpg' && sr2b?.justCompleted === false);
+  check('team wallet received exactly the reward once', (await sb.rpc('team_balance', { p_team: tS })).data - balS0 === sPaid);
+  await sb.from('game_settings').update({ selfie_end: new Date(Date.now() - 60000).toISOString() }).eq('id', 1);
+  check('closed window refuses photos', !!(await sb.rpc('submit_selfie', { p_participant: sw1, p_url: 'https://example.invalid/late.jpg', p_pct: 70, p_checks: {} })).error);
+  await sb.from('selfie_photos').delete().eq('team_id', tS);
+  await sb.from('token_ledger').delete().eq('idempotency_key', `selfie:${tS}`);
+  await sb.from('teams').update({ selfie_completed_at: null, selfie_finish_rank: null, selfie_reward_tokens: 0 }).eq('id', tS);
+  if (sBefore) await sb.from('game_settings').update(sBefore).eq('id', 1);
 
   console.log('\n9. Public (anon) access to the new features is blocked');
   if (!process.env.SUPABASE_ANON_KEY) console.log('  SKIP  set SUPABASE_ANON_KEY to test that the public key reaches none of the new tables/functions');

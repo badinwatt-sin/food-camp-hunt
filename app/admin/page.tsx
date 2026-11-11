@@ -6,6 +6,7 @@ import { Hero } from '@/components/Icons';
 import WeeklyMissions from '@/components/admin/WeeklyMissions';
 import LineLogo from '@/components/LineLogo';
 import { BULK_CONFIRM } from '@/lib/bulk';
+import SelfieAdmin from '@/components/SelfieAdmin';
 import { MARKET_CATS, marketCat } from '@/lib/market-cats';
 import { useVisibleRefresh } from '@/lib/use-visible-refresh';
 
@@ -61,7 +62,7 @@ function Login({ onDone }: { onDone: (r: Role) => void }) {
   );
 }
 
-type Tab = 'overview' | 'checkin' | 'line' | 'market' | 'people' | 'questions' | 'games' | 'hunt' | 'puzzles' | 'history' | 'export';
+type Tab = 'overview' | 'checkin' | 'selfie' | 'line' | 'market' | 'people' | 'questions' | 'games' | 'hunt' | 'puzzles' | 'history' | 'export';
 
 /** Bottom toast: always visible wherever you are on the page (the old banner sat at the top, out of sight). */
 function Toast({ msg, onClose }: { msg: string; onClose: () => void }) {
@@ -93,7 +94,7 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
     return () => { clearInterval(t); window.removeEventListener('fc-photos-changed', poll); };
   }, []);
   const tabs: [Tab, string, string, boolean][] = [
-    ['overview', '📊', 'ภาพรวม', true], ['checkin', '📍', 'เช็กอินวันงาน', true], ['line', '💬', 'กลุ่ม LINE', role === 'admin'], ['market', '🛒', 'ตลาดสินค้า', true],
+    ['overview', '📊', 'ภาพรวม', true], ['checkin', '📍', 'เช็กอินวันงาน', true], ['selfie', '🤳', 'Selfie Wall', true], ['line', '💬', 'กลุ่ม LINE', role === 'admin'], ['market', '🛒', 'ตลาดสินค้า', true],
     ['people', '👥', 'ทีมและผู้เล่น', role === 'admin'], ['questions', '🍜', 'คำถามควิซ', role === 'admin'], ['games', '🎮', 'ภารกิจประจำสัปดาห์', role === 'admin'],
     ['hunt', '🧭', 'ล่าสมบัติ', role === 'admin'], ['puzzles', '📸', 'ภารกิจทีม', true],
     ['history', '📜', 'ประวัติ', role === 'admin'], ['export', '⬇️', 'ส่งออก CSV', role === 'admin'],
@@ -117,6 +118,7 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
         <div className="admin">
         {tab === 'overview' && <Overview key={rk} role={role} setMsg={setMsg} />}
         {tab === 'checkin' && <Checkin key={rk} role={role} setMsg={setMsg} />}
+        {tab === 'selfie' && <SelfieAdmin key={rk} role={role} setMsg={setMsg} call={call} />}
         {tab === 'line' && <LineGroups key={rk} setMsg={setMsg} />}
         {tab === 'market' && <Market key={rk} role={role} setMsg={setMsg} />}
         {tab === 'people' && <People key={rk} setMsg={setMsg} />}
@@ -262,10 +264,15 @@ function LineGroupCard({ team, teams, onSaved, setMsg }: { team: LineAdminTeam; 
 }
 
 // ------------------------------------------------------------------ danger zone (clear test data)
-const BULK_FOR_TAB: Partial<Record<Tab, 'minigames' | 'playdata' | 'items' | 'teams' | 'questions' | 'spots' | 'missions'>> = {
-  overview: 'playdata', market: 'items', people: 'teams', questions: 'questions', games: 'minigames', hunt: 'spots', puzzles: 'missions',
+const BULK_FOR_TAB: Partial<Record<Tab, 'selfie' | 'minigames' | 'playdata' | 'items' | 'teams' | 'questions' | 'spots' | 'missions'>> = {
+  overview: 'playdata', selfie: 'selfie', market: 'items', people: 'teams', questions: 'questions', games: 'minigames', hunt: 'spots', puzzles: 'missions',
 };
 const BULK_INFO: Record<string, { button: string; what: string; keeps: string }> = {
+  selfie: {
+    button: '🗑️ ล้าง Selfie Wall ทั้งหมด',
+    what: 'ลบภาพ Selfie ของทุกคน ลำดับทีมที่ครบ และหัก Tokens รางวัลที่ทีมเคยได้จากภารกิจนี้ออก (ปิดสวิตช์ภารกิจด้วย)',
+    keeps: 'การตั้งค่า (สี เปอร์เซ็นต์ ช่วงเวลา รางวัล) ทีม ผู้เล่น และคะแนนจากกิจกรรมอื่นยังอยู่ครบ',
+  },
   minigames: {
     button: '🗑️ ล้างผลภารกิจประจำสัปดาห์ทั้งหมด',
     what: 'ลบประวัติการเล่นภารกิจประจำสัปดาห์ของทุกคน (สิทธิ์เล่น 3 ครั้งกลับมาใหม่) และหักโทเคนที่ทุกทีมเคยได้จากภารกิจประจำสัปดาห์ออก',
