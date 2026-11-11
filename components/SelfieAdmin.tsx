@@ -1,10 +1,11 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
 import { colorName } from '@/lib/selfie/color';
+import FitLine from '@/components/FitLine';
 
-type Member = { id: string; name: string; fullName: string; isObserver: boolean; photoId: string | null; photoUrl: string | null; pct: number | null; at: string | null; checks: any };
-type Team = { id: string; name: string; color: string | null; members: Member[]; count: number; total: number; complete: boolean; rank: number | null; tokens: number; completedAt: string | null };
-type Data = { settings: { open: boolean; live: boolean; before: boolean; after: boolean; start: string | null; end: string | null; color: string; percent: number; tolerance: number; rewards: number[]; announcedAt: string | null; audience: 'all' | 'judges' }; aiEnabled: boolean; palette: string[]; judges: { members: Member[]; count: number; total: number }; teams: Team[] };
+type Member = { id: string; name: string; fullName: string; isObserver: boolean; photoId: string | null; photoUrl: string | null; pct: number | null; at: string | null; checks: any; similarTo?: string[] };
+type Team = { id: string; name: string; color: string | null; active: boolean; startedAt: string | null; members: Member[]; count: number; total: number; complete: boolean; rank: number | null; tokens: number; completedAt: string | null };
+type Data = { settings: { open: boolean; live: boolean; before: boolean; after: boolean; start: string | null; end: string | null; color: string; percent: number; tolerance: number; rewards: number[]; announcedAt: string | null; audience: 'all' | 'teams' | 'judges' }; aiEnabled: boolean; palette: string[]; judges: { members: Member[]; count: number; total: number }; teams: Team[] };
 type Props = { role: 'admin' | 'staff'; setMsg: (m: string) => void; call: <T = any>(action: string, body?: unknown) => Promise<T> };
 
 const PRESETS = [['#2f8f5b', 'เขียวป่า'], ['#1f3557', 'น้ำเงินเข้ม'], ['#e0573b', 'แดงอิฐ'], ['#f6d365', 'เหลือง'], ['#ffffff', 'ขาว'], ['#111111', 'ดำ'], ['#c96d2f', 'ส้มดิน'], ['#7c4dff', 'ม่วง']];
@@ -17,6 +18,7 @@ export default function SelfieAdmin({ role, setMsg, call }: Props) {
   const [f, setF] = useState<{ start: string; end: string; color: string; percent: string; tolerance: string; rewards: string[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [zoom, setZoom] = useState<Member | null>(null);
+  const [reason, setReason] = useState('');   // reject reason (hooks stay above the early return)
   const isAdmin = role === 'admin';
   const load = useCallback(() => call<Data>('selfie').then((r) => {
     setD(r);
@@ -34,15 +36,26 @@ export default function SelfieAdmin({ role, setMsg, call }: Props) {
     start: f!.start ? new Date(f!.start).toISOString() : '', end: f!.end ? new Date(f!.end).toISOString() : '',
     color: f!.color, percent: Number(f!.percent), tolerance: Number(f!.tolerance), rewards: f!.rewards.map(Number),
   }, 'บันทึกการตั้งค่า Selfie Wall แล้ว');
+  async function reject(m: Member) {
+    const why = reason.trim();
+    if (!m.photoId || !why) { setMsg('กรุณาเลือกหรือพิมพ์เหตุผลก่อนปฏิเสธภาพ'); return; }
+    try { await call('selfie.reject', { id: m.photoId, reason: why }); setZoom(null); setReason(''); await load(); setMsg(`ปฏิเสธภาพของ ${m.name} แล้ว ระบบแจ้งให้ถ่ายใหม่`); } catch (e) { setMsg((e as Error).message); }
+  }
+  async function startTeam(t: Team, active: boolean) {
+    if (active && !s.open && !confirm('ภารกิจยังปิดอยู่ ทีมจะยังไม่เห็นอะไรจนกว่าจะกด "เปิดภารกิจ" เริ่มทีมนี้ไว้ก่อนไหม?')) return;
+    try { await call('selfie.team.start', { team_id: t.id, active }); await load(); setMsg(active ? `เริ่มภารกิจให้ทีม ${t.name} แล้ว (แจ้งเตือนเฉพาะทีมนี้)` : `หยุดภารกิจของทีม ${t.name} แล้ว`); } catch (e) { setMsg((e as Error).message); }
+  }
   async function remove(m: Member) {
-    if (!m.photoId || !confirm(`ลบภาพของ ${m.name} ออกจากกำแพง?`)) return;
+    if (!m.photoId || !confirm(`ลบภาพของ ${m.name} ออกจาก Team Wall?`)) return;
     try { await call('selfie.remove', { id: m.photoId }); await load(); setMsg(`ลบภาพของ ${m.name} แล้ว`); } catch (e) { setMsg((e as Error).message); }
   }
   const test = s.audience === 'judges';
-  async function setAudience(a: 'all' | 'judges') {
+  async function setAudience(a: 'all' | 'teams' | 'judges') {
     if (a === s.audience) return;
-    if (a === 'all' && s.open && !confirm('เริ่มให้ผู้เล่นทุกคนเลยไหม? ทุกคนจะได้รับ Pop-up แจ้งเตือนทันที')) return;
-    await set({ audience: a }, a === 'all' ? (s.open ? 'เริ่มภารกิจให้ทุกคนแล้ว ผู้เล่นจะได้รับ Pop-up' : 'ตั้งเป็นเริ่มพร้อมกันทั้งหมดแล้ว (กดเปิดภารกิจเพื่อประกาศ)') : 'ตั้งเป็นโหมดทดสอบกรรมการแล้ว ผู้เล่นอื่นจะไม่เห็นและไม่ได้รับแจ้งเตือน');
+    if (a === 'all' && s.open && !confirm('เริ่มให้ทุกทีมเลยไหม? สมาชิกทุกทีมจะได้รับ Pop-up ทันที (ไม่รวมกรรมการ/Committee)')) return;
+    await set({ audience: a }, a === 'all' ? (s.open ? 'เริ่มภารกิจให้ทุกทีมแล้ว สมาชิกจะได้รับ Pop-up' : 'ตั้งเป็นทุกทีมแล้ว (กดเปิดภารกิจเพื่อประกาศ)')
+      : a === 'teams' ? 'ตั้งเป็นเลือกทีมแล้ว กด "เริ่มทีมนี้" ที่ทีมที่ต้องการ'
+      : 'ตั้งเป็นโหมดทดสอบกรรมการแล้ว ผู้เล่นอื่นจะไม่เห็นและไม่ได้รับแจ้งเตือน');
   }
   async function teamColor(id: string, color: string | null) {
     try { await call('selfie.team.color', { team_id: id, color }); await load(); } catch (e) { setMsg((e as Error).message); }
@@ -62,14 +75,21 @@ export default function SelfieAdmin({ role, setMsg, call }: Props) {
   return (
     <>
       {zoom && (
-        <div className="dlg-back" role="dialog" aria-label="ภาพ Selfie" onClick={() => setZoom(null)}>
-          <div className="dlg" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
-            <img src={zoom.photoUrl!} alt={zoom.name} style={{ width: '100%', borderRadius: 14 }} />
-            <div style={{ marginTop: 8 }}><strong>{zoom.name}</strong>{zoom.fullName && zoom.fullName !== zoom.name && <div className="muted">{zoom.fullName}</div>}<div className="muted" style={{ fontSize: 13 }}>{fmt(zoom.at)}</div></div>
-            <div className="muted" style={{ fontSize: 13 }}>พื้นหลังตรงสี {zoom.pct ?? '—'}%{zoom.checks?.ai ? ` · AI: ${zoom.checks.ai.person ? 'เห็นคน' : 'ไม่เห็นคน'} · ${zoom.checks.ai.bg ?? ''}` : zoom.checks?.aiEnabled === false ? ' · ตรวจด้วยพิกเซลอย่างเดียว (ยังไม่ตั้งค่า AI)' : ''}</div>
+        <div className="dlg-back" role="dialog" aria-label="ตรวจภาพ Selfie" onClick={() => setZoom(null)}>
+          <div className="dlg" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520, maxHeight: '92vh', overflowY: 'auto' }}>
+            <img src={zoom.photoUrl!} alt={zoom.name} style={{ width: '100%', borderRadius: 14, maxHeight: '36vh', objectFit: 'contain', background: '#111' }} />
+            <div style={{ marginTop: 8 }}><strong>{zoom.name}</strong>{zoom.fullName && zoom.fullName !== zoom.name && <div className="muted">{zoom.fullName}</div>}<div className="muted" style={{ fontSize: 13 }}>{fmt(zoom.at)} · พื้นหลังตรงสี {zoom.pct ?? '—'}%</div></div>
+            {zoom.similarTo && zoom.similarTo.length > 0 && <div className="error" style={{ marginTop: 8 }}>⚠️ ภาพนี้คล้ายกับภาพของ: {zoom.similarTo.join(', ')} (ตรวจว่าเป็นภาพซ้ำหรือไม่)</div>}
+            <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>{zoom.checks?.ai ? `AI: ${zoom.checks.ai.person ? 'เห็นคน' : 'ไม่เห็นคน'} ${zoom.checks.ai.people ?? ''} คน · ${zoom.checks.ai.bg ?? ''}` : zoom.checks?.aiEnabled === false ? 'ตรวจด้วยพิกเซลอย่างเดียว (ยังไม่ตั้งค่า AI)' : ''}</div>
+            <label className="lbl">ปฏิเสธภาพนี้ (ผู้ถ่ายจะได้รับ Pop-up พร้อมเหตุผล และถ่ายใหม่)</label>
+            <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+              {['ไม่ใช่ใบหน้าของคุณเอง', 'ภาพซ้ำกับของคนอื่น', 'ไม่เห็นหน้าชัดเจน', 'พื้นหลังไม่ใช่สีที่กำหนด'].map((r) => <button key={r} type="button" className={`btn small ghost${reason === r ? ' on' : ''}`} style={reason === r ? { borderColor: 'var(--forest)', background: '#e2f3dc' } : undefined} onClick={() => setReason(r)}>{r}</button>)}
+            </div>
+            <input className="field" placeholder="หรือพิมพ์เหตุผลเอง" value={reason} maxLength={200} onChange={(e) => setReason(e.target.value)} />
             <div className="row" style={{ marginTop: 12 }}>
-              {isAdmin && <button className="btn small danger" onClick={() => { remove(zoom); setZoom(null); }}>ลบภาพนี้</button>}
-              <button className="btn small ghost" onClick={() => setZoom(null)}>ปิด</button>
+              <button className="btn small danger" disabled={!reason.trim()} onClick={() => reject(zoom)}>❌ ปฏิเสธภาพนี้</button>
+              {isAdmin && <button className="btn small ghost" onClick={() => { remove(zoom); setZoom(null); }}>ลบเฉยๆ (ไม่แจ้ง)</button>}
+              <button className="btn small ghost" onClick={() => { setZoom(null); setReason(''); }}>ปิด</button>
             </div>
           </div>
         </div>
@@ -77,24 +97,39 @@ export default function SelfieAdmin({ role, setMsg, call }: Props) {
 
       <div className={`switch-card${s.live ? ' on' : ''}`} style={{ marginBottom: 14 }}>
         <div className="s-top"><div className="s-ic" style={{ background: s.color, color: '#fff' }}>🤳</div>
-          <div><div className="s-title">Selfie Wall · Agency in the Wonder Woods</div><div className="muted" style={{ fontSize: 14 }}>ภารกิจแรกหลังรวมทีม: ทุกคนถ่าย Selfie กับฉากหลัง<strong>สีประจำทีม</strong> ≥ {s.percent}% ทีมที่ครบก่อนได้ {s.rewards.join(' › ')} Tokens</div></div>
+          <div><div className="s-title">Selfie Wall · Agency in the Wonder Woods</div><div className="muted" style={{ fontSize: 14 }}>ภารกิจแรกหลังรวมทีม: ผู้เล่นทุกคนถ่าย Selfie กับฉากหลัง<strong>สีประจำทีม</strong> ≥ {s.percent}% ทีมที่ครบก่อนได้ {s.rewards.join(' › ')} Tokens</div></div>
           <span className="s-state">{stateText}</span></div>
         {isAdmin && (
           <div style={{ marginTop: 10 }}>
             <div className="lbl" style={{ margin: '0 0 6px' }}>เริ่มให้ใคร</div>
             <div className="tabs" role="radiogroup" aria-label="กลุ่มที่เริ่มเล่น" style={{ marginBottom: 8 }}>
-              <button role="radio" aria-checked={test} className={test ? 'on' : ''} disabled={busy} onClick={() => setAudience('judges')}>👁 ทดสอบกับกรรมการก่อน</button>
-              <button role="radio" aria-checked={!test} className={!test ? 'on' : ''} disabled={busy} onClick={() => setAudience('all')}>👥 เริ่มพร้อมกันทั้งหมด</button>
+              <button role="radio" aria-checked={test} className={test ? 'on' : ''} disabled={busy} onClick={() => setAudience('judges')}>👁 ทดสอบกรรมการ</button>
+              <button role="radio" aria-checked={s.audience === 'teams'} className={s.audience === 'teams' ? 'on' : ''} disabled={busy} onClick={() => setAudience('teams')}>🎯 เลือกทีม</button>
+              <button role="radio" aria-checked={s.audience === 'all'} className={s.audience === 'all' ? 'on' : ''} disabled={busy} onClick={() => setAudience('all')}>👥 ทุกทีม</button>
             </div>
             <div className="muted" style={{ fontSize: 13, marginBottom: 8 }}>{test
-              ? 'โหมดทดสอบ: เฉพาะกรรมการ (คณะทำงาน) เห็นและเล่นได้ ไม่มีคะแนน/Token ผู้เล่นทีมอื่นไม่เห็นเมนูและ "ไม่ได้รับแจ้งเตือน" — เสร็จแล้วค่อยสลับเป็นเริ่มพร้อมกันทั้งหมด'
-              : 'ผู้เล่นทุกคนเห็นภารกิจและได้รับ Pop-up · ทีมแข่งกันครบก่อนได้ Token (กรรมการติดภาพบนกำแพงทีมได้ แต่ไม่นับคะแนน)'}</div>
+              ? 'ทดสอบ: เฉพาะกรรมการ/Committee (คณะทำงาน) เห็นและเล่นได้ ไม่มีคะแนน/Token ผู้เล่นทุกทีมไม่เห็นเมนูและไม่ได้รับแจ้งเตือน'
+              : s.audience === 'teams'
+                ? 'เลือกทีม: แจ้งเตือนและเปิดเมนูเฉพาะทีมที่กด "เริ่มทีมนี้" ด้านล่าง ทีมอื่นไม่เห็นอะไรเลย'
+                : 'ทุกทีม: สมาชิกทุกทีมเห็นภารกิจและได้รับ Pop-up (ไม่รวมกรรมการ/Committee ซึ่งเป็นผู้สังเกตการณ์ ไม่นับคะแนน ไม่ขึ้น Team Wall และไม่ขึ้น Live)'}</div>
+            {s.audience === 'teams' && (
+              <div style={{ display: 'grid', gap: 6, marginBottom: 8 }}>
+                {d.teams.map((t) => (
+                  <div key={t.id} className="row" style={{ alignItems: 'center', gap: 8, background: t.active ? '#eef8ea' : '#f6f3ea', borderRadius: 12, padding: '6px 10px' }}>
+                    <span style={{ width: 18, height: 18, borderRadius: '50%', background: t.color ?? s.color, border: '2px solid #fff', boxShadow: '0 0 0 2px #cfd6cf', flex: 'none' }} aria-hidden />
+                    <strong style={{ flex: 1, minWidth: 80 }}>{t.name}</strong>
+                    <span className="muted" style={{ fontSize: 13 }}>{t.active ? `🟢 เริ่มแล้ว${t.startedAt ? ' ' + fmt(t.startedAt) : ''}` : '⚪ ยังไม่เริ่ม'}</span>
+                    <button className={`btn small ${t.active ? 'ghost' : 'green'}`} onClick={() => startTeam(t, !t.active)}>{t.active ? '⏹ หยุด' : '▶ เริ่มทีมนี้'}</button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
         {isAdmin && (
           <div className="row" style={{ marginTop: 2 }}>
-            <button className={`btn small ${s.open ? 'danger' : 'green'}`} disabled={busy} onClick={() => set({ open: !s.open }, s.open ? 'ปิด Selfie Wall แล้ว' : test ? 'เปิดให้กรรมการทดสอบแล้ว (ไม่แจ้งเตือนผู้เล่นอื่น)' : 'เปิด Selfie Wall แล้ว ผู้เล่นจะเห็น Pop-up')}>{s.open ? '⏹ ปิดภารกิจ' : test ? '▶ เปิดให้กรรมการทดสอบ' : '▶ เปิดภารกิจ (ประกาศให้ทุกคน)'}</button>
-            <button className="btn small ghost" disabled={busy || !s.open} onClick={() => set({ announce: true }, 'แจ้งเตือนผู้เล่นอีกครั้งแล้ว')}>📣 {test ? 'แจ้งกรรมการอีกครั้ง' : 'แจ้งเตือนอีกครั้ง'}</button>
+            <button className={`btn small ${s.open ? 'danger' : 'green'}`} disabled={busy} onClick={() => set({ open: !s.open }, s.open ? 'ปิด Selfie Wall แล้ว' : test ? 'เปิดให้กรรมการทดสอบแล้ว (ไม่แจ้งเตือนผู้เล่นอื่น)' : s.audience === 'teams' ? 'เปิดภารกิจแล้ว (เฉพาะทีมที่เริ่มไว้จะเห็น Pop-up)' : 'เปิด Selfie Wall แล้ว ทุกทีมจะเห็น Pop-up')}>{s.open ? '⏹ ปิดภารกิจ' : test ? '▶ เปิดให้กรรมการทดสอบ' : s.audience === 'teams' ? '▶ เปิดภารกิจ (เฉพาะทีมที่เริ่ม)' : '▶ เปิดภารกิจ (ประกาศทุกทีม)'}</button>
+            <button className="btn small ghost" disabled={busy || !s.open} onClick={() => set({ announce: true }, 'แจ้งเตือนผู้เล่นอีกครั้งแล้ว')}>📣 {test ? 'แจ้งกรรมการอีกครั้ง' : s.audience === 'teams' ? 'แจ้งทีมที่เริ่มอีกครั้ง' : 'แจ้งทุกทีมอีกครั้ง'}</button>
             <span className="muted" style={{ fontSize: 13 }}>{d.aiEnabled ? '🤖 AI ตรวจภาพ: เปิดใช้งาน' : '⚠️ ยังไม่ตั้งค่า ANTHROPIC_API_KEY ใน Vercel → ระบบจะตรวจเฉพาะสัดส่วนสีพื้นหลัง (ไม่ตรวจว่ามีหน้าคน)'}</span>
           </div>
         )}
@@ -155,7 +190,7 @@ export default function SelfieAdmin({ role, setMsg, call }: Props) {
       {d.judges.total > 0 && (
         <div className="card">
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2 style={{ margin: 0 }}>🧪 กำแพงทดสอบกรรมการ <span className="muted" style={{ fontWeight: 400, fontSize: 15 }}>{d.judges.count}/{d.judges.total} คน · ไม่มีคะแนน</span></h2>
+            <h2 style={{ margin: 0 }}>🧪 Team Wall ทดสอบ (กรรมการ/Committee) <span className="muted" style={{ fontWeight: 400, fontSize: 15 }}>{d.judges.count}/{d.judges.total} คน · ไม่มีคะแนน</span></h2>
             {isAdmin && d.judges.count > 0 && <button className="btn small ghost" onClick={clearTest}>ล้างภาพทดสอบ</button>}
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 8, marginTop: 10 }}>
@@ -165,7 +200,7 @@ export default function SelfieAdmin({ role, setMsg, call }: Props) {
       )}
 
       <div className="stats">
-        <div className="stat"><b>{d.teams.reduce((n, t) => n + t.count, 0)}/{d.teams.reduce((n, t) => n + t.total, 0)}</b><span>คนที่ถ่ายแล้ว</span></div>
+        <div className="stat"><b>{d.teams.reduce((n, t) => n + t.count, 0)}/{d.teams.reduce((n, t) => n + t.total, 0)}</b><span>ผู้เล่นที่ถ่ายแล้ว (ไม่นับกรรมการ/Committee)</span></div>
         <div className="stat"><b>{done.length}/{d.teams.length}</b><span>ทีมที่ครบแล้ว</span></div>
         <div className="stat"><b>🪙 {done.reduce((n, t) => n + t.tokens, 0)}</b><span>Tokens ที่แจกไปแล้ว</span></div>
       </div>
@@ -175,7 +210,7 @@ export default function SelfieAdmin({ role, setMsg, call }: Props) {
         <div className="card" key={t.id}>
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 style={{ margin: 0 }}><span style={{ display: 'inline-block', width: 16, height: 16, borderRadius: '50%', background: t.color ?? s.color, border: '2px solid #fff', boxShadow: '0 0 0 2px #cfd6cf', marginRight: 8, verticalAlign: 'middle' }} aria-hidden />{t.name} <span className="muted" style={{ fontWeight: 400, fontSize: 15 }}>{t.count}/{t.total} คน</span></h2>
-            {t.complete ? <span className="pill" style={{ background: '#cfe9c9' }}>✅ อันดับ {t.rank} · +{t.tokens}</span> : <span className="pill" style={{ background: '#f4ead0' }}>{t.total ? Math.round((t.count / t.total) * 100) : 0}%</span>}
+            {t.complete ? <span className="pill" style={{ background: '#cfe9c9' }}>✅ อันดับ {t.rank} · +{t.tokens}</span> : s.audience === 'teams' && !t.active ? <span className="pill" style={{ background: '#eee' }}>ยังไม่เริ่ม</span> : <span className="pill" style={{ background: '#f4ead0' }}>{t.total ? Math.round((t.count / t.total) * 100) : 0}%</span>}
           </div>
           <div className="progress" style={{ margin: '8px 0 10px' }}><i style={{ width: `${t.total ? (t.count / t.total) * 100 : 0}%` }} /></div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 8 }}>
@@ -187,17 +222,19 @@ export default function SelfieAdmin({ role, setMsg, call }: Props) {
   );
 }
 
-/** One member on an admin wall: photo, nickname and the real name under it (never overflowing the tile). */
+/** One member on an admin Team Wall: photo, nickname and real name (one line each, shrunk to fit) and a flag when the picture resembles someone else's. */
 function MemberTile({ m, color, onZoom }: { m: Member; color: string; onZoom: (m: Member) => void }) {
-  const real = m.fullName && m.fullName.trim() !== m.name.trim() ? m.fullName : '';
+  const real = m.fullName && m.fullName.trim() !== m.name.trim() ? m.fullName : '\u00a0';
+  const flag = (m.similarTo?.length ?? 0) > 0;
   return (
-    <div style={{ textAlign: 'center', opacity: m.isObserver ? .8 : 1, minWidth: 0 }}>
+    <div style={{ textAlign: 'center', minWidth: 0 }}>
       <button type="button" onClick={() => m.photoUrl && onZoom(m)} disabled={!m.photoUrl} aria-label={m.name}
-        style={{ width: '100%', aspectRatio: '3 / 4', borderRadius: 10, border: m.photoUrl ? `3px solid ${color}` : '2px dashed #ccc', background: m.photoUrl ? `url(${m.photoUrl}) center/cover` : '#eee', cursor: m.photoUrl ? 'zoom-in' : 'default', padding: 0 }}>
+        style={{ position: 'relative', width: '100%', aspectRatio: '3 / 4', borderRadius: 10, border: flag ? '3px solid #e0573b' : m.photoUrl ? `3px solid ${color}` : '2px dashed #ccc', background: m.photoUrl ? `url(${m.photoUrl}) center/cover` : '#eee', cursor: m.photoUrl ? 'zoom-in' : 'default', padding: 0 }}>
         {!m.photoUrl && <span className="muted" style={{ fontSize: 22 }}>👤</span>}
+        {flag && <span title={`คล้ายภาพของ ${m.similarTo!.join(', ')}`} style={{ position: 'absolute', top: 4, right: 4, background: '#e0573b', color: '#fff', borderRadius: 8, fontSize: 11, padding: '1px 5px' }}>⚠️ คล้าย</span>}
       </button>
-      <div style={{ fontSize: 12.5, fontWeight: 700, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.isObserver ? '👁 ' : ''}{m.name}</div>
-      {real && <div className="muted" style={{ fontSize: 11, lineHeight: 1.25, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere' }}>{real}</div>}
+      <FitLine text={m.name} base={12.5} min={8} style={{ fontWeight: 700, marginTop: 3 }} />
+      <FitLine text={real} base={11} min={7} className="muted" />
       {m.photoUrl && <div className="muted" style={{ fontSize: 10.5 }}>{m.pct}%</div>}
     </div>
   );

@@ -2,13 +2,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/client-api';
 import { backgroundMatch, colorName, hexToRgb } from '@/lib/selfie/color';
+import FitLine from '@/components/FitLine';
 
 type Member = { id: string; name: string; fullName: string; isMe: boolean; isObserver: boolean; photoUrl: string | null; at: string | null };
 type Status = {
   test: boolean;
-  settings: { open: boolean; live: boolean; before: boolean; after: boolean; start: string | null; end: string | null; color: string; percent: number; tolerance: number; rewards: number[]; announcedAt: string | null; audience: 'all' | 'judges' };
+  settings: { open: boolean; live: boolean; before: boolean; after: boolean; start: string | null; end: string | null; color: string; percent: number; tolerance: number; rewards: number[]; announcedAt: string | null; audience: 'all' | 'teams' | 'judges' };
   team: { name: string; members: Member[]; count: number; total: number; pct: number; complete: boolean; rank: number | null; tokens: number; completedAt: string | null };
-  me: { isObserver: boolean; photoUrl: string | null };
+  me: { isObserver: boolean; readOnly: boolean; photoUrl: string | null; rejected: { id: string; reason: string; at: string } | null };
   nextReward: number; nextRank: number | null;
   standings: { team: string; rank: number; tokens: number; at: string }[];
 };
@@ -20,7 +21,7 @@ const THEME_FOOT = 'Agency Outing & Team Building 2026';
 const fmtDT = (iso: string | null) => (iso ? new Date(iso).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '');
 const medal = (r: number | null | undefined) => (r === 1 ? '🥇' : r === 2 ? '🥈' : r === 3 ? '🥉' : r ? `#${r}` : '');
 
-/** The whole mission screen: brief → wall → camera → verdict → celebration → final framed picture. */
+/** The whole mission screen: your task → team progress → Team Wall → camera → verdict → celebration → framed team picture. */
 export default function SelfieWall({ onBalance, onAuthLost }: Props) {
   const [st, setSt] = useState<Status | null>(null);
   const [err, setErr] = useState('');
@@ -39,6 +40,8 @@ export default function SelfieWall({ onBalance, onAuthLost }: Props) {
     if (v.accepted) { setShoot(false); onBalance(); }
     if (v.accepted && v.justCompleted) setParty({ tokens: v.tokens ?? 0, rank: v.rank ?? null, test: !!v.test });
   };
+  const canShoot = s.live && !st.me.readOnly && !team.complete;
+  const wallTitle = st.test ? 'Team Wall · ทดสอบกรรมการ' : 'Team Wall';
 
   return (
     <div className="sw" style={{ ['--sw-color' as string]: s.color }}>
@@ -46,20 +49,53 @@ export default function SelfieWall({ onBalance, onAuthLost }: Props) {
       {showFrame && <FinalFrame st={st} onClose={() => setShowFrame(false)} />}
       {shoot && <Camera settings={s} onClose={() => setShoot(false)} onVerdict={onVerdict} onAuthLost={onAuthLost} />}
 
-      {/* ---- hero / brief */}
+      {/* ---- 1) your task: the one thing to do, big and first */}
       <div className="card sw-hero">
         <div className="sw-leaves" aria-hidden>{['🍃', '🌿', '🍂', '🍃', '🌱', '🍂'].map((l, i) => <span key={i} style={{ left: `${8 + i * 16}%`, animationDelay: `${i * 0.9}s` }}>{l}</span>)}</div>
         <div className="sw-kicker">{st.test ? '🧪 โหมดทดสอบสำหรับกรรมการ' : `ภารกิจแรกของทีม · ${THEME_TITLE}`}</div>
         <h2 className="sw-title">🤳 Selfie Wall</h2>
         {st.test && <div className="sw-test-note">ทดลองเล่นเหมือนจริงทุกขั้นตอน แต่<strong>ไม่มีคะแนน ไม่มี Token และไม่แจ้งเตือนทีมอื่น</strong></div>}
-        <p className="sw-brief">{st.test ? 'กรรมการทุกคนถ่าย' : 'ทุกคนในทีมถ่าย'} <strong>Selfie</strong> กับฉากหลัง <span className="sw-chip"><i style={{ background: s.color }} />{name}</span> ให้พื้นหลังเป็นสีนี้อย่างน้อย <strong>{s.percent}%</strong> ระบบ AI จะตรวจภาพให้ทันที</p>
         <div className="sw-meta">
-          {s.live ? <Countdown end={s.end} /> : s.before ? <span className="sw-pill">⏰ เริ่ม {fmtDT(s.start)}</span> : s.after ? <span className="sw-pill off">⌛ หมดเวลาแล้ว {fmtDT(s.end)}</span> : <span className="sw-pill off">ยังไม่เปิด</span>}
+          {s.live ? <Countdown end={s.end} /> : s.before ? <span className="sw-pill">⏰ เริ่ม {fmtDT(s.start)}</span> : s.after ? <span className="sw-pill off">⌛ หมดเวลาแล้ว</span> : <span className="sw-pill off">ยังไม่เปิด</span>}
           {s.end && s.live && <span className="sw-pill">ถึง {fmtDT(s.end)}</span>}
         </div>
       </div>
 
-      {/* ---- progress + rewards */}
+      <div className={`card sw-task${st.me.rejected ? ' bad' : st.me.photoUrl ? ' done' : ''}`}>
+        {st.me.readOnly ? (
+          <div className="sw-task-row"><span className="sw-task-ic">👁</span><div><h3>คุณเป็นกรรมการ / คณะทำงาน</h3><div className="muted">ดู Team Wall ของทีมได้อย่างเดียว ไม่ต้องถ่าย Selfie และไม่นับคะแนน</div></div></div>
+        ) : st.me.rejected && !st.me.photoUrl ? (
+          <>
+            <div className="sw-task-row"><span className="sw-task-ic">⚠️</span><div><h3>ทีมงานให้ถ่ายภาพใหม่</h3><div className="sw-why">เหตุผล: {st.me.rejected.reason}</div></div></div>
+            {canShoot && <button className="btn sw-cta" onClick={() => setShoot(true)}>📷 ถ่าย Selfie ใหม่</button>}
+          </>
+        ) : st.me.photoUrl ? (
+          <>
+            <div className="sw-task-row">
+              <img className="sw-task-thumb" src={st.me.photoUrl} alt="ภาพของฉัน" />
+              <div><h3>✅ คุณถ่ายเสร็จแล้ว</h3><div className="muted">{team.complete ? 'ทีมของคุณครบทุกคนแล้ว' : `รอเพื่อนอีก ${team.total - team.count} คน · ภาพของคุณขึ้น Team Wall แล้ว`}</div></div>
+            </div>
+            {canShoot && <button className="btn ghost sw-retake" onClick={() => setShoot(true)}>ไม่พอใจภาพ? ถ่ายใหม่</button>}
+          </>
+        ) : (
+          <>
+            <div className="sw-task-row">
+              <span className="sw-swatch" style={{ background: s.color }} aria-hidden />
+              <div><h3>{st.test ? 'ถ่าย Selfie กับฉากหลัง' : 'ภารกิจของคุณ'} <span className="sw-chip sw-chip-dark"><i style={{ background: s.color }} />{name}</span></h3>
+                <div className="muted">ให้ฉากหลังเป็นสีนี้อย่างน้อย <strong>{s.percent}%</strong></div></div>
+            </div>
+            <ol className="sw-steps">
+              <li><b>1</b><span>หาฉากหลังสี<strong>{name}</strong> เช่น ผนัง ผ้า หรือกระดาษแผ่นใหญ่</span></li>
+              <li><b>2</b><span>ถ่าย Selfie <strong>หน้าตรง คนเดียว</strong> ให้สีเต็มรอบตัว (ดูมิเตอร์สีตอนถ่าย)</span></li>
+              <li><b>3</b><span>AI ตรวจให้ทันที ผ่านแล้วภาพขึ้น Team Wall</span></li>
+            </ol>
+            {canShoot ? <button className="btn sw-cta" onClick={() => setShoot(true)}>📷 ถ่าย Selfie ของฉัน</button> : <div className="banner" style={{ margin: '10px 0 0' }}>{s.before ? `ภารกิจเริ่ม ${fmtDT(s.start)}` : s.after ? 'หมดเวลาแล้ว' : 'ยังไม่เปิดให้ถ่าย'}</div>}
+          </>
+        )}
+        {err && <div className="error" style={{ marginTop: 10 }}>{err}</div>}
+      </div>
+
+      {/* ---- 2) team progress (compact) with the rewards tucked away */}
       <div className="card sw-progress">
         <div className="sw-ring" style={{ ['--p' as string]: team.pct }} role="img" aria-label={`ทีมทำสำเร็จแล้ว ${team.pct}%`}>
           <div><b>{team.pct}%</b><span>{team.count}/{team.total} คน</span></div>
@@ -67,44 +103,37 @@ export default function SelfieWall({ onBalance, onAuthLost }: Props) {
         <div className="sw-progress-text">
           <h3>{st.test ? team.name : `ทีม ${team.name}`}</h3>
           {st.test ? (
-            <div className="muted">{team.complete ? '✅ กรรมการถ่ายครบทุกคนแล้ว (ทดสอบ)' : `เหลืออีก ${team.total - team.count} คน · โหมดทดสอบ ไม่มีคะแนน`}</div>
+            <div className="muted">{team.complete ? '✅ กรรมการถ่ายครบทุกคนแล้ว (ทดสอบ)' : `เหลืออีก ${team.total - team.count} คน · ไม่มีคะแนน`}</div>
           ) : team.complete ? (
-            <div className="sw-done">{medal(team.rank)} ทีมคุณทำครบเป็นอันดับ {team.rank} · ได้ <strong>{team.tokens}</strong> Tokens</div>
+            <div className="sw-done">{medal(team.rank)} ทีมคุณครบเป็นอันดับ {team.rank} · ได้ <strong>{team.tokens}</strong> Tokens</div>
           ) : (
-            <div className="muted">เหลืออีก {team.total - team.count} คน · ถ้าครบตอนนี้ทีมจะได้ <strong className="sw-gold">{st.nextReward} Tokens</strong> (อันดับ {st.nextRank})</div>
+            <div className="muted">เหลืออีก {team.total - team.count} คน · ถ้าครบตอนนี้ได้ <strong className="sw-gold">{st.nextReward} Tokens</strong> (อันดับ {st.nextRank})</div>
           )}
-          {!st.test && <div className="sw-ranks" aria-label="รางวัลตามลำดับทีมที่ครบ">
+        </div>
+      </div>
+      {!st.test && (
+        <details className="card sw-rewards">
+          <summary>🏆 รางวัลตามลำดับทีมที่ครบ</summary>
+          <div className="sw-ranks" aria-label="รางวัลตามลำดับทีมที่ครบ">
             {s.rewards.map((t, i) => {
               const taken = st.standings.find((x) => x.rank === i + 1);
               return <div key={i} className={taken ? 'taken' : st.nextRank === i + 1 ? 'next' : ''}><span>{medal(i + 1)}</span><strong>{t}</strong><small>{taken ? taken.team : 'Tokens'}</small></div>;
             })}
-          </div>}
-        </div>
-      </div>
+          </div>
+          {st.standings.length > 0 && <ol className="sw-standings" style={{ marginTop: 10 }}>{st.standings.map((x) => <li key={x.rank}><span>{medal(x.rank)} {x.team}</span><strong>+{x.tokens}</strong><small>{fmtDT(x.at)}</small></li>)}</ol>}
+        </details>
+      )}
 
-      {/* ---- the wall */}
+      {/* ---- 3) the Team Wall */}
       <div className="card sw-wall-card">
-        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ margin: 0 }}>{st.test ? '🖼️ กำแพงภาพกรรมการ' : '🖼️ กำแพงภาพของทีม'}</h3>
+        <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+          <h3 style={{ margin: 0 }}>🖼️ {wallTitle}</h3>
           {team.complete && <button className="btn small" onClick={() => setShowFrame(true)}>🎞️ ดูภาพรวมทีม</button>}
         </div>
         <div className="sw-wall">
-          {team.members.map((m, i) => <Frame key={m.id} m={m} index={i} onShoot={m.isMe && s.live ? () => setShoot(true) : undefined} />)}
+          {team.members.map((m, i) => <Frame key={m.id} m={m} index={i} onShoot={m.isMe && canShoot ? () => setShoot(true) : undefined} />)}
         </div>
-        {!st.me.photoUrl && s.live && (
-          <button className="btn sw-cta" onClick={() => setShoot(true)}>📷 ถ่าย Selfie ของฉัน</button>
-        )}
-        {st.me.photoUrl && s.live && !team.complete && <button className="btn ghost" onClick={() => setShoot(true)}>ถ่ายใหม่</button>}
-        {st.me.isObserver && !st.test && <div className="observer-note" style={{ marginTop: 10 }}>👁 คณะทำงานร่วมติดภาพได้ แต่ไม่นับเป็นคะแนนของทีม</div>}
-        {err && <div className="error" style={{ marginTop: 10 }}>{err}</div>}
       </div>
-
-      {!st.test && st.standings.length > 0 && (
-        <div className="card">
-          <h3 style={{ margin: '0 0 8px' }}>🏁 ทีมที่ทำครบแล้ว</h3>
-          <ol className="sw-standings">{st.standings.map((x) => <li key={x.rank}><span>{medal(x.rank)} {x.team}</span><strong>+{x.tokens}</strong><small>{fmtDT(x.at)}</small></li>)}</ol>
-        </div>
-      )}
     </div>
   );
 }
@@ -120,9 +149,10 @@ function Countdown({ end }: { end: string | null }) {
 
 /** One slot on the wall: grey placeholder with the name until a photo arrives, then it flips in. */
 const hasReal = (m: { name: string; fullName: string }) => !!m.fullName && m.fullName.trim() !== m.name.trim();
+/** One slot on the Team Wall: grey placeholder until the photo arrives, then it flips in. Nickname + real name, one line each. */
 function Frame({ m, index, onShoot }: { m: Member; index: number; onShoot?: () => void }) {
   return (
-    <div className={`sw-frame${m.photoUrl ? ' has' : ''}${m.isMe ? ' me' : ''}${m.isObserver ? ' obs' : ''}`} style={{ animationDelay: `${index * 60}ms` }}>
+    <div className={`sw-frame${m.photoUrl ? ' has' : ''}${m.isMe ? ' me' : ''}`} style={{ animationDelay: `${index * 60}ms` }}>
       <div className="sw-frame-inner">
         {m.photoUrl ? <img src={m.photoUrl} alt={m.name} loading="lazy" /> : (
           <div className="sw-frame-empty" onClick={onShoot} role={onShoot ? 'button' : undefined}>
@@ -131,8 +161,8 @@ function Frame({ m, index, onShoot }: { m: Member; index: number; onShoot?: () =
           </div>
         )}
       </div>
-      <div className="sw-frame-name">{m.isObserver ? '👁 ' : ''}{m.name}{m.isMe ? ' (ฉัน)' : ''}</div>
-      {hasReal(m) && <div className="sw-frame-real">{m.fullName}</div>}
+      <FitLine className="sw-frame-name" text={`${m.name}${m.isMe ? ' (ฉัน)' : ''}`} base={13} min={8} />
+      <FitLine className="sw-frame-real" text={hasReal(m) ? m.fullName : '\u00a0'} base={10.5} min={7} />
     </div>
   );
 }
@@ -385,6 +415,14 @@ function FinalFrame({ st, onClose }: { st: Status; onClose: () => void }) {
 }
 
 const loadImg = (src: string) => new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.crossOrigin = 'anonymous'; i.onload = () => res(i); i.onerror = () => rej(new Error('โหลดรูปไม่สำเร็จ')); i.src = src; });
+/** One line, shrunk (not wrapped) only when it does not fit; "…" as the very last resort. */
+function fitLine(ctx: CanvasRenderingContext2D, text: string, cx: number, y: number, maxW: number, weight: number, base: number, min: number) {
+  let size = base;
+  const set = () => { ctx.font = `${weight} ${size}px "Noto Sans Thai", "Sarabun", sans-serif`; };
+  set();
+  while (ctx.measureText(text).width > maxW && size > min) { size -= 0.5; set(); }
+  ctx.fillText(ctx.measureText(text).width > maxW ? fitText(ctx, text, maxW) : text, cx, y);
+}
 /** Shortens text with … so it never runs outside its frame. */
 function fitText(ctx: CanvasRenderingContext2D, text: string, maxW: number) {
   if (ctx.measureText(text).width <= maxW) return text;
@@ -396,7 +434,7 @@ const rr = (ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: n
 
 /** Draws the collage: logo header, a grid of portrait photos with names, team name, footer line. 1080 px wide JPEG. */
 async function renderFrame(st: Status) {
-  const members = st.team.members.filter((m) => !m.isObserver).concat(st.team.members.filter((m) => m.isObserver && m.photoUrl));
+  const members = st.team.members;   // real walls hold competing members only; the judges' test wall is all judges
   const n = Math.max(1, members.length);
   const cols = n <= 2 ? 2 : n <= 6 ? 3 : n <= 12 ? 4 : 5;
   const rows = Math.ceil(n / cols);
@@ -427,12 +465,9 @@ async function renderFrame(st: Status) {
     } else { ctx.fillStyle = '#9aa39c'; ctx.font = `${Math.round(cellW * 0.5)}px sans-serif`; ctx.fillText('👤', x + cellW / 2, y + cellH * 0.62); }
     ctx.restore();
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; rr(ctx, x, y, cellW, cellH, 18); ctx.stroke();
-    ctx.fillStyle = '#1f3557'; ctx.font = `700 ${cellW > 240 ? 25 : 21}px "Noto Sans Thai", "Sarabun", sans-serif`;
-    ctx.fillText(fitText(ctx, `${m.isObserver ? '👁 ' : ''}${m.name}`, cellW), x + cellW / 2, y + cellH + 30);
-    if (hasReal(m)) {   // real name in small type under the nickname
-      ctx.fillStyle = '#5b6b7a'; ctx.font = `${cellW > 240 ? 19 : 16}px "Noto Sans Thai", "Sarabun", sans-serif`;
-      ctx.fillText(fitText(ctx, m.fullName, cellW), x + cellW / 2, y + cellH + 56);
-    }
+    ctx.fillStyle = '#1f3557'; ctx.textAlign = 'center';
+    fitLine(ctx, m.name, x + cellW / 2, y + cellH + 30, cellW, 700, cellW > 240 ? 25 : 21, 12);
+    if (hasReal(m)) { ctx.fillStyle = '#5b6b7a'; fitLine(ctx, m.fullName, x + cellW / 2, y + cellH + 56, cellW, 400, cellW > 240 ? 19 : 16, 9); }
   }
   // footer
   ctx.fillStyle = '#4c6b3c'; ctx.font = 'bold 34px "Noto Sans Thai", "Sarabun", sans-serif';

@@ -345,8 +345,7 @@ try {
   const balS0 = (await sb.rpc('team_balance', { p_team: tS })).data;
   const sr1 = (await sb.rpc('submit_selfie', { p_participant: sw1, p_url: 'https://example.invalid/s1.jpg', p_pct: 70, p_checks: {} })).data;
   check('first photo counts 1 of 2', sr1?.count === 1 && sr1?.total === 2 && sr1?.complete === false);
-  const srObs = sObs ? (await sb.rpc('submit_selfie', { p_participant: sObs.id, p_url: 'https://example.invalid/obs.jpg', p_pct: 70, p_checks: {} })).data : null;
-  check('observer photo is stored but does not count', !sObs || (srObs?.count === 1 && srObs?.total === 2));
+  check('a committee/judge (observer) cannot put a photo on a real team wall', !sObs || !!(await sb.rpc('submit_selfie', { p_participant: sObs.id, p_url: 'https://example.invalid/obs.jpg', p_pct: 70, p_checks: {} })).error);
   const sr2 = (await sb.rpc('submit_selfie', { p_participant: sw2, p_url: 'https://example.invalid/s2.jpg', p_pct: 70, p_checks: {} })).data;
   check('team completes with a rank and a reward', sr2?.complete === true && sr2?.justCompleted === true && sr2?.rank >= 1 && sr2?.tokens >= 0);
   const sPaid = sr2?.tokens ?? 0;
@@ -371,6 +370,13 @@ try {
   const tj = sObs ? (await sb.rpc('submit_selfie_test', { p_participant: sObs.id, p_url: 'https://example.invalid/judge.jpg', p_pct: 80, p_checks: {} })).data : null;
   check('a judge photo lands on the test wall and pays nothing', !sObs || (tj?.tokens === 0 && tj?.rank === null && (await sb.rpc('team_balance', { p_team: tS })).data === balT0));
   await sb.from('selfie_photos').delete().eq('is_test', true);
+  // v3: 'teams' phase = only started teams may upload
+  await sb.from('game_settings').update({ selfie_audience: 'teams' }).eq('id', 1);
+  await sb.from('teams').update({ selfie_active: false }).eq('id', tS);
+  check('a team that was not started cannot upload', !!(await sb.rpc('submit_selfie', { p_participant: sw1, p_url: 'https://example.invalid/ns.jpg', p_pct: 70, p_checks: {} })).error);
+  await sb.from('teams').update({ selfie_active: true }).eq('id', tS);
+  check('a started team can upload', !(await sb.rpc('submit_selfie', { p_participant: sw1, p_url: 'https://example.invalid/ok.jpg', p_pct: 70, p_checks: {} })).error);
+  await sb.from('teams').update({ selfie_active: false }).eq('id', tS);
   await sb.from('game_settings').update({ selfie_audience: 'all' }).eq('id', 1);
   await sb.from('teams').update({ selfie_color: null }).eq('id', tS);
   if (sBefore) await sb.from('game_settings').update(sBefore).eq('id', 1);

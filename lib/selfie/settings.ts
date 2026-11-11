@@ -24,10 +24,22 @@ export function publicSettings(s: SelfieSettingsRow | null | undefined) {
     open: w.on, live: w.live, before: w.before, after: w.after, start: w.start, end: w.end,
     color: (s?.selfie_color ?? '#2f8f5b').toLowerCase(), percent: s?.selfie_percent ?? 60, tolerance: s?.selfie_tolerance ?? 32,
     rewards: parseRewards(s?.selfie_rewards), announcedAt: s?.selfie_announced_at ?? null,
-    /** 'all' = everyone plays for the team; 'judges' = only observers play, as a score-free test */
-    audience: (s?.selfie_audience === 'judges' ? 'judges' : 'all') as 'all' | 'judges',
+    /** 'judges' = only the committee/judges (observers) test, score-free · 'teams' = only the teams the admin started · 'all' = every team */
+    audience: (s?.selfie_audience === 'judges' ? 'judges' : s?.selfie_audience === 'teams' ? 'teams' : 'all') as Audience,
   };
 }
 
-/** Who may see and play the mission right now. In the judges-only phase nobody else is notified or sees the menu. */
-export const selfieEligible = (audience: 'all' | 'judges', isObserver: boolean) => audience === 'all' || isObserver;
+export type Audience = 'all' | 'teams' | 'judges';
+
+/**
+ * Who sees the mission and what they may do.
+ *  - judges phase: only observers (committee/judges); they play a score-free test wall.
+ *  - teams phase: only members of the teams the admin has started; observers of those teams may look, never play.
+ *  - all phase: every team; observers may look, never play.
+ * Observers are never part of a real team wall, never scored and never notified in the real phases.
+ */
+export function selfieAccess(audience: Audience, isObserver: boolean, teamActive: boolean) {
+  if (audience === 'judges') return { eligible: isObserver, test: true, readOnly: false };
+  const eligible = audience === 'all' || teamActive;
+  return { eligible, test: false, readOnly: isObserver };
+}

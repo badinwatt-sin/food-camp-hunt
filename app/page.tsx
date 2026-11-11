@@ -30,7 +30,7 @@ type Me = {
   marketOpen: boolean;
   menus: MenuAccess;
   line: LineStatus;
-  selfie: { test?: boolean; name?: string; live: boolean; before: boolean; after: boolean; start: string | null; end: string | null; color: string; percent: number; pct: number; count: number; total: number; complete: boolean; rank: number | null; tokens: number; nextReward: number; mine: boolean } | null;
+  selfie: { test?: boolean; name?: string; readOnly?: boolean; rejected?: boolean; live: boolean; before: boolean; after: boolean; start: string | null; end: string | null; color: string; percent: number; pct: number; count: number; total: number; complete: boolean; rank: number | null; tokens: number; nextReward: number; mine: boolean } | null;
   inventory: { item: string; image_url: string | null; qty: number; handed: number; pending: number; spent: number }[];
   game: { open: boolean; tokensPerCorrect: number };
   total: number;
@@ -46,6 +46,7 @@ type PhotoData = {
     submission: { status: 'pending' | 'approved' | 'rejected'; url: string; tokens: number; reason: string | null; at: string; reviewedAt: string | null; by: string } | null }[];
 };
 type CheckinNotice = { kind: 'checkin'; id: string };
+type SelfieRejectNotice = { kind: 'selfieReject'; id: string; reason: string };
 type SelfieNotice = { kind: 'selfie'; id: string; test?: boolean; pct: number; count: number; total: number; mine: boolean; nextReward: number; end: string | null; color: string; percent: number };
 type PhotoNotice = { id: string; status: 'approved' | 'rejected'; tokens: number; reason: string | null; at: string; title: string };
 type HuntData = {
@@ -169,13 +170,15 @@ function PlayerPage() {
     const tick = async () => {
       if (document.visibilityState === 'hidden' || noticeStore.get()) return;
       try {
-        const r = await api<{ photos: PhotoNotice[]; checkin: { announcedAt: string } | null; selfie: (Omit<SelfieNotice, 'kind' | 'id'> & { announcedAt: string }) | null }>('/api/notices', undefined, 1);
+        const r = await api<{ selfieRejected?: { id: string; reason: string }[]; photos: PhotoNotice[]; checkin: { announcedAt: string } | null; selfie: (Omit<SelfieNotice, 'kind' | 'id'> & { announcedAt: string }) | null }>('/api/notices', undefined, 1);
         if (stop) return;
         const seen = readSeen();
         const ci = r.checkin ? { kind: 'checkin' as const, id: `checkin:${r.checkin.announcedAt}` } : null;
         // the selfie pop-up comes back once per announcement, and again whenever the team's progress changes
         const sf: SelfieNotice | null = r.selfie ? { kind: 'selfie', id: `selfie:${r.selfie.announcedAt}:${r.selfie.count}`, ...r.selfie } : null;
-        const next: PhotoNotice | CheckinNotice | SelfieNotice | undefined = (sf && !seen.has(sf.id) ? sf : undefined) ?? (ci && !seen.has(ci.id) ? ci : undefined) ?? r.photos.find((x) => !seen.has(x.id));
+        const rj = (r.selfieRejected ?? []).find((x) => !seen.has(x.id));
+        const rejNotice: SelfieRejectNotice | undefined = rj ? { kind: 'selfieReject', id: rj.id, reason: rj.reason } : undefined;
+        const next: PhotoNotice | CheckinNotice | SelfieNotice | SelfieRejectNotice | undefined = rejNotice ?? (sf && !seen.has(sf.id) ? sf : undefined) ?? (ci && !seen.has(ci.id) ? ci : undefined) ?? r.photos.find((x) => !seen.has(x.id));
         if (next && !noticeStore.get()) noticeStore.set(next);
       } catch { /* offline or logged out: try again later */ }
     };
@@ -388,9 +391,9 @@ function PlayerPage() {
           <div className="card" style={{ border: '3px solid #f0c36a' }}>
             <div className="mission">
               <div className="m-ic" style={{ background: me.selfie.color, fontSize: 30 }}>🤳</div>
-              <div className="m-body"><h2>{me.selfie.test ? '🧪 Selfie Wall · ทดสอบกรรมการ' : 'Selfie Wall · ภารกิจแรกของทีม'}</h2><div className="muted">{me.selfie.test ? `กรรมการถ่ายแล้ว ${me.selfie.count}/${me.selfie.total} คน · ไม่มีคะแนน` : me.selfie.complete ? `ทีมครบแล้ว อันดับ ${me.selfie.rank} · +${me.selfie.tokens} Tokens` : `ทีมทำแล้ว ${me.selfie.pct}% (${me.selfie.count}/${me.selfie.total} คน) · ได้สูงสุด ${me.selfie.nextReward} Tokens`}</div></div>
+              <div className="m-body"><h2>{me.selfie.test ? '🧪 Selfie Wall · ทดสอบกรรมการ' : 'Selfie Wall · ภารกิจแรกของทีม'}</h2><div className="muted">{me.selfie.readOnly ? 'ดู Team Wall ของทีมได้อย่างเดียว (กรรมการ/คณะทำงาน)' : me.selfie.test ? `กรรมการถ่ายแล้ว ${me.selfie.count}/${me.selfie.total} คน · ไม่มีคะแนน` : me.selfie.complete ? `ทีมครบแล้ว อันดับ ${me.selfie.rank} · +${me.selfie.tokens} Tokens` : `ทีมทำแล้ว ${me.selfie.pct}% (${me.selfie.count}/${me.selfie.total} คน) · ได้สูงสุด ${me.selfie.nextReward} Tokens`}</div></div>
             </div>
-            <button className="btn sw-cta" style={{ marginTop: 12 }} onClick={() => setView('selfie')}>{me.selfie.mine || me.selfie.complete ? 'ดูกำแพงภาพของทีม' : me.selfie.live ? '📷 ถ่าย Selfie ของฉัน' : 'ดูรายละเอียดภารกิจ'}</button>
+            <button className="btn sw-cta" style={{ marginTop: 12 }} onClick={() => setView('selfie')}>{me.selfie.readOnly || me.selfie.mine || me.selfie.complete ? 'ดู Team Wall' : me.selfie.live ? '📷 ถ่าย Selfie ของฉัน' : 'ดูรายละเอียดภารกิจ'}</button>
           </div>
         )}
         <div className="card">
@@ -563,11 +566,11 @@ function PlayerPage() {
           </div>
         </div>
       )}
-      {me.menus.selfie && me.selfie && me.selfie.live && !me.selfie.complete && (
+      {me.menus.selfie && me.selfie && me.selfie.live && !me.selfie.complete && !me.selfie.readOnly && (
         <div className="card sw-banner">
           <div className="row" style={{ alignItems: 'center', gap: 12 }}>
             <div className="sw-ring" style={{ ['--sw-color' as string]: me.selfie.color, ['--p' as string]: me.selfie.pct }}><div><b>{me.selfie.pct}%</b></div></div>
-            <div style={{ flex: 1, minWidth: 0 }}><strong>{me.selfie.test ? '🧪 Selfie Wall (ทดสอบ)' : '🤳 Selfie Wall'}</strong><div style={{ fontSize: 13, opacity: .9 }}>{me.selfie.mine ? `รอเพื่อนอีก ${me.selfie.total - me.selfie.count} คน` : 'คุณยังไม่ได้ถ่าย Selfie'}{me.selfie.test ? ' · ไม่มีคะแนน' : ` · ทีมได้สูงสุด ${me.selfie.nextReward} Tokens`}</div></div>
+            <div style={{ flex: 1, minWidth: 0 }}><strong>{me.selfie.test ? '🧪 Selfie Wall (ทดสอบ)' : '🤳 Selfie Wall'}</strong><div style={{ fontSize: 13, opacity: .9 }}>{me.selfie.rejected ? '⚠️ ทีมงานให้ถ่ายภาพใหม่' : me.selfie.mine ? `รอเพื่อนอีก ${me.selfie.total - me.selfie.count} คน` : 'คุณยังไม่ได้ถ่าย Selfie'}{me.selfie.test ? ' · ไม่มีคะแนน' : ` · ทีมได้สูงสุด ${me.selfie.nextReward} Tokens`}</div></div>
             <button className="btn small" style={{ flex: 'none' }} onClick={() => setView('selfie')}>{me.selfie.mine ? 'ดูทีม' : 'ถ่ายเลย'}</button>
           </div>
         </div>
@@ -984,13 +987,13 @@ function GoalCard({ goal, mine }: { goal: Goal; mine?: boolean }) {
 // ---- pop-up for staff decisions on team photos (shown on whatever page the player is on)
 const SEEN_KEY = 'fc_seen_photos';
 const noticeStore = {
-  current: null as PhotoNotice | CheckinNotice | SelfieNotice | null,
+  current: null as PhotoNotice | CheckinNotice | SelfieNotice | SelfieRejectNotice | null,
   listeners: new Set<() => void>(),
   onClose: undefined as (() => void) | undefined,
   onCheckin: undefined as (() => void) | undefined,
   onSelfie: undefined as (() => void) | undefined,
   get() { return noticeStore.current; },
-  set(n: PhotoNotice | CheckinNotice | SelfieNotice | null) { noticeStore.current = n; noticeStore.listeners.forEach((l) => l()); },
+  set(n: PhotoNotice | CheckinNotice | SelfieNotice | SelfieRejectNotice | null) { noticeStore.current = n; noticeStore.listeners.forEach((l) => l()); },
   subscribe(l: () => void) { noticeStore.listeners.add(l); return () => { noticeStore.listeners.delete(l); }; },
 };
 function readSeen(): Set<string> {
@@ -1002,6 +1005,23 @@ function markSeen(id: string) {
 function NoticeModal() {
   const n = useSyncExternalStore(noticeStore.subscribe, noticeStore.get, () => null);
   if (!n) return null;
+  if ('kind' in n && n.kind === 'selfieReject') {   // an admin turned the player's selfie down
+    const later = () => { markSeen(n.id); noticeStore.set(null); };
+    const go = () => { markSeen(n.id); noticeStore.set(null); noticeStore.onSelfie?.(); };
+    return (
+      <div className="player-dialog-overlay" role="alertdialog" aria-modal="true" aria-label="ภาพ Selfie ถูกปฏิเสธ" onClick={later}
+        style={{ position: 'fixed', inset: 0, background: 'rgba(31,47,77,.6)', display: 'grid', placeItems: 'center', zIndex: 100 }}>
+        <div className="card center stack player-dialog-panel" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, margin: 0, border: '4px solid #d98b86' }}>
+          <div className="dialog-feature-icon"><AppIcon name="info" size={52} /></div>
+          <h2 style={{ margin: 0 }}>ทีมงานให้ถ่าย Selfie ใหม่</h2>
+          <div className="error" style={{ textAlign: 'left', overflowWrap: 'anywhere' }}>เหตุผล: {n.reason}</div>
+          <div className="muted">ภาพเดิมถูกนำออกจาก Team Wall แล้ว ถ่ายใหม่ได้เลย</div>
+          <button className="btn sw-cta" style={{ marginTop: 0 }} onClick={go}>📷 ถ่าย Selfie ใหม่</button>
+          <button className="btn ghost" onClick={later}>ไว้ทีหลัง</button>
+        </div>
+      </div>
+    );
+  }
   if ('kind' in n && n.kind === 'selfie') {   // the selfie wall is live and the team is not finished yet
     const later = () => { markSeen(n.id); noticeStore.set(null); };
     const go = () => { markSeen(n.id); noticeStore.set(null); noticeStore.onSelfie?.(); };
@@ -1016,7 +1036,7 @@ function NoticeModal() {
           <div style={{ position: 'relative' }}>{n.test ? <>ทดลองถ่าย Selfie กับฉากหลัง <span className="sw-chip"><i style={{ background: n.color }} />{colorNameClient(n.color)}</span> เหมือนผู้เล่นจริง · ไม่มีคะแนน</> : n.mine ? `รอเพื่อนอีก ${n.total - n.count} คน ช่วยกันตามให้ครบ!` : <>ถ่าย Selfie กับฉากหลัง <span className="sw-chip"><i style={{ background: n.color }} />{colorNameClient(n.color)}</span> ให้ได้ {n.percent}%</>}</div>
           {!n.test && <div className="sw-pill" style={{ position: 'relative' }}>🪙 ทีมมีโอกาสได้สูงสุด <strong>{n.nextReward} Tokens</strong></div>}
           {n.end && <div style={{ fontSize: 13, opacity: .9, position: 'relative' }}>หมดเวลา {fmtTime(n.end)}</div>}
-          <button className="btn sw-cta" style={{ position: 'relative' }} onClick={go}>{n.mine ? 'ดูกำแพงภาพของทีม' : '📷 ถ่าย Selfie เลย'}</button>
+          <button className="btn sw-cta" style={{ position: 'relative' }} onClick={go}>{n.mine ? 'ดู Team Wall' : '📷 ถ่าย Selfie เลย'}</button>
           <button className="btn ghost" style={{ color: '#fff', borderColor: 'rgba(255,255,255,.5)', position: 'relative' }} onClick={later}>ไว้ทีหลัง</button>
         </div>
       </div>

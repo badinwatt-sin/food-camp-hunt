@@ -1,6 +1,8 @@
 -- =====================================================================
 -- v2: each team has its OWN background colour (unique), and the mission can start for the judges only
 --     (observers play a score-free test wall; nobody else is notified) before it starts for everyone.
+-- v3: start for chosen teams or all teams; committee/judges (observers) never take part in the real walls;
+--     admins can reject a photo with a reason (the player is told and retakes); copies of a photo are caught.
 -- Team Selfie Wall ("Agency in the Wonder Woods") — first mission after the teams are formed.
 -- Run once on an EXISTING database (schema.sql already contains it; safe to re-run).
 --   * Admin opens a time window (start/end) and picks the background colour + the required share (e.g. 60 %).
@@ -18,11 +20,11 @@ alter table public.game_settings add column if not exists selfie_tolerance int n
 alter table public.game_settings add column if not exists selfie_rewards text not null default '20,15,10,5';
 alter table public.game_settings add column if not exists selfie_announced_at timestamptz;
 alter table public.game_settings add column if not exists selfie_audience text not null default 'all';   -- 'all' = everyone, 'judges' = observers only (score-free test)
-do $$ begin
-  if not exists (select 1 from pg_constraint where conname = 'game_settings_selfie_audience_check' and conrelid = 'public.game_settings'::regclass) then
-    alter table public.game_settings add constraint game_settings_selfie_audience_check check (selfie_audience in ('all', 'judges'));
-  end if;
-end $$;
+-- 'judges' = only observers (score-free test) · 'teams' = only the teams the admin started · 'all' = every team
+alter table public.game_settings drop constraint if exists game_settings_selfie_audience_check;
+alter table public.game_settings add constraint game_settings_selfie_audience_check check (selfie_audience in ('all', 'teams', 'judges'));
+alter table public.teams add column if not exists selfie_active boolean not null default false;     -- started in 'teams' mode
+alter table public.teams add column if not exists selfie_started_at timestamptz;                      -- that team's own announcement
 -- every team gets its own colour (NULL = use the default colour in game_settings.selfie_color); never the same twice
 alter table public.teams add column if not exists selfie_color text;
 do $$ begin
@@ -76,20 +78,22 @@ create or replace function public.submit_selfie(p_participant uuid, p_url text, 
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
   v_part participants%rowtype; v_team teams%rowtype; v_old text; v_total int; v_have int;
-  v_rank int; v_tokens int; v_rewards int[]; v_ranked int;
+  v_rank int; v_tokens int; v_rewards int[]; v_ranked int; v_aud text;
 begin
   perform pg_advisory_xact_lock(71040002);                 -- one finishing order for every team
   if not selfie_window_open() then raise exception 'SELFIE_CLOSED'; end if;
-  if (select selfie_audience from game_settings where id = 1) <> 'all' then raise exception 'SELFIE_CLOSED'; end if;   -- judges-only test phase
   select * into v_part from participants where id = p_participant;
   if not found then raise exception 'NOT_FOUND'; end if;
+  if v_part.is_observer then raise exception 'OBSERVER_READ_ONLY'; end if;                      -- committee/judges never join the real walls
   select * into v_team from teams where id = v_part.team_id for update;   -- serialise with other wallet writers
+  select selfie_audience into v_aud from game_settings where id = 1;
+  if v_aud = 'judges' or (v_aud = 'teams' and not v_team.selfie_active) then raise exception 'SELFIE_CLOSED'; end if;
   select image_url into v_old from selfie_photos where participant_id = p_participant and not is_test;
   insert into selfie_photos (participant_id, team_id, image_url, color_pct, checks, is_test)
   values (p_participant, v_team.id, p_url, coalesce(p_pct, 0), coalesce(p_checks, '{}'::jsonb), false)
   on conflict (participant_id, is_test) do update
     set image_url = excluded.image_url, color_pct = excluded.color_pct, checks = excluded.checks, created_at = now();
-  -- progress = competing members only (observers may hang their photo on the wall, but never count)
+  -- progress = competing members only (observers are not on the real walls at all)
   select count(*) filter (where not p.is_observer),
          count(*) filter (where not p.is_observer and s.participant_id is not null)
     into v_total, v_have
@@ -136,6 +140,17 @@ begin
     'rank', null, 'tokens', 0);
 end $$;
 
+-- Admin rejected a photo (copied, not the right person, ...): the player is told why and takes a new one.
+create table if not exists public.selfie_rejections (
+  id             uuid primary key default gen_random_uuid(),
+  participant_id uuid not null references public.participants(id) on delete cascade,
+  reason         text not null,
+  created_by     text,
+  created_at     timestamptz not null default now()
+);
+create index if not exists selfie_rejections_pid_idx on public.selfie_rejections(participant_id, created_at desc);
+alter table public.selfie_rejections enable row level security;
+
 -- Rehearsal reset (admin danger zone): every photo, every rank and the paid rewards.
 create or replace function public.reset_selfie_wall()
 returns jsonb language plpgsql security definer set search_path = public as $$
@@ -145,7 +160,8 @@ begin
   update game_settings set selfie_open = false where id = 1;
   select coalesce(array_agg(image_url), '{}') into v_urls from selfie_photos;
   delete from selfie_photos where id is not null;
-  update teams set selfie_completed_at = null, selfie_finish_rank = null, selfie_reward_tokens = 0 where id is not null;
+  update teams set selfie_completed_at = null, selfie_finish_rank = null, selfie_reward_tokens = 0, selfie_active = false, selfie_started_at = null where id is not null;
+  delete from selfie_rejections where id is not null;
   delete from token_ledger where idempotency_key like 'selfie:%' and created_by = 'system';
   return jsonb_build_object('urls', to_jsonb(v_urls));
 end $$;
@@ -153,5 +169,6 @@ end $$;
 revoke all on function public.selfie_window_open(), public.submit_selfie(uuid, text, numeric, jsonb), public.submit_selfie_test(uuid, text, numeric, jsonb), public.reset_selfie_wall() from public, anon, authenticated;
 grant execute on function public.selfie_window_open(), public.submit_selfie(uuid, text, numeric, jsonb), public.submit_selfie_test(uuid, text, numeric, jsonb), public.reset_selfie_wall() to service_role;
 grant all on public.selfie_photos to service_role;
+grant all on public.selfie_rejections to service_role;
 
 insert into storage.buckets (id, name, public) values ('selfies', 'selfies', true) on conflict (id) do nothing;

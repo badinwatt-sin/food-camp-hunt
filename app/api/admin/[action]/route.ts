@@ -14,6 +14,7 @@ import { isLineGroupUrl, LINE_GROUP_CODES } from '@/lib/line-types';
 import { checkOrigin, handler, HttpError, ok, rateLimit, readJson } from '@/lib/http';
 import { SELFIE_SETTINGS_SELECT, publicSettings } from '@/lib/selfie/settings';
 import { aiEnabled } from '@/lib/selfie/ai';
+import { samePicture } from '@/lib/selfie/analyze';
 import { MIN_TEAM_COLOR_GAP, TEAM_PALETTE, colorGap, pickDistinctColors } from '@/lib/selfie/color';
 
 export const dynamic = 'force-dynamic';
@@ -90,25 +91,30 @@ export const GET = handler(async (req: Request, ctx: Ctx) => {
     await requireRole('staff');
     const [{ data: st }, { data: teams }, { data: people }, { data: photos }] = await Promise.all([
       sb.from('game_settings').select(SELFIE_SETTINGS_SELECT).eq('id', 1).single(),
-      sb.from('teams').select('id, name, selfie_color, selfie_completed_at, selfie_finish_rank, selfie_reward_tokens').order('name'),
+      sb.from('teams').select('id, name, selfie_color, selfie_active, selfie_started_at, selfie_completed_at, selfie_finish_rank, selfie_reward_tokens').order('name'),
       sb.from('participants').select('id, team_id, name, nick_name, is_observer').order('name'),
       sb.from('selfie_photos').select('id, participant_id, team_id, image_url, color_pct, checks, created_at, is_test').order('created_at'),
     ]);
     const settings = publicSettings(st);
-    const photoOf = (id: string, test: boolean) => (photos ?? []).find((x: any) => x.participant_id === id && !!x.is_test === test) as any;
+    const all = (photos ?? []) as any[];
+    const photoOf = (id: string, test: boolean) => all.find((x) => x.participant_id === id && !!x.is_test === test);
+    const nameOf = new Map((people ?? []).map((m: any) => [m.id, m.nick_name || m.name]));
+    // Hint for the admin: pictures that look (almost) the same as someone else's are flagged. Image similarity only, no faces.
+    const similar = (ph: any) => all.filter((o) => o.id !== ph.id && !!o.is_test === !!ph.is_test && samePicture(o.checks, ph.checks, 30, 25))
+      .map((o) => nameOf.get(o.participant_id) ?? '');
     const member = (m: any, test: boolean) => {
       const ph = photoOf(m.id, test);
-      return { id: m.id, name: m.nick_name || m.name, fullName: m.name, isObserver: !!m.is_observer, photoId: ph?.id ?? null, photoUrl: ph?.image_url ?? null, pct: ph?.color_pct ?? null, at: ph?.created_at ?? null, checks: ph?.checks ?? null };
+      return { id: m.id, name: m.nick_name || m.name, fullName: m.name, isObserver: !!m.is_observer, photoId: ph?.id ?? null, photoUrl: ph?.image_url ?? null, pct: ph?.color_pct ?? null, at: ph?.created_at ?? null, checks: ph?.checks ?? null, similarTo: ph ? similar(ph) : [] };
     };
     const judges = (people ?? []).filter((m: any) => m.is_observer).map((m: any) => member(m, true));
     return ok({
       settings, aiEnabled: aiEnabled(), palette: TEAM_PALETTE,
       judges: { members: judges, count: judges.filter((m: any) => m.photoUrl).length, total: judges.length },
+      // real walls: competing members only. Committee/judges (observers) are never on a team's wall and never counted.
       teams: (teams ?? []).map((t: any) => {
-        const members = (people ?? []).filter((m: any) => m.team_id === t.id).map((m: any) => member(m, false));
-        const competing = members.filter((m: any) => !m.isObserver);
-        const count = competing.filter((m: any) => m.photoUrl).length;
-        return { id: t.id, name: t.name, color: t.selfie_color ?? null, members, count, total: competing.length, complete: !!t.selfie_completed_at, rank: t.selfie_finish_rank, tokens: t.selfie_reward_tokens ?? 0, completedAt: t.selfie_completed_at };
+        const members = (people ?? []).filter((m: any) => m.team_id === t.id && !m.is_observer).map((m: any) => member(m, false));
+        const count = members.filter((m: any) => m.photoUrl).length;
+        return { id: t.id, name: t.name, color: t.selfie_color ?? null, active: !!t.selfie_active, startedAt: t.selfie_started_at, members, count, total: members.length, complete: !!t.selfie_completed_at, rank: t.selfie_finish_rank, tokens: t.selfie_reward_tokens ?? 0, completedAt: t.selfie_completed_at };
       }),
     });
   }
@@ -478,6 +484,22 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
     return ok({ updated: ids.length });
   }
 
+  if (action === 'selfie.reject') {
+    // Staff/admin turn a selfie down (a copy, not the right person, ...): the photo leaves the wall, the player gets a pop-up with the reason and retakes it.
+    const r3 = await requireRole('staff');
+    const id = need(str(body.id, 60));
+    const reason = need(str(body.reason, 200));
+    const { data: ph } = await sb.from('selfie_photos').select('id, image_url, participant_id').eq('id', id).maybeSingle();
+    if (!ph) throw new HttpError(404, 'NOT_FOUND');
+    const ins = await sb.from('selfie_rejections').insert({ participant_id: ph.participant_id, reason, created_by: r3 });
+    if (ins.error) throw ins.error;
+    const del = await sb.from('selfie_photos').delete().eq('id', id);
+    if (del.error) throw del.error;
+    await removePublicFile('selfies', ph.image_url);
+    await audit(r3, 'selfie.reject', { participant_id: ph.participant_id, reason });
+    return ok();
+  }
+
   if (action === 'photo.review') {
     // Staff/admin decide on a team photo: approve (tokens go to the team) or reject (no tokens, the leader can retry).
     // Taking back an earlier approval is admin-only.
@@ -726,7 +748,7 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       if (typeof body.open === 'boolean') { patch.selfie_open = body.open; if (body.open) patch.selfie_announced_at = new Date().toISOString(); }
       if (body.announce === true) patch.selfie_announced_at = new Date().toISOString();
       if (body.audience !== undefined) {
-        if (body.audience !== 'all' && body.audience !== 'judges') throw new HttpError(400, 'BAD_INPUT');
+        if (body.audience !== 'all' && body.audience !== 'judges' && body.audience !== 'teams') throw new HttpError(400, 'BAD_INPUT');
         const { data: cur } = await sb.from('game_settings').select('selfie_audience, selfie_open').eq('id', 1).single();
         patch.selfie_audience = body.audience;
         // widening the mission to everyone is the real announcement: players get the pop-up now
@@ -754,6 +776,19 @@ export const POST = handler(async (req: Request, ctx: Ctx) => {
       const { error } = await sb.from('game_settings').update(patch).eq('id', 1);
       if (error) throw error;
       await audit(role, 'selfie.set', patch);
+      return ok();
+    }
+    case 'selfie.team.start': {
+      // 'teams' phase: start (or stop) the mission for one team. Starting announces it to that team only.
+      const id = need(str(body.team_id, 60));
+      const active = body.active === true;
+      const { data: t } = await sb.from('teams').select('id, name').eq('id', id).maybeSingle();
+      if (!t) throw new HttpError(404, 'NOT_FOUND');
+      const patch: Record<string, unknown> = { selfie_active: active };
+      if (active) patch.selfie_started_at = new Date().toISOString();
+      const { error } = await sb.from('teams').update(patch).eq('id', id);
+      if (error) throw error;
+      await audit(role, 'selfie.team.start', { team_id: id, active });
       return ok();
     }
     case 'selfie.team.color': {
