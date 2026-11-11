@@ -26,7 +26,7 @@ export async function aiCheckSelfie(jpegBytes: Uint8Array, hex: string, percent:
   const name = colorName(hex);
   try {
     const res = await client.messages.parse({
-      model: 'claude-opus-5-5',
+      model: process.env.SELFIE_AI_MODEL || 'claude-haiku-5-5',   // small and cheap: ~0.5 satang per photo; override with SELFIE_AI_MODEL
       max_tokens: 1024,
       output_config: { effort: 'low', format: zodOutputFormat(Verdict) },
       messages: [{
