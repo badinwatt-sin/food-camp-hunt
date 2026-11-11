@@ -334,7 +334,7 @@ label.lbl { display: block; font-size: 14px; color: #5d6a80; margin: 10px 0 4px;
 .sw-pill { max-width: 100%; overflow-wrap: anywhere; }
 
 .sw-wall { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 10px; margin-top: 12px; perspective: 900px; }
-@media (min-width: 700px) { .sw-wall { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); } }
+@media (min-width: 700px) { .sw-wall { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); } }
 .sw-frame { animation: sw-in .5s both; }
 @keyframes sw-in { from { opacity: 0; transform: translateY(14px) rotateX(18deg); } to { opacity: 1; transform: none; } }
 .sw-frame-inner { aspect-ratio: 3 / 4; border-radius: 14px; overflow: hidden; background: #d6d6cf; border: 3px solid #fff; box-shadow: 0 6px 14px rgba(31,47,77,.18); transform-style: preserve-3d; transition: transform .4s; }
