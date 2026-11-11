@@ -20,6 +20,7 @@ export const GET = handler(async () => {
   const members = (people.data ?? []).map((m: any) => ({
     id: m.id,
     name: m.nick_name || m.name,
+    fullName: m.name,
     isObserver: !!m.is_observer,
     isLeader: !!m.is_leader && !m.is_observer,
     isMe: m.id === p.id,
