@@ -49,7 +49,7 @@ function Login({ onDone }: { onDone: (r: Role) => void }) {
   }
   return (
     <div className="app">
-      <Hero title="Food Camp Hunt" subtitle="เข้าสู่ระบบผู้จัดงาน (Admin / Staff)" />
+      <Hero title="Agency in the Wonder Woods" subtitle="เข้าสู่ระบบผู้จัดงาน (Admin / Staff)" />
       <main className="main">
         <div className="card stack">
           <h2>🔑 เข้าสู่ระบบผู้จัด</h2>
@@ -102,7 +102,7 @@ function Dashboard({ role, onLogout }: { role: Role; onLogout: () => void }) {
   ];
   return (
     <>
-      <Hero compact title="Food Camp Hunt" subtitle={`แดชบอร์ดผู้จัด · ${role === 'admin' ? 'Admin' : 'Staff'}`}
+      <Hero compact title="Agency in the Wonder Woods" subtitle={`แดชบอร์ดผู้จัด · ${role === 'admin' ? 'Admin' : 'Staff'}`}
         actions={<>
           <NotifyBell mode="admin" call={call} />
           <a className="btn small" style={{ textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }} href="/admin/live" target="_blank" rel="noreferrer">📺 จอใหญ่ (Live)</a>
@@ -401,7 +401,7 @@ function Overview({ role, setMsg }: { role: Role; setMsg: (m: string) => void })
         <div className="stat"><b>{totalSpent}</b><span>โทเคนที่ใช้ไปแล้ว</span></div>
         <div className="stat"><b>📦 {d.pendingPickup ?? 0}</b><span>ชิ้นที่รอจ่ายของ</span></div>
         <div className="stat"><b>📍 {d.checkedIn ?? 0}/{totalP}</b><span>เช็กอินวันงานแล้ว{d.settings.checkin_open ? ' · 🟢 เปิดอยู่' : ''}</span></div>
-        <div className="stat" style={(d.pendingPhotos ?? 0) > 0 ? { outline: '3px solid #f0c36a' } : undefined}><b>📸 {d.pendingPhotos ?? 0}</b><span>ภาพภารกิจที่รอตรวจ</span></div>
+        <div className="stat" style={(d.pendingPhotos ?? 0) > 0 ? { outline: '3px solid #dba24a' } : undefined}><b>📸 {d.pendingPhotos ?? 0}</b><span>ภาพภารกิจที่รอตรวจ</span></div>
       </div>
 
       <div className="switches">
@@ -579,7 +579,7 @@ function Checkin({ role, setMsg }: { role: Role; setMsg: (m: string) => void }) 
           <div className="row" style={{ gap: 6 }}>
             {teams.map((t) => {
               const tp = people.filter((p) => p.team === t); const ti = tp.filter((p) => p.checked_in_at).length;
-              return <span key={t} className="pill" style={{ background: ti === tp.length && tp.length ? '#cfe9c9' : '#f6efdc' }}>{t} {ti}/{tp.length}</span>;
+              return <span key={t} className="pill" style={{ background: ti === tp.length && tp.length ? '#e9e6c9' : '#f6efdc' }}>{t} {ti}/{tp.length}</span>;
             })}
           </div>
         </div>

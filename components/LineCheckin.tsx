@@ -122,10 +122,10 @@ function JoinPrompt({ group, status, busy, error, onJoin, onClose }: {
   }, []);
 
   return (
-    <div className="player-dialog-overlay line-invitation-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(31,47,77,.65)', display: 'grid', placeItems: 'center', zIndex: 120 }}>
+    <div className="player-dialog-overlay line-invitation-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(75,51,27,.65)', display: 'grid', placeItems: 'center', zIndex: 120 }}>
       <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={descriptionId}
         tabIndex={-1} className="card center stack player-dialog-panel line-invitation-dialog"
-        style={{ width: '100%', maxWidth: 420, margin: 0, border: '3px solid #8ac49c', overflowWrap: 'anywhere' }}
+        style={{ width: '100%', maxWidth: 420, margin: 0, border: '3px solid #b9b77a', overflowWrap: 'anywhere' }}
         onKeyDown={(event) => {
           if (event.key === 'Escape') { event.preventDefault(); onClose(); }
           if (event.key !== 'Tab') return;

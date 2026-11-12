@@ -54,7 +54,7 @@ export default function MiniGames({ onBalance, onAuthLost, isObserver = false }:
             <div className="row mission-meta" style={{ gap: 8, flexWrap: 'wrap' }}>
               <span className="pill" style={{ background: 'var(--green)', fontSize: 13, padding: '2px 10px' }}>สำเร็จรับ {x.rewardTokens} Tokens</span>
               {!readOnly && <span className="pill" style={{ background: '#f4ead0', fontSize: 13, padding: '2px 10px' }}>ลองแล้ว {x.used}/{x.max} ครั้ง</span>}
-              {x.claimed && <span className="pill" style={{ background: '#d9ecd5', fontSize: 13 }}>✓ รับรางวัลแล้ว</span>}
+              {x.claimed && <span className="pill" style={{ background: '#e9e6c9', fontSize: 13 }}>✓ รับรางวัลแล้ว</span>}
             </div>
             <div className="muted" style={{ marginTop: 8 }}>เงื่อนไขสำเร็จ: {x.successRule || MG_SUCCESS_RULES[g]} · รางวัลเข้ากระเป๋าทีมครั้งเดียว</div>
             {!x.open && <div className="banner" style={{ marginTop: 10 }}>เกมนี้ยังไม่เปิด หรือปิดแล้ว</div>}
@@ -79,7 +79,7 @@ export default function MiniGames({ onBalance, onAuthLost, isObserver = false }:
 function ResultCard({ icon, title, lines, res, onExit }: { icon: string; title: string; lines: string[]; res: Result; onExit: () => void }) {
   const success = !!res.success;
   return (
-    <div className="card center stack game-result" style={{ border: `3px solid ${success ? '#2f8f5b' : '#d2b56e'}` }}>
+    <div className="card center stack game-result" style={{ border: `3px solid ${success ? '#5f7d2e' : '#d2b56e'}` }}>
       <div style={{ fontSize: 54 }}>{icon}</div>
       <h2 style={{ margin: 0 }}>{title}</h2>
       {lines.map((l) => <div key={l} className="muted">{l}</div>)}
@@ -177,7 +177,7 @@ function SpotGame({ onExit, onAuthLost, rewardTokens }: GP) {
       <div className="muted" style={{ fontSize: 13, marginBottom: 2 }}>{label}</div>
       <div onPointerDown={tap} style={{ position: 'relative', width: '100%', aspectRatio: '4 / 3', borderRadius: 14, overflow: 'hidden', touchAction: 'manipulation', cursor: 'crosshair', border: '2px solid var(--cream-deep)' }}>
         <img src={src} alt={label} draggable={false} style={{ width: '100%', height: '100%', display: 'block', userSelect: 'none', pointerEvents: 'none' }} />
-        {marks.map((m, i) => <span key={i} aria-hidden style={{ position: 'absolute', left: `${m.x * 100}%`, top: `${m.y * 100}%`, width: '14%', aspectRatio: '1', transform: 'translate(-50%,-50%)', border: '4px solid #e0573b', borderRadius: '50%', boxShadow: '0 0 0 2px #fff' }} />)}
+        {marks.map((m, i) => <span key={i} aria-hidden style={{ position: 'absolute', left: `${m.x * 100}%`, top: `${m.y * 100}%`, width: '14%', aspectRatio: '1', transform: 'translate(-50%,-50%)', border: '4px solid #aa5c2c', borderRadius: '50%', boxShadow: '0 0 0 2px #fff' }} />)}
         {miss.map((m) => <span key={m.k} aria-hidden style={{ position: 'absolute', left: `${m.x * 100}%`, top: `${m.y * 100}%`, transform: 'translate(-50%,-50%)', fontSize: 30, color: '#d02b20', fontWeight: 800 }}>✕</span>)}
       </div>
     </div>
@@ -279,8 +279,8 @@ function MemoryGame({ onExit, onAuthLost, rewardTokens }: GP) {
           return (
             <button key={i} onClick={() => flip(i)} disabled={lock || ok || !!f} aria-label={f ? f.name : `การ์ดใบที่ ${i + 1}`}
               style={{
-                aspectRatio: '3 / 4', borderRadius: 14, border: ok ? '3px solid #2f8f5b' : '3px solid #fff', fontSize: 34, cursor: 'pointer',
-                background: ok ? '#e2f3dc' : f ? '#fffaf0' : 'linear-gradient(135deg,#2f6b45,#1f4d33)', color: '#fff',
+                aspectRatio: '3 / 4', borderRadius: 14, border: ok ? '3px solid #5f7d2e' : '3px solid #fff', fontSize: 34, cursor: 'pointer',
+                background: ok ? '#f0edd6' : f ? '#fffaf0' : 'linear-gradient(135deg,#65622d,#4c4a20)', color: '#fff',
                 boxShadow: '0 2px 6px rgba(0,0,0,.18)', display: 'grid', placeItems: 'center', padding: 2, lineHeight: 1.1,
               }}>
               {f ? <span style={{ color: '#222' }}>{f.emoji}<br /><span style={{ fontSize: 11 }}>{f.name}</span></span> : <span aria-hidden style={{ fontSize: 26, opacity: 0.8 }}>🍴</span>}

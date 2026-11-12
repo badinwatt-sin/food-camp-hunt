@@ -2,18 +2,18 @@
 export function Tent({ size = 90 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden>
-      <path d="M8 86 L50 18 L92 86 Z" fill="#bfe3c8" />
-      <path d="M50 18 L92 86 L62 86 L50 60 Z" fill="#7fbf93" />
-      <path d="M50 86 L50 58 L38 86 Z" fill="#1b2a4a" />
+      <path d="M8 86 L50 18 L92 86 Z" fill="#e3e0bd" />
+      <path d="M50 18 L92 86 L62 86 L50 60 Z" fill="#a3a05c" />
+      <path d="M50 86 L50 58 L38 86 Z" fill="#4b331b" />
       <path d="M50 18 L50 10" stroke="#fbf6e9" strokeWidth="3" strokeLinecap="round" />
-      <path d="M50 10 L62 14 L50 18 Z" fill="#f2c46d" />
+      <path d="M50 10 L62 14 L50 18 Z" fill="#dba24a" />
     </svg>
   );
 }
 export function Tree({ size = 60 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 60 60" aria-hidden>
-      <path d="M30 4 L48 30 L38 30 L52 50 L8 50 L22 30 L12 30 Z" fill="#7fbf93" />
+      <path d="M30 4 L48 30 L38 30 L52 50 L8 50 L22 30 L12 30 Z" fill="#a3a05c" />
       <rect x="27" y="50" width="6" height="8" fill="#fbf6e9" />
     </svg>
   );
@@ -21,10 +21,10 @@ export function Tree({ size = 60 }: { size?: number }) {
 export function Pot({ size = 48 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden>
-      <path d="M12 6 q4 6 0 10 M24 4 q4 6 0 10 M36 6 q4 6 0 10" stroke="#bfe3c8" strokeWidth="3" fill="none" strokeLinecap="round" />
-      <rect x="6" y="20" width="36" height="20" rx="8" fill="#f2c46d" />
-      <rect x="2" y="22" width="6" height="5" rx="2" fill="#f2c46d" />
-      <rect x="40" y="22" width="6" height="5" rx="2" fill="#f2c46d" />
+      <path d="M12 6 q4 6 0 10 M24 4 q4 6 0 10 M36 6 q4 6 0 10" stroke="#e3e0bd" strokeWidth="3" fill="none" strokeLinecap="round" />
+      <rect x="6" y="20" width="36" height="20" rx="8" fill="#dba24a" />
+      <rect x="2" y="22" width="6" height="5" rx="2" fill="#dba24a" />
+      <rect x="40" y="22" width="6" height="5" rx="2" fill="#dba24a" />
     </svg>
   );
 }
@@ -32,16 +32,16 @@ export function Carrot({ size = 40 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 40 40" aria-hidden>
       <path d="M8 14 C14 10 30 24 34 32 C26 36 10 24 8 14 Z" fill="#f2a65a" />
-      <path d="M8 14 L4 6 M8 14 L2 12 M8 14 L10 4" stroke="#7fbf93" strokeWidth="3" strokeLinecap="round" />
+      <path d="M8 14 L4 6 M8 14 L2 12 M8 14 L10 4" stroke="#a3a05c" strokeWidth="3" strokeLinecap="round" />
     </svg>
   );
 }
 export function Coin({ size = 40 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 40 40" aria-hidden>
-      <circle cx="20" cy="20" r="18" fill="#f2c46d" stroke="#1b2a4a" strokeWidth="2.5" />
-      <circle cx="20" cy="20" r="12" fill="none" stroke="#1b2a4a" strokeWidth="1.5" strokeDasharray="3 3" />
-      <path d="M14 22 q6 8 12 0 M16 16 h8" stroke="#1b2a4a" strokeWidth="2.5" strokeLinecap="round" fill="none" />
+      <circle cx="20" cy="20" r="18" fill="#dba24a" stroke="#4b331b" strokeWidth="2.5" />
+      <circle cx="20" cy="20" r="12" fill="none" stroke="#4b331b" strokeWidth="1.5" strokeDasharray="3 3" />
+      <path d="M14 22 q6 8 12 0 M16 16 h8" stroke="#4b331b" strokeWidth="2.5" strokeLinecap="round" fill="none" />
     </svg>
   );
 }
@@ -57,9 +57,9 @@ export function HomeIcon({ size = 24 }: { size?: number }) {
 export function Campfire({ size = 56 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 64 64" aria-hidden>
-      <path d="M32 6c3 8 12 12 12 24a12 12 0 0 1-24 0c0-6 3-9 5-12 1 4 3 5 5 5-2-6-1-11 2-17z" fill="#ee7d3b" />
-      <path d="M32 24c2 5 7 7 7 14a7 7 0 0 1-14 0c0-4 2-6 4-8 0 3 1 4 3 4-1-4-1-7 0-10z" fill="#f7c35a" />
-      <rect x="10" y="50" width="44" height="7" rx="3.5" fill="#8a5a2b" transform="rotate(-8 32 53)" />
+      <path d="M32 6c3 8 12 12 12 24a12 12 0 0 1-24 0c0-6 3-9 5-12 1 4 3 5 5 5-2-6-1-11 2-17z" fill="#c06a34" />
+      <path d="M32 24c2 5 7 7 7 14a7 7 0 0 1-14 0c0-4 2-6 4-8 0 3 1 4 3 4-1-4-1-7 0-10z" fill="#dba24a" />
+      <rect x="10" y="50" width="44" height="7" rx="3.5" fill="#5c3f21" transform="rotate(-8 32 53)" />
       <rect x="10" y="50" width="44" height="7" rx="3.5" fill="#6e4520" transform="rotate(8 32 53)" />
     </svg>
   );
@@ -69,10 +69,10 @@ export function IconMission({ size = 72 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 72 72" aria-hidden>
       <path d="M4 62 28 22l12 18 8-11 20 33z" fill="#fff" opacity=".9" />
-      <path d="M28 22 40 40l-6 3-6-5-6 8z" fill="#cfe8c4" />
+      <path d="M28 22 40 40l-6 3-6-5-6 8z" fill="#e3e0bd" />
       <rect x="44" y="8" width="3.5" height="30" rx="1.7" fill="#6e4520" />
-      <path d="M47.5 9h18l-6 7 6 7h-18z" fill="#ee7d3b" />
-      <circle cx="16" cy="16" r="5" fill="#f7c35a" />
+      <path d="M47.5 9h18l-6 7 6 7h-18z" fill="#c06a34" />
+      <circle cx="16" cy="16" r="5" fill="#dba24a" />
     </svg>
   );
 }
@@ -86,8 +86,8 @@ export function IconTeam({ size = 72 }: { size?: number }) {
   );
   return (
     <svg width={size} height={size} viewBox="0 0 72 72" aria-hidden>
-      {person(14, '#cfe8c4')}
-      {person(58, '#f7c35a')}
+      {person(14, '#e3e0bd')}
+      {person(58, '#dba24a')}
       {person(36, '#fff')}
       <path d="M2 66h68" stroke="#fff" strokeWidth="3" strokeLinecap="round" opacity=".6" />
     </svg>
@@ -99,12 +99,12 @@ export function IconShop({ size = 72 }: { size?: number }) {
     <svg width={size} height={size} viewBox="0 0 72 72" aria-hidden>
       <path d="M6 24 12 8h48l6 16z" fill="#fff" />
       {[0, 1, 2, 3, 4].map((k) => (
-        <path key={k} d={`M${6 + k * 12} 24 ${12 + k * 9.6} 8h9.6L${18 + k * 12} 24z`} fill={k % 2 ? '#fff' : '#ee7d3b'} />
+        <path key={k} d={`M${6 + k * 12} 24 ${12 + k * 9.6} 8h9.6L${18 + k * 12} 24z`} fill={k % 2 ? '#fff' : '#c06a34'} />
       ))}
-      <path d="M6 24a6 6 0 0 0 12 0 6 6 0 0 0 12 0 6 6 0 0 0 12 0 6 6 0 0 0 12 0 6 6 0 0 0 12 0" fill="#f7c35a" />
+      <path d="M6 24a6 6 0 0 0 12 0 6 6 0 0 0 12 0 6 6 0 0 0 12 0 6 6 0 0 0 12 0 6 6 0 0 0 12 0" fill="#dba24a" />
       <rect x="10" y="32" width="52" height="32" rx="3" fill="#fff" opacity=".9" />
-      <rect x="16" y="40" width="14" height="14" rx="3" fill="#ee7d3b" />
-      <circle cx="46" cy="47" r="8" fill="#f7c35a" />
+      <rect x="16" y="40" width="14" height="14" rx="3" fill="#c06a34" />
+      <circle cx="46" cy="47" r="8" fill="#dba24a" />
       <rect x="38" y="56" width="18" height="4" rx="2" fill="#6fae6b" />
     </svg>
   );
@@ -117,10 +117,10 @@ export function CampTent({ size = 80 }: { size?: number }) {
       <path d="M6 88 50 14l44 74z" fill="#efe3c6" />
       <path d="M50 14 94 88H64L50 58z" fill="#d8c79f" />
       <path d="M50 14 50 88H6z" fill="#f6edd6" opacity=".6" />
-      <path d="M50 14 6 88h12L50 30z" fill="#c4764a" />
-      <path d="M50 88V58l-13 30z" fill="#1f2f4d" />
-      <path d="M50 14V6" stroke="#8a5a2b" strokeWidth="3" strokeLinecap="round" />
-      <path d="M50 6l13 4-13 4z" fill="#2f6b4a" />
+      <path d="M50 14 6 88h12L50 30z" fill="#aa5c2c" />
+      <path d="M50 88V58l-13 30z" fill="#4b331b" />
+      <path d="M50 14V6" stroke="#5c3f21" strokeWidth="3" strokeLinecap="round" />
+      <path d="M50 6l13 4-13 4z" fill="#65622d" />
     </svg>
   );
 }
@@ -130,17 +130,17 @@ export function Hero({ subtitle, onHome, compact, actions, title, bell }: { subt
   return (
     <header className={`hero${compact ? ' compact' : ''}`}>
       <svg className="hero-scene" viewBox="0 0 480 170" preserveAspectRatio="xMidYMax slice" aria-hidden>
-        <circle cx="420" cy="38" r="30" fill="#fbe39a" opacity=".45" />
-        <circle cx="420" cy="38" r="19" fill="#f7d774" />
+        <circle cx="420" cy="38" r="30" fill="#e6b85c" opacity=".4" />
+        <circle cx="420" cy="38" r="19" fill="#dba24a" />
         <g fill="#fff" opacity=".92">
           <ellipse cx="300" cy="34" rx="30" ry="9" /><ellipse cx="322" cy="28" rx="20" ry="9" /><ellipse cx="282" cy="30" rx="16" ry="7" />
           <ellipse cx="120" cy="22" rx="26" ry="7" /><ellipse cx="138" cy="17" rx="16" ry="7" />
         </g>
-        <path d="M0 118 60 82l54 30 64-46 70 50 60-34 84 48 88-36v76H0z" fill="#b9d9b4" />
-        <path d="M0 138 70 106l60 26 74-34 80 38 70-28 70 26 56-22v60H0z" fill="#7fb283" />
-        <path d="M0 154 60 132l70 16 80-20 90 22 70-16 70 16 40-10v10H0z" fill="#4f8f64" />
+        <path d="M0 118 60 82l54 30 64-46 70 50 60-34 84 48 88-36v76H0z" fill="#d7bb93" />
+        <path d="M0 138 70 106l60 26 74-34 80 38 70-28 70 26 56-22v60H0z" fill="#a3a05c" />
+        <path d="M0 154 60 132l70 16 80-20 90 22 70-16 70 16 40-10v10H0z" fill="#65622d" />
         {[[28, 132], [54, 140], [338, 134], [362, 142], [386, 130], [446, 138]].map(([x, y], k) => (
-          <path key={k} d={`M${x} ${y - 32} ${x + 11} ${y} ${x - 11} ${y}z M${x} ${y - 21} ${x + 14} ${y + 8} ${x - 14} ${y + 8}z`} fill="#2f6b4a" />
+          <path key={k} d={`M${x} ${y - 32} ${x + 11} ${y} ${x - 11} ${y}z M${x} ${y - 21} ${x + 14} ${y + 8} ${x - 14} ${y + 8}z`} fill="#65622d" />
         ))}
       </svg>
       <div className={`hero-row${bell ? ' has-bell' : ''}`}>
@@ -148,8 +148,8 @@ export function Hero({ subtitle, onHome, compact, actions, title, bell }: { subt
           <button className="home-btn" onClick={onHome} aria-label="กลับหน้าหลัก" title="หน้าหลัก"><HomeIcon size={24} /></button>
         )}
         <div className="hero-text">
-          <div className="kicker">Agency Camp · Food</div>
-          <h1>{title ?? 'Food Camp Hunt'}</h1>
+          <div className="kicker">Outing &amp; Team Building 2026</div>
+          <h1>{title ?? 'Agency in the Wonder Woods'}</h1>
           <p>{subtitle ?? 'ทายอาหาร ล่าสมบัติ สะสมโทเคนให้ทีม'}</p>
         </div>
         {actions && <div className="hero-actions">{actions}</div>}

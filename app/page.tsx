@@ -394,7 +394,7 @@ function PlayerPage() {
           <div className="muted">ทำภารกิจเพื่อสะสมโทเคนเข้ากระเป๋าทีม</div>
         </div>
         {me.menus.selfie && me.selfie && (
-          <div className="card" style={{ border: '3px solid #f0c36a' }}>
+          <div className="card" style={{ border: '3px solid #dba24a' }}>
             <div className="mission">
               <div className="m-ic" style={{ background: me.selfie.color, fontSize: 30 }}>🤳</div>
               <div className="m-body"><h2>{me.selfie.test ? '🧪 Selfie Wall Mission · ทดสอบกรรมการ' : 'Selfie Wall Mission'}</h2><div className="muted">{me.selfie.readOnly ? 'ดู Team Wall ของทีมได้อย่างเดียว (กรรมการ/คณะทำงาน)' : me.selfie.test ? `กรรมการถ่ายแล้ว ${me.selfie.count}/${me.selfie.total} คน · ไม่มีคะแนน` : me.selfie.complete ? `ทีมครบแล้ว อันดับ ${me.selfie.rank} · +${me.selfie.tokens} Tokens` : `ทีมทำแล้ว ${me.selfie.pct}% (${me.selfie.count}/${me.selfie.total} คน) · ได้สูงสุด ${me.selfie.nextReward} Tokens`}</div></div>
@@ -565,7 +565,7 @@ function PlayerPage() {
   return (
     <Shell subtitle={subtitle}>
       {me.checkin.open && !me.checkin.done && !me.isObserver && (
-        <div className="card" style={{ border: '3px solid #f0c36a', background: '#fff9e8' }}>
+        <div className="card" style={{ border: '3px solid #dba24a', background: '#fff9e8' }}>
           <div className="row checkin-prompt-row" style={{ justifyContent: 'space-between' }}>
             <div><strong className="action-icon"><AppIcon name="checkin" size={22} />ถึงสถานที่จัดงานแล้วใช่ไหม?</strong><div className="muted" style={{ fontSize: 14 }}>เช็กอินกับทีมงานหน้างาน: สแกน QR แล้วกดยืนยันการเข้าร่วม</div></div>
             <button className="btn small" style={{ flex: 'none' }} onClick={() => setView('checkin')}>เช็กอิน</button>
@@ -614,7 +614,7 @@ function PlayerPage() {
         <div className="row profile-meta">
           <span className="pill">ทีม {team.name}</span>
           {me.squad && <span className="pill" style={{ background: '#f9dca0' }}>{me.squad}</span>}
-          {me.checkin.done && <span className="pill" style={{ background: '#cfe9c9' }}>✅ เช็กอินแล้ว{me.checkin.at ? ` ${new Date(me.checkin.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : ''}</span>}
+          {me.checkin.done && <span className="pill" style={{ background: '#e9e6c9' }}>✅ เช็กอินแล้ว{me.checkin.at ? ` ${new Date(me.checkin.at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}` : ''}</span>}
         </div>
         {!me.avatar.url && !me.avatar.emoji && <div className="muted" style={{ marginTop: 10, fontSize: 14 }}>👆 แตะที่วงกลมเพื่อเลือกรูปโปรไฟล์ของคุณ</div>}
         <div className="row profile-wallet" style={{ marginTop: 12, justifyContent: 'space-between' }}>
@@ -675,7 +675,7 @@ function CheckinView({ me, pendingCode, clearPending, onDone, onAuthLost }: {
 
   if (me.checkin.done || justDone) {
     return (
-      <div className="card center stack" style={{ border: '3px solid #2f8f5b' }}>
+      <div className="card center stack" style={{ border: '3px solid #5f7d2e' }}>
         <div style={{ fontSize: 64, lineHeight: 1 }}>🎉</div>
         <h2 style={{ margin: 0 }}>เช็กอินสำเร็จ!</h2>
         <div className="muted">ยินดีต้อนรับ <strong>{name}</strong> · ทีม {me.team.name}{at ? ` · เช็กอินเมื่อ ${at}` : ''}</div>
@@ -695,7 +695,7 @@ function CheckinView({ me, pendingCode, clearPending, onDone, onAuthLost }: {
   }
   if (code) {   // step 2: confirm
     return (
-      <div className="card center stack" style={{ border: '3px solid #f0c36a' }}>
+      <div className="card center stack" style={{ border: '3px solid #dba24a' }}>
         <div style={{ fontSize: 56, lineHeight: 1 }}>📍</div>
         <h2 style={{ margin: 0 }}>ยืนยันการเข้าร่วมงาน</h2>
         <div className="avatar" style={{ margin: '0 auto', cursor: 'default' }}><Avatar url={me.avatar.url} emoji={me.avatar.emoji} name={name} /></div>
@@ -842,7 +842,7 @@ function AvatarSheet({ me, onClose, onSaved, onAuthLost }: { me: Me; onClose: ()
   });
   return (
     <div className="player-dialog-overlay" role="dialog" aria-modal="true" aria-label="เลือกรูปโปรไฟล์" onClick={onClose}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(31,47,77,.55)', display: 'grid', placeItems: 'end center', zIndex: 60 }}>
+      style={{ position: 'fixed', inset: 0, background: 'rgba(75,51,27,.55)', display: 'grid', placeItems: 'end center', zIndex: 60 }}>
       <div className="card player-dialog-panel avatar-sheet" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 480, borderRadius: '24px 24px 0 0', margin: 0 }}>
         <div className="row" style={{ justifyContent: 'space-between' }}>
           <h2 style={{ margin: 0 }}>รูปโปรไฟล์ของฉัน</h2>
@@ -993,7 +993,7 @@ function GoalCard({ goal, mine }: { goal: Goal; mine?: boolean }) {
   if (!goal.goalPct) return null;
   const pct = goal.participants ? Math.round((goal.completed / goal.participants) * 100) : 0;
   return (
-    <div className="card" style={{ border: `3px solid ${goal.met ? '#2f8f5b' : '#f1e8d0'}` }}>
+    <div className="card" style={{ border: `3px solid ${goal.met ? '#5f7d2e' : '#f1e8d0'}` }}>
       <strong className="action-icon"><AppIcon name="missions" size={21} />เป้าหมายร่วมของทีม: สมาชิกเล่นควิซจบ {goal.goalPct}%</strong>
       <div className="progress" style={{ position: 'relative', margin: '12px 0 8px' }}>
         <i style={{ width: `${Math.min(100, pct)}%`, background: goal.met ? 'var(--ok)' : undefined }} />
@@ -1034,7 +1034,7 @@ function NoticeModal() {
     const go = () => { markSeen(n.id); noticeStore.set(null); noticeStore.onSelfie?.(); };
     return (
       <div className="player-dialog-overlay" role="alertdialog" aria-modal="true" aria-label="ภาพ Selfie ถูกปฏิเสธ" onClick={later}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(31,47,77,.6)', display: 'grid', placeItems: 'center', zIndex: 100 }}>
+        style={{ position: 'fixed', inset: 0, background: 'rgba(75,51,27,.6)', display: 'grid', placeItems: 'center', zIndex: 100 }}>
         <div className="card center stack player-dialog-panel" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, margin: 0, border: '4px solid #d98b86' }}>
           <div className="dialog-feature-icon"><AppIcon name="info" size={52} /></div>
           <h2 style={{ margin: 0 }}>ทีมงานให้ถ่าย Selfie ใหม่</h2>
@@ -1051,12 +1051,12 @@ function NoticeModal() {
     const go = () => { markSeen(n.id); noticeStore.set(null); noticeStore.onSelfie?.(); };
     return (
       <div className="player-dialog-overlay" role="alertdialog" aria-modal="true" aria-label="Selfie Wall Mission" onClick={later}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(31,47,77,.6)', display: 'grid', placeItems: 'center', zIndex: 100 }}>
+        style={{ position: 'fixed', inset: 0, background: 'rgba(75,51,27,.6)', display: 'grid', placeItems: 'center', zIndex: 100 }}>
         <div className="card center stack player-dialog-panel sw-hero" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, margin: 0 }}>
           <div className="sw-leaves" aria-hidden>{['🍃', '🌿', '🍂', '🍃'].map((l, i) => <span key={i} style={{ left: `${10 + i * 24}%`, animationDelay: `${i * 1.1}s` }}>{l}</span>)}</div>
           <div style={{ fontSize: 56, position: 'relative' }}>🤳</div>
           <h2 style={{ margin: 0, position: 'relative' }}>{n.test ? '🧪 ทดสอบ Selfie Wall Mission (กรรมการ)' : n.mine ? 'ทีมยังไม่ครบ!' : 'Selfie Wall Mission'}</h2>
-          <div className="sw-ring" style={{ ['--sw-color' as string]: '#f6d365', ['--p' as string]: n.pct, margin: '4px auto' }}><div><b>{n.pct}%</b><span>{n.count}/{n.total} คน</span></div></div>
+          <div className="sw-ring" style={{ ['--sw-color' as string]: '#e6b85c', ['--p' as string]: n.pct, margin: '4px auto' }}><div><b>{n.pct}%</b><span>{n.count}/{n.total} คน</span></div></div>
           <div style={{ position: 'relative' }}>{n.test ? <>ทดลองถ่าย Selfie กับฉากหลัง <span className="sw-chip"><i style={{ background: n.color }} />{colorNameClient(n.color)}</span> เหมือนผู้เล่นจริง · ไม่มีคะแนน</> : n.mine ? `รอเพื่อนอีก ${n.total - n.count} คน ช่วยกันตามให้ครบ!` : <>ถ่าย Selfie กับฉากหลัง <span className="sw-chip"><i style={{ background: n.color }} />{colorNameClient(n.color)}</span> ให้ได้ {n.percent}%</>}</div>
           {!n.test && <div className="sw-pill" style={{ position: 'relative' }}>🪙 ทีมมีโอกาสได้สูงสุด <strong>{n.nextReward} Tokens</strong></div>}
           {n.end && <div style={{ fontSize: 13, opacity: .9, position: 'relative' }}>หมดเวลา {fmtTime(n.end)}</div>}
@@ -1071,8 +1071,8 @@ function NoticeModal() {
     const go = () => { markSeen(n.id); noticeStore.set(null); noticeStore.onCheckin?.(); };
     return (
       <div className="player-dialog-overlay" role="alertdialog" aria-modal="true" aria-label="เช็กอินวันงาน" onClick={later}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(31,47,77,.6)', display: 'grid', placeItems: 'center', zIndex: 100 }}>
-        <div className="card center stack player-dialog-panel" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, margin: 0, border: '4px solid #f0c36a' }}>
+        style={{ position: 'fixed', inset: 0, background: 'rgba(75,51,27,.6)', display: 'grid', placeItems: 'center', zIndex: 100 }}>
+        <div className="card center stack player-dialog-panel" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, margin: 0, border: '4px solid #dba24a' }}>
           <div className="dialog-feature-icon"><AppIcon name="checkin" size={52} /></div>
           <h2 style={{ margin: 0 }}>ถึงสถานที่จัดงานแล้วใช่ไหม?</h2>
           <div className="muted">ทีมงานเปิดให้ <strong>เช็กอิน</strong> แล้ว สแกน QR Code เช็กอินที่ทีมงานหน้างานด้วยกล้องมือถือ แล้วกด <strong>ยืนยันการเข้าร่วม</strong></div>
@@ -1086,8 +1086,8 @@ function NoticeModal() {
   const close = () => { markSeen(n.id); noticeStore.set(null); noticeStore.onClose?.(); };
   return (
     <div className="player-dialog-overlay" role="alertdialog" aria-modal="true" aria-label="ผลการตรวจภาพภารกิจ" onClick={close}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(31,47,77,.6)', display: 'grid', placeItems: 'center', zIndex: 100 }}>
-      <div className="card center stack player-dialog-panel" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, margin: 0, border: `4px solid ${ok ? '#2f8f5b' : '#d98b86'}` }}>
+      style={{ position: 'fixed', inset: 0, background: 'rgba(75,51,27,.6)', display: 'grid', placeItems: 'center', zIndex: 100 }}>
+      <div className="card center stack player-dialog-panel" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: 420, margin: 0, border: `4px solid ${ok ? '#5f7d2e' : '#d98b86'}` }}>
         <div className="dialog-feature-icon"><AppIcon name={ok ? 'check' : 'info'} size={52} /></div>
         <h2 style={{ margin: 0 }}>{ok ? 'ภารกิจผ่านแล้ว!' : 'ภาพยังไม่ผ่าน'}</h2>
         <div><strong>{n.title}</strong></div>
@@ -1191,12 +1191,12 @@ function PhotoMissionsView({ onBalance, onAuthLost, readOnly = false }: { onBala
         {!d.open && <div className="banner" style={{ marginTop: 12 }}>ภารกิจทีมยังไม่เปิด หรือปิดแล้ว รอทีมงานประกาศ</div>}
         {err && <div className="error" style={{ marginTop: 12 }}>{err}</div>}
       </div>
-      {done && <div className="card center" style={{ border: '3px solid #2f8f5b' }}><div className="verdict ok" style={{ fontSize: 17 }}>{done}</div></div>}
+      {done && <div className="card center" style={{ border: '3px solid #5f7d2e' }}><div className="verdict ok" style={{ fontSize: 17 }}>{done}</div></div>}
       {d.missions.length === 0 && <div className="card center muted">ยังไม่มีภารกิจ</div>}
       {d.missions.map((m) => {
         const c = CATEGORY[m.category] ?? CATEGORY.other;
         const sub = m.submission;
-        const border = sub?.status === 'approved' ? '3px solid #2f8f5b' : sub?.status === 'pending' ? '3px solid #f0c36a' : sub?.status === 'rejected' ? '3px solid #e0a29d' : undefined;
+        const border = sub?.status === 'approved' ? '3px solid #5f7d2e' : sub?.status === 'pending' ? '3px solid #dba24a' : sub?.status === 'rejected' ? '3px solid #e0a29d' : undefined;
         const canUpload = (d.isLeader && !readOnly) && (!sub || sub.status === 'rejected' || sub.status === 'pending');
         return (
           <div className="card" key={m.id} style={border ? { border } : undefined}>
@@ -1372,14 +1372,14 @@ function HuntView({ pending, clearPending, onBalance, onAuthLost, readOnly = fal
       )}
 
       {win?.pending && (
-        <div className="card center" style={{ border: '3px solid #f2c46d' }}>
+        <div className="card center" style={{ border: '3px solid #dba24a' }}>
           <div className="verdict" style={{ color: '#8a6100' }}>👥 สแกนแล้ว! รอเพื่อนอีก {Math.max(0, win.pending.need - win.pending.have)} คน</div>
           <div>{win.title} · ต้องมีสมาชิก {win.pending.need} คนสแกนจุดนี้ภายใน {Math.round(win.pending.windowSec / 60 * 10) / 10} นาที</div>
           <div className="muted">ชวนเพื่อนในสควอดมาสแกนที่จุดนี้ — ตอนนี้สแกนแล้ว {win.pending.have}/{win.pending.need}</div>
         </div>
       )}
       {win && !win.pending && (
-        <div className={`card center ${win.already ? '' : 'stack'}`} style={{ border: `3px solid ${win.already ? '#f1e8d0' : '#2f8f5b'}` }}>
+        <div className={`card center ${win.already ? '' : 'stack'}`} style={{ border: `3px solid ${win.already ? '#f1e8d0' : '#5f7d2e'}` }}>
           <div className={`verdict ${win.already ? '' : 'ok'}`}>{win.already ? (h.squad ? 'สควอดของคุณเจอจุดนี้แล้ว' : 'ทีมคุณเจอจุดนี้แล้ว') : `เจอแล้ว! +${win.tokens} โทเคนเข้ากระเป๋าทีม`}</div>
           <div>{win.title}</div>
         </div>
@@ -1404,7 +1404,7 @@ function HuntView({ pending, clearPending, onBalance, onAuthLost, readOnly = fal
             <li key={s.id}>
               <span>{s.found ? '✅' : '🔒'} {s.found ? s.title : `จุดลับ`}<br />
                 <span className="muted">{s.found ? `พบโดย ${s.foundBy ?? '-'}` : s.hint || 'ไม่มีคำใบ้'}</span>
-                {!s.found && s.coop && <><br /><span className="pill" style={{ background: '#f2c46d' }}>👥 ต้องสแกนพร้อมกัน {s.coop.need} คน · ตอนนี้ {s.coop.have}/{s.coop.need}{s.coop.iScanned ? ' (คุณสแกนแล้ว)' : ''}</span></>}</span>
+                {!s.found && s.coop && <><br /><span className="pill" style={{ background: '#dba24a' }}>👥 ต้องสแกนพร้อมกัน {s.coop.need} คน · ตอนนี้ {s.coop.have}/{s.coop.need}{s.coop.iScanned ? ' (คุณสแกนแล้ว)' : ''}</span></>}</span>
               <strong>{s.tokens}</strong>
             </li>
           ))}
@@ -1455,7 +1455,7 @@ function MarketList({ me, onRedeem }: { me: Me; onRedeem?: (m: Me['market'][numb
               <span className="market-product-info" style={{ flex: 1, minWidth: 0 }}>
                 <strong>{locked ? '🔒 ' : m.requires_goal ? '🎯 ' : ''}{m.name}</strong>
                 <br />
-                <span className="pill" style={{ background: out ? '#f1d4d1' : low ? '#f2c46d' : 'var(--green)', fontSize: 13, padding: '2px 10px' }}>
+                <span className="pill" style={{ background: out ? '#f1d4d1' : low ? '#dba24a' : 'var(--green)', fontSize: 13, padding: '2px 10px' }}>
                   {out ? '⛔ หมดแล้ว' : low ? `⚠️ เหลือน้อย ${m.stock} ชิ้น` : `✅ มีของ เหลือ ${m.stock} ชิ้น`}
                 </span>
                 {have > 0 && <><br /><span className="muted" style={{ fontSize: 13 }}>🎒 ทีมเรามีแล้ว ×{have}</span></>}
@@ -1561,7 +1561,7 @@ function MarketView({ me, onRefresh }: { me: Me; onRefresh: () => unknown }) {
         <button className={tab === 'buy' ? 'on' : ''} onClick={() => setTab('buy')}><AppIcon name="shop" size={20} />แลกของ</button>
         <button className={tab === 'mine' ? 'on' : ''} onClick={() => setTab('mine')}><AppIcon name="team" size={20} />ของของทีม</button>
       </div>
-      {done && <div className="card center" style={{ border: '3px solid #2f8f5b' }}><div className="verdict ok" style={{ fontSize: 17 }}>{done}</div></div>}
+      {done && <div className="card center" style={{ border: '3px solid #5f7d2e' }}><div className="verdict ok" style={{ fontSize: 17 }}>{done}</div></div>}
       {tab === 'buy' && <GoalCard goal={me.goal} mine />}
       <div className="card">{tab === 'buy' ? <MarketList me={me} onRedeem={canRedeem ? open : undefined} /> : <TeamInventory me={me} />}</div>
 

@@ -3,16 +3,16 @@ import './globals.css';
 import './responsive.css';
 
 export const metadata: Metadata = {
-  title: 'Food Camp Hunt',
+  title: 'Agency in the Wonder Woods',
   description: 'เกมทายอาหาร ล่าสมบัติ สะสมโทเคนให้ทีม',
   robots: { index: false, follow: false },
-  appleWebApp: { title: 'Food Camp Hunt', capable: true, statusBarStyle: 'default' },
+  appleWebApp: { title: 'Wonder Woods', capable: true, statusBarStyle: 'default' },
 };
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#1b2a4a',
+  themeColor: '#65622d',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

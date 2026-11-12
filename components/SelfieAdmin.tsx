@@ -92,7 +92,7 @@ export default function SelfieAdmin({ role, setMsg, call }: Props) {
             <div className="muted" style={{ fontSize: 13, marginTop: 6 }}>{zoom.checks?.ai ? `AI: ${zoom.checks.ai.person ? 'เห็นคน' : 'ไม่เห็นคน'} ${zoom.checks.ai.people ?? ''} คน · ${zoom.checks.ai.bg ?? ''}` : zoom.checks?.aiEnabled === false ? 'ตรวจด้วยพิกเซลอย่างเดียว (ยังไม่ตั้งค่า AI)' : ''}</div>
             <label className="lbl">ปฏิเสธภาพนี้ (ผู้ถ่ายจะได้รับ Pop-up พร้อมเหตุผล และถ่ายใหม่)</label>
             <div className="row" style={{ gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
-              {['ไม่ใช่ใบหน้าของคุณเอง', 'ใบหน้าซ้ำกับสมาชิกคนอื่น', 'ภาพซ้ำกับของคนอื่น', 'ไม่เห็นหน้าชัดเจน', 'พื้นหลังไม่ใช่สีที่กำหนด'].map((r) => <button key={r} type="button" className={`btn small ghost${reason === r ? ' on' : ''}`} style={reason === r ? { borderColor: 'var(--forest)', background: '#e2f3dc' } : undefined} onClick={() => setReason(r)}>{r}</button>)}
+              {['ไม่ใช่ใบหน้าของคุณเอง', 'ใบหน้าซ้ำกับสมาชิกคนอื่น', 'ภาพซ้ำกับของคนอื่น', 'ไม่เห็นหน้าชัดเจน', 'พื้นหลังไม่ใช่สีที่กำหนด'].map((r) => <button key={r} type="button" className={`btn small ghost${reason === r ? ' on' : ''}`} style={reason === r ? { borderColor: 'var(--forest)', background: '#f0edd6' } : undefined} onClick={() => setReason(r)}>{r}</button>)}
             </div>
             <input className="field" placeholder="หรือพิมพ์เหตุผลเอง" value={reason} maxLength={200} onChange={(e) => setReason(e.target.value)} />
             <div className="row" style={{ marginTop: 12 }}>
@@ -156,7 +156,7 @@ export default function SelfieAdmin({ role, setMsg, call }: Props) {
             <input type="color" value={f.color} onChange={(e) => setF({ ...f, color: e.target.value })} style={{ width: 56, height: 44, border: 0, background: 'none' }} aria-label="เลือกสี" />
             <input className="field" style={{ width: 120 }} value={f.color} onChange={(e) => setF({ ...f, color: e.target.value })} />
             <strong>{colorName(f.color.length === 7 ? f.color : '#000000')}</strong>
-            <div className="row" style={{ gap: 6 }}>{PRESETS.map(([c, n]) => <button key={c} type="button" title={n} onClick={() => setF({ ...f, color: c })} style={{ width: 30, height: 30, borderRadius: '50%', background: c, border: f.color === c ? '3px solid #1f3557' : '2px solid #ddd', cursor: 'pointer' }} aria-label={n} />)}</div>
+            <div className="row" style={{ gap: 6 }}>{PRESETS.map(([c, n]) => <button key={c} type="button" title={n} onClick={() => setF({ ...f, color: c })} style={{ width: 30, height: 30, borderRadius: '50%', background: c, border: f.color === c ? '3px solid #4b331b' : '2px solid #ddd', cursor: 'pointer' }} aria-label={n} />)}</div>
           </div>
           <div className="row">
             <div><label className="lbl">พื้นหลังต้องเป็นสีนี้อย่างน้อย (%)</label><input className="field" style={{ width: 120 }} type="number" min={1} max={100} value={f.percent} onChange={(e) => setF({ ...f, percent: e.target.value })} /></div>
@@ -196,7 +196,7 @@ export default function SelfieAdmin({ role, setMsg, call }: Props) {
                   {d.palette.map((c) => {
                     const used = d.teams.find((x) => x.id !== t.id && x.color === c);
                     return <button key={c} type="button" disabled={!!used} title={used ? `${used.name} ใช้อยู่` : colorName(c)} aria-label={`${colorName(c)}${used ? ` (${used.name} ใช้อยู่)` : ''}`}
-                      onClick={() => teamColor(t.id, c)} style={{ width: 30, height: 30, borderRadius: '50%', background: c, border: t.color === c ? '3px solid #1f3557' : '2px solid #ddd', cursor: used ? 'not-allowed' : 'pointer', opacity: used ? .25 : 1 }} />;
+                      onClick={() => teamColor(t.id, c)} style={{ width: 30, height: 30, borderRadius: '50%', background: c, border: t.color === c ? '3px solid #4b331b' : '2px solid #ddd', cursor: used ? 'not-allowed' : 'pointer', opacity: used ? .25 : 1 }} />;
                   })}
                   <input type="color" value={t.color ?? s.color} aria-label={`เลือกสีเองให้ทีม ${t.name}`} onChange={(e) => teamColor(t.id, e.target.value)} style={{ width: 34, height: 34, border: 0, background: 'none', padding: 0 }} />
                 </div>
@@ -245,7 +245,7 @@ export default function SelfieAdmin({ role, setMsg, call }: Props) {
         <div className="card" key={t.id}>
           <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
             <h2 style={{ margin: 0 }}><span style={{ display: 'inline-block', width: 16, height: 16, borderRadius: '50%', background: t.color ?? s.color, border: '2px solid #fff', boxShadow: '0 0 0 2px #cfd6cf', marginRight: 8, verticalAlign: 'middle' }} aria-hidden />{t.name} <span className="muted" style={{ fontWeight: 400, fontSize: 15 }}>{t.count}/{t.total} คน</span></h2>
-            {t.complete ? <span className="pill" style={{ background: '#cfe9c9' }}>✅ อันดับ {t.rank} · +{t.tokens}</span> : s.audience === 'teams' && !t.active ? <span className="pill" style={{ background: '#eee' }}>ยังไม่เริ่ม</span> : <span className="pill" style={{ background: '#f4ead0' }}>{t.total ? Math.round((t.count / t.total) * 100) : 0}%</span>}
+            {t.complete ? <span className="pill" style={{ background: '#e9e6c9' }}>✅ อันดับ {t.rank} · +{t.tokens}</span> : s.audience === 'teams' && !t.active ? <span className="pill" style={{ background: '#eee' }}>ยังไม่เริ่ม</span> : <span className="pill" style={{ background: '#f4ead0' }}>{t.total ? Math.round((t.count / t.total) * 100) : 0}%</span>}
           </div>
           <div className="progress" style={{ margin: '8px 0 10px' }}><i style={{ width: `${t.total ? (t.count / t.total) * 100 : 0}%` }} /></div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))', gap: 8 }}>
@@ -264,10 +264,10 @@ function MemberTile({ m, color, onZoom }: { m: Member; color: string; onZoom: (m
   return (
     <div style={{ textAlign: 'center', minWidth: 0 }}>
       <button type="button" onClick={() => m.photoUrl && onZoom(m)} disabled={!m.photoUrl} aria-label={m.name}
-        style={{ position: 'relative', width: '100%', aspectRatio: '3 / 4', borderRadius: 10, border: flag ? '3px solid #e0573b' : m.photoUrl ? `3px solid ${color}` : '2px dashed #ccc', background: m.photoUrl ? `url(${m.photoUrl}) center/cover` : '#eee', cursor: m.photoUrl ? 'zoom-in' : 'default', padding: 0 }}>
+        style={{ position: 'relative', width: '100%', aspectRatio: '3 / 4', borderRadius: 10, border: flag ? '3px solid #aa5c2c' : m.photoUrl ? `3px solid ${color}` : '2px dashed #ccc', background: m.photoUrl ? `url(${m.photoUrl}) center/cover` : '#eee', cursor: m.photoUrl ? 'zoom-in' : 'default', padding: 0 }}>
         {!m.photoUrl && <span className="muted" style={{ fontSize: 22 }}>👤</span>}
         {m.checks?.source === 'gallery' && <span title="เลือกจากรูปในเครื่อง" style={{ position: 'absolute', bottom: 4, left: 4, background: 'rgba(31,53,87,.85)', color: '#fff', borderRadius: 8, fontSize: 11, padding: '1px 5px' }}>🖼️</span>}
-        {flag && <span title={`คล้ายกับ ${[...(m.similarTo ?? []), ...(m.faceLike ?? []).map((x) => x.name)].join(', ')}`} style={{ position: 'absolute', top: 4, right: 4, background: '#e0573b', color: '#fff', borderRadius: 8, fontSize: 11, padding: '1px 5px' }}>{(m.faceLike?.length ?? 0) > 0 ? '👥 หน้าซ้ำ?' : '⚠️ คล้าย'}</span>}
+        {flag && <span title={`คล้ายกับ ${[...(m.similarTo ?? []), ...(m.faceLike ?? []).map((x) => x.name)].join(', ')}`} style={{ position: 'absolute', top: 4, right: 4, background: '#aa5c2c', color: '#fff', borderRadius: 8, fontSize: 11, padding: '1px 5px' }}>{(m.faceLike?.length ?? 0) > 0 ? '👥 หน้าซ้ำ?' : '⚠️ คล้าย'}</span>}
       </button>
       <FitLine text={m.name} base={12.5} min={8} style={{ fontWeight: 700, marginTop: 3 }} />
       <FitLine text={real} base={11} min={7} className="muted" />

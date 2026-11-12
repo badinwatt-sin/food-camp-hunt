@@ -391,7 +391,7 @@ function Celebration({ tokens, rank, team, test, onDone }: { tokens: number; ran
     try { navigator.vibrate?.([80, 60, 120]); } catch { /* ignore */ }
     return () => cancelAnimationFrame(raf);
   }, [tokens]);
-  const bits = useMemo(() => Array.from({ length: 60 }, (_, i) => ({ l: Math.random() * 100, d: Math.random() * 1.2, r: Math.random() * 360, c: ['#f6d365', '#e0573b', '#2f8f5b', '#3f7fb5', '#fff', '#c96d2f'][i % 6], s: 6 + Math.random() * 8 })), []);
+  const bits = useMemo(() => Array.from({ length: 60 }, (_, i) => ({ l: Math.random() * 100, d: Math.random() * 1.2, r: Math.random() * 360, c: ['#e6b85c', '#aa5c2c', '#5f7d2e', '#3f7fb5', '#fff', '#aa5c2c'][i % 6], s: 6 + Math.random() * 8 })), []);
   return (
     <div className="sw-party" role="alertdialog" aria-label="ทีมทำภารกิจสำเร็จ">
       <div className="sw-confetti" aria-hidden>{bits.map((b, i) => <i key={i} style={{ left: `${b.l}%`, animationDelay: `${b.d}s`, background: b.c, width: b.s, height: b.s * 0.6, transform: `rotate(${b.r}deg)` }} />)}</div>
@@ -488,12 +488,12 @@ async function renderFrame(st: Status) {
   // backdrop: warm cream with a soft forest gradient and leaf sprinkles
   const g = ctx.createLinearGradient(0, 0, 0, H); g.addColorStop(0, '#fff8ea'); g.addColorStop(1, '#e7f0e3');
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  ctx.strokeStyle = '#4c6b3c'; ctx.lineWidth = 10; rr(ctx, 18, 18, W - 36, H - 36, 36); ctx.stroke();
-  ctx.strokeStyle = '#c96d2f'; ctx.lineWidth = 3; rr(ctx, 34, 34, W - 68, H - 68, 28); ctx.stroke();
+  ctx.strokeStyle = '#65622d'; ctx.lineWidth = 10; rr(ctx, 18, 18, W - 36, H - 36, 36); ctx.stroke();
+  ctx.strokeStyle = '#aa5c2c'; ctx.lineWidth = 3; rr(ctx, 34, 34, W - 68, H - 68, 28); ctx.stroke();
   // logo
   try { const logo = await loadImg('/kv-logo.png'); const lw = 460, lh = lw * logo.height / logo.width; ctx.drawImage(logo, (W - lw) / 2, 52, lw, lh); }
-  catch { ctx.fillStyle = '#4c6b3c'; ctx.font = 'bold 44px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(THEME_TITLE, W / 2, 140); }
-  ctx.textAlign = 'center'; ctx.fillStyle = '#b4532a'; ctx.font = 'bold 46px "Noto Sans Thai", "Sarabun", sans-serif';
+  catch { ctx.fillStyle = '#65622d'; ctx.font = 'bold 44px sans-serif'; ctx.textAlign = 'center'; ctx.fillText(THEME_TITLE, W / 2, 140); }
+  ctx.textAlign = 'center'; ctx.fillStyle = '#8f4a20'; ctx.font = 'bold 46px "Noto Sans Thai", "Sarabun", sans-serif';
   ctx.fillText(st.test ? st.team.name : `ทีม ${st.team.name}`, W / 2, headH - 36);
   // photos
   for (let i = 0; i < members.length; i++) {
@@ -507,12 +507,12 @@ async function renderFrame(st: Status) {
     } else { ctx.fillStyle = '#9aa39c'; ctx.font = `${Math.round(cellW * 0.5)}px sans-serif`; ctx.fillText('👤', x + cellW / 2, y + cellH * 0.62); }
     ctx.restore();
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 6; rr(ctx, x, y, cellW, cellH, 18); ctx.stroke();
-    ctx.fillStyle = '#1f3557'; ctx.textAlign = 'center';
+    ctx.fillStyle = '#4b331b'; ctx.textAlign = 'center';
     fitLine(ctx, m.name, x + cellW / 2, y + cellH + 30, cellW, 700, cellW > 240 ? 25 : 21, 12);
-    if (hasReal(m)) { ctx.fillStyle = '#5b6b7a'; fitLine(ctx, m.fullName, x + cellW / 2, y + cellH + 56, cellW, 400, cellW > 240 ? 19 : 16, 9); }
+    if (hasReal(m)) { ctx.fillStyle = '#7a6650'; fitLine(ctx, m.fullName, x + cellW / 2, y + cellH + 56, cellW, 400, cellW > 240 ? 19 : 16, 9); }
   }
   // footer
-  ctx.fillStyle = '#4c6b3c'; ctx.font = 'bold 34px "Noto Sans Thai", "Sarabun", sans-serif';
+  ctx.fillStyle = '#65622d'; ctx.font = 'bold 34px "Noto Sans Thai", "Sarabun", sans-serif';
   ctx.fillText(THEME_FOOT, W / 2, H - 92);
   ctx.fillStyle = '#7a8a74'; ctx.font = '22px sans-serif';
   if (st.test) ctx.fillText('🧪 ภาพทดสอบของกรรมการ', W / 2, H - 58);   // the shared picture stays clean: theme, team name, event line
