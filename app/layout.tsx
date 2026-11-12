@@ -6,6 +6,7 @@ export const metadata: Metadata = {
   title: 'Food Camp Hunt',
   description: 'เกมทายอาหาร ล่าสมบัติ สะสมโทเคนให้ทีม',
   robots: { index: false, follow: false },
+  appleWebApp: { title: 'Food Camp Hunt', capable: true, statusBarStyle: 'default' },
 };
 
 export const viewport: Viewport = {
